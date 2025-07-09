@@ -5,9 +5,12 @@
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { SegmentationModule } from './modules/segmentation/segmentation.module';
+import { ImageGenModule } from './modules/image-gen/image-gen.module';
+import { VideoGenModule } from './modules/video-gen/video-gen.module';
 
 @Module({
-  imports: [],
+  imports: [SegmentationModule, ImageGenModule, VideoGenModule],
   controllers: [AppController],
   providers: [AppService],
 })
