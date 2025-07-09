@@ -9,9 +9,10 @@ import { SegmentationModule } from './modules/segmentation/segmentation.module';
 import { ImageGenModule } from './modules/image-gen/image-gen.module';
 import { VideoGenModule } from './modules/video-gen/video-gen.module';
 import { HealthModule } from './modules/health/health.module';
+import { VoiceoverModule } from './modules/voiceover/voiceover.module';
 
 @Module({
-  imports: [SegmentationModule, ImageGenModule, VideoGenModule, HealthModule],
+  imports: [SegmentationModule, ImageGenModule, VideoGenModule, HealthModule, VoiceoverModule],
   controllers: [AppController],
   providers: [AppService],
 })

@@ -19,97 +19,174 @@ export class SegmentationService {
   private async generateScript(options: {
     narrationPrompt: string;
     visualPrompt: string;
-  }): Promise<{ narration: string; visual: string }> {
-    const { narrationPrompt, visualPrompt } = options;
+    animationPrompt: string;
+  }): Promise<{ narration: string; visual: string; animation: string }> {
+    const { narrationPrompt, visualPrompt, animationPrompt } = options;
 
-    const narrationRes = await this.genAI.models.generateContent({
-      model: 'gemini-2.5-pro-preview-06-05',
-      contents: narrationPrompt,
-    });
+    const [animationRes, narrationRes, visualRes] = await Promise.all([
+      this.genAI.models.generateContent({
+        model: 'gemini-2.5-flash-preview-05-20',
+        contents: animationPrompt,
+      }),
+      this.genAI.models.generateContent({
+        model: 'gemini-2.5-flash-preview-05-20',
+        contents: narrationPrompt,
+      }),
+      this.genAI.models.generateContent({
+        model: 'gemini-2.5-flash-preview-05-20',
+        contents: visualPrompt,
+      }),
+    ]);
 
+    const animation = animationRes.text?.trim();
     const narration = narrationRes.text?.trim();
-    if (!narration) {
-      throw new HttpException(
-        'Failed to generate narration.',
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
-
-    const visualRes = await this.genAI.models.generateContent({
-      model: 'gemini-2.5-pro-preview-06-05',
-      contents: visualPrompt,
-    });
-
     const visual = visualRes.text?.trim();
-    if (!visual) {
+
+    if (!animation || !narration || !visual) {
       throw new HttpException(
-        'Failed to generate visual script.',
+        'Failed to generate full script.',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
 
-    return { narration, visual };
+    // console.log(`ANIMATION: ${animation}`);
+    // console.log(`NARRATION: ${narration}`);
+    // console.log(`VISUAL: ${visual}`);
+
+    return { narration, visual, animation };
   }
 
   private async segmentGeneratedScript(script: {
     narration: string;
     visual: string;
+    animation: string;
   }): Promise<{ segments: TypeSegment[] }> {
-    const makeSegmentationPrompt = (scriptText: string) => `
-          Segment the following script into exactly 5 distinct parts. Narration and visual should be in the same order. IT SHOULD BE EXACTLY 5 PARTS. Each part should be an object with a "segment" field (text of that part), and a unique "id" field.
-          EACH VISUAL PROMPT CAN BE A MAXIMUM OF 150 WORDS PER SEGMENT. THERE SHOULD BE NO CUTS IN A SEGMENT. Each segment should just be string not a markdown.
-          Script:
-          ---
-          ${scriptText}
-          ---
+    const makeSegmentationPrompt = (
+      scriptText: string,
+      type: 'narration' | 'visual' | 'animation',
+    ) => {
+      const base = `
+      Segment the following ${type} script into exactly 5 distinct parts.
+      
+      Each segment must be returned as a JSON object with:
+      - "id": a unique string identifier (e.g., "seg-1", "seg-2", etc.)
+      - "segment": the text for that part
+      
+      Requirements:
+      - You must return exactly 5 segments in an array
+      - The segment order must preserve the original flow
+      - Do NOT include summaries, markdown, or metadata
+      - Each segment should be a standalone piece with meaningful flow
       `;
 
-    const narrationSegRes = await this.genAI.models.generateContent({
-      model: 'gemini-2.5-pro-preview-06-05',
-      contents: makeSegmentationPrompt(script.narration),
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              segment: { type: 'string' },
-              id: { type: 'string' },
-            },
-          },
-        },
-      },
-    });
+      const narrationAddendum = `
+      IMPORTANT (for narration scripts):
+      Each segment must contain only what the narrator will say aloud. 
+      Do NOT describe visuals, camera shots, or sound design. 
+      Do NOT include instructions, scene setting, or internal monologue. 
+      Only generate spoken lines that match the tone of the style (e.g. professional for ads, intense for hype).
+      `;
 
-    const visualSegRes = await this.genAI.models.generateContent({
-      model: 'gemini-2.5-pro-preview-06-05',
-      contents: makeSegmentationPrompt(script.visual),
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              segment: { type: 'string' },
-              id: { type: 'string' },
+      const visualAddendum = `
+      IMPORTANT (for visual scripts):
+      Each segment MUST describe exactly ONE image — not a storyboard, not a sequence.
+      The image should be a single, coherent visual concept that can be generated in isolation.
+      Do NOT include multiple actions or frames within a segment.
+      Focus on visual composition, mood, setting, and core subject for each image.
+      `;
+
+      const animationAddendum = `
+      IMPORTANT (for animation scripts):
+      Each segment should describe motion and transitions for one continuous shot.
+      Avoid visual summaries or multiple scene ideas per segment.
+      Only describe how the camera moves, how things animate, and what’s happening dynamically on screen.
+      `;
+
+      let prompt = base;
+      if (type === 'narration') prompt += narrationAddendum;
+      if (type === 'visual') prompt += visualAddendum;
+      if (type === 'animation') prompt += animationAddendum;
+
+      return `${prompt}
+      
+      Script:
+      ---
+      ${scriptText}
+      ---
+      `;
+    };
+
+    const [animationSegRes, narrationSegRes, visualSegRes] = await Promise.all([
+      await this.genAI.models.generateContent({
+        model: 'gemini-2.5-pro-preview-06-05',
+        contents: makeSegmentationPrompt(script.narration, 'narration'),
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                segment: { type: 'string' },
+                id: { type: 'string' },
+              },
             },
           },
         },
-      },
-    });
+      }),
+
+      await this.genAI.models.generateContent({
+        model: 'gemini-2.5-pro-preview-06-05',
+        contents: makeSegmentationPrompt(script.visual, 'visual'),
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                segment: { type: 'string' },
+                id: { type: 'string' },
+              },
+            },
+          },
+        },
+      }),
+
+      await this.genAI.models.generateContent({
+        model: 'gemini-2.5-pro-preview-06-05',
+        contents: makeSegmentationPrompt(script.animation, 'animation'),
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                segment: { type: 'string' },
+                id: { type: 'string' },
+              },
+            },
+          },
+        },
+      }),
+    ]);
 
     const segments: TypeSegment[] = [];
 
     try {
+    //   console.log(`ANIMATION: ${animationSegRes.text}`);
+    //   console.log(`NARRATION: ${narrationSegRes.text}`);
+    //   console.log(`VISUAL: ${visualSegRes.text}`);
       const narrationSegments = JSON.parse(narrationSegRes.text);
       const visualSegments = JSON.parse(visualSegRes.text);
+      const animationSegments = JSON.parse(animationSegRes.text);
       for (let i = 0; i <= 4; i++) {
         segments.push({
           id: `seg-${i + 1}`,
-          narration: narrationSegments[i].segment,
-          visual: visualSegments[i].segment,
+          narration: animationSegments[i].segment, // narration ← animation
+          visual: narrationSegments[i].segment,    // visual ← narration
+          animation: visualSegments[i].segment,    // animation ← visual
         });
       }
     } catch (err) {
@@ -144,8 +221,11 @@ export class SegmentationService {
                 `[HYPE] Starting hype video generation for: ${prompt}`,
               );
               const script = await this.generateScript({
-                narrationPrompt: `Create a high-octane, adrenaline-pumping voiceover script for: ${prompt}. Use short sentences, punchy verbs, and crowd-rallying phrases.`,
-                visualPrompt: `Generate a visual script for a concept art that will be used as reference to generate a hype video: ${prompt}. It'll be later segmented into 5 parts, keep that in mind. There should not be more than 5 cuts.`,
+                animationPrompt: `Create a high-energy animation sequence for a hype video about: "${prompt}". The animation should feel intense, cinematic, and adrenaline-fueled. Use strong pacing like quick cuts, bold transitions, and powerful motion to build excitement. Structure the animation into exactly 5 parts, each escalating in impact. Clearly label each part. Include pacing cues like "build-up", "burst", "climax", etc. Avoid summaries; focus on the animation flow.`,
+
+                narrationPrompt: `Write a high-octane voiceover script for a hype video about: "${prompt}". Use short, punchy lines with energetic verbs and emotional intensity. The tone should be motivational, fast-paced, and powerful — something that gets crowds hyped. Structure the script into exactly 5 distinct segments. Do not label them as "summary" or include narration summaries. Each segment should stand alone with a strong voice.`,
+
+                visualPrompt: `Generate a concept description for creating a single impactful image per segment for a hype video based on: "${prompt}". Each image should be bold, cinematic, and emotionally intense — think strong silhouettes, dynamic scenes, action energy, or surreal metaphors. Divide the visual plan into exactly 5 parts, one image per part. Describe the visual content clearly for each image without using terms like "storyboard" or "summary". Maintain consistency in visual tone and escalation.`,
               });
               // Return the full script and style only - NOT segmented yet
               return { script, style: 'hype' };
@@ -167,10 +247,13 @@ export class SegmentationService {
               prompt: z.string(),
             }) as any,
             execute: async ({ prompt }) => {
-            //   console.log(`[AD] Starting ad video generation for: ${prompt}`);
+              //   console.log(`[AD] Starting ad video generation for: ${prompt}`);
               const script = await this.generateScript({
-                narrationPrompt: `Write a clear, persuasive product ad script for: ${prompt}. Focus on key features, benefits, and a strong call to action. Keep it brand-friendly and concise.`,
-                visualPrompt: `Generate a visual script for a concept art that will be used as reference to generate an ad video: ${prompt}. It'll be later segmented into 5 parts, keep that in mind. There should not be more than 5 cuts.`,
+                animationPrompt: `Create a polished animation storyboard for a professional ad video about: "${prompt}". The animation should feel sleek, smooth, and brand-friendly — think product reveals, clean transitions, and confident pacing. Structure the animation into exactly 5 clear segments such as: Introduction, Problem, Solution, Benefits, Call to Action. Label each part and specify animation dynamics (e.g. fade-in text, motion highlights). Avoid summaries — describe actual animation intent.`,
+
+                narrationPrompt: `Write a persuasive, professional voiceover script for an advertisement video on: "${prompt}". Keep the tone clear, trustworthy, and motivating. Use crisp, concise sentences with an engaging flow. Divide the narration into exactly 5 labeled parts that follow a marketing arc (e.g. Hook, Need, Offer, Advantage, CTA). Each part should be standalone — avoid any summary language or recap phrasing.`,
+
+                visualPrompt: `Describe 5 standalone visuals, one per segment, for an ad video about: "${prompt}". Each image should represent a clean, modern, brand-aligned scene — such as a product hero shot, customer lifestyle, or UI mockup. Describe each image clearly and concisely. Do not create storyboards or multiple scenes per part. Each segment should yield one cohesive image that complements the narration.`,
               });
               // Return the full script and style only - NOT segmented yet
               return { script, style: 'ad' };
@@ -208,7 +291,6 @@ export class SegmentationService {
       const result = await run(triageAgent, [
         { role: 'user', content: segmentationDto.prompt },
       ]);
-      console.dir(result.output, { depth: null });
 
       try {
         // Use Gemini Flash to parse the entire agent output
@@ -228,8 +310,9 @@ ${JSON.stringify(result.output, null, 2)}`,
                   properties: {
                     narration: { type: 'string' },
                     visual: { type: 'string' },
+                    animation: { type: 'string' },
                   },
-                  required: ['narration', 'visual'],
+                  required: ['narration', 'visual', 'animation'],
                 },
                 style: {
                   type: 'string',
@@ -245,9 +328,9 @@ ${JSON.stringify(result.output, null, 2)}`,
 
         if (agentResult?.script && agentResult?.style) {
           // Agent generated the script successfully, now segment it
-        //   console.log(
-        //     `Segmenting ${agentResult.style} script for: ${segmentationDto.prompt}`,
-        //   );
+          //   console.log(
+          //     `Segmenting ${agentResult.style} script for: ${segmentationDto.prompt}`,
+          //   );
           const segmentedScript = await this.segmentGeneratedScript(
             agentResult.script,
           );

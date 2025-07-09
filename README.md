@@ -85,6 +85,7 @@ Each feature module should have:
 ### API Endpoints
 
 - `GET /health` - check if the server is running.
+
 - `POST /segmentation` - Generated script and segment it into parts.
    - takes in ```{prompt: string}``` as parameter.
    - returns 
@@ -99,6 +100,7 @@ Each feature module should have:
    style: string
    }
    ```
+
 - `POST /image-gen` - Generate images
    - takes in ```{visual_prompt: string}``` as parameter
    - returns 
@@ -115,8 +117,9 @@ Each feature module should have:
         "seed": number
     }
    ```
+
 - `POST /video-gen` - Generate videos
-   - takes in ```{narration_prompt: string, image_url: string}``` as parameters.
+   - takes in ```{animation_prompt: string, image_url: string}``` as parameters.
    - returns 
    ```
    {
@@ -127,6 +130,15 @@ Each feature module should have:
             "file_size": number
         }
     }
+   ```
+
+- `POST /voiceover` - Generate voiceovers
+   - takes in ```{narration_prompt: string}``` as parameters.
+   - returns 
+   ```
+   {
+      s3_key: string;
+   }
    ```
 
 ## Best Practices
