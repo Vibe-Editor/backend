@@ -14,7 +14,7 @@ npm run build
 npm run start:prod
 ```
 
-Server will be running at `http://localhost:3000`
+Server will be running at `http://localhost:8080`
 
 ## Project Structure
 
@@ -84,13 +84,50 @@ Each feature module should have:
 
 ### API Endpoints
 
-Standard REST patterns:
-
-- `GET /` - List all
-- `GET /:id` - Get one
-- `POST /` - Create
-- `PATCH /:id` - Update
-- `DELETE /:id` - Delete
+- `GET /health` - check if the server is running.
+- `POST /segmentation` - Generated script and segment it into parts.
+   - takes in ```{prompt: string}``` as parameter.
+   - returns 
+   ```
+   {
+    segments: [
+        {
+            id: string, 
+            visual: string, 
+            narration: string
+        }...], 
+   style: string
+   }
+   ```
+- `POST /image-gen` - Generate images
+   - takes in ```{visual_prompt: string}``` as parameter
+   - returns 
+   ```
+   {
+        "images": [
+            {
+                "url": string,
+                "content_type": "image/png",
+                "file_name": "output.png",
+                "file_size": number
+            }
+        ],
+        "seed": number
+    }
+   ```
+- `POST /video-gen` - Generate videos
+   - takes in ```{narration_prompt: string, image_url: string}``` as parameters.
+   - returns 
+   ```
+   {
+        "video": {
+            "url": string,
+            "content_type": "video/mp4",
+            "file_name": "output.mp4",
+            "file_size": number
+        }
+    }
+   ```
 
 ## Best Practices
 
