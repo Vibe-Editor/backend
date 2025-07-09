@@ -12,6 +12,6 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   setDefaultOpenAIKey(process.env.OPENAI_API_KEY);
   app.useGlobalPipes(new ValidationPipe());
-  await app.listen(3000);
+  await app.listen(8080);
 }
 bootstrap();
