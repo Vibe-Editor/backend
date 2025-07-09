@@ -57,7 +57,7 @@ export class SegmentationService {
   }): Promise<{ segments: TypeSegment[] }> {
     const makeSegmentationPrompt = (scriptText: string) => `
           Segment the following script into exactly 5 distinct parts. Narration and visual should be in the same order. IT SHOULD BE EXACTLY 5 PARTS. Each part should be an object with a "segment" field (text of that part), and a unique "id" field.
-          EACH VISUAL PROMPT CAN BE A MAXIMUM OF 150 WORDS PER SEGMENT.
+          EACH VISUAL PROMPT CAN BE A MAXIMUM OF 150 WORDS PER SEGMENT. THERE SHOULD BE NO CUTS IN A SEGMENT. Each segment should just be string not a markdown.
           Script:
           ---
           ${scriptText}
@@ -145,7 +145,7 @@ export class SegmentationService {
               );
               const script = await this.generateScript({
                 narrationPrompt: `Create a high-octane, adrenaline-pumping voiceover script for: ${prompt}. Use short sentences, punchy verbs, and crowd-rallying phrases.`,
-                visualPrompt: `Generate a visual script for a concept art that will be used as reference to generate a hype video: ${prompt}`,
+                visualPrompt: `Generate a visual script for a concept art that will be used as reference to generate a hype video: ${prompt}. It'll be later segmented into 5 parts, keep that in mind. There should not be more than 5 cuts.`,
               });
               // Return the full script and style only - NOT segmented yet
               return { script, style: 'hype' };
@@ -170,7 +170,7 @@ export class SegmentationService {
             //   console.log(`[AD] Starting ad video generation for: ${prompt}`);
               const script = await this.generateScript({
                 narrationPrompt: `Write a clear, persuasive product ad script for: ${prompt}. Focus on key features, benefits, and a strong call to action. Keep it brand-friendly and concise.`,
-                visualPrompt: `Generate a visual script for a concept art that will be used as reference to generate an ad video: ${prompt}`,
+                visualPrompt: `Generate a visual script for a concept art that will be used as reference to generate an ad video: ${prompt}. It'll be later segmented into 5 parts, keep that in mind. There should not be more than 5 cuts.`,
               });
               // Return the full script and style only - NOT segmented yet
               return { script, style: 'ad' };

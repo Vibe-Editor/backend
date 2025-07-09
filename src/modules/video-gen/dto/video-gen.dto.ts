@@ -1,7 +1,11 @@
 import { IsString, IsNotEmpty } from 'class-validator';
 
-export class ImageGenDto {
+export class VideoGenDto {
   @IsString()
   @IsNotEmpty()
-  visual_prompt: string;
+  narration_prompt: string;
+
+  @IsString()
+  @IsNotEmpty()
+  image_url: string;
 } 

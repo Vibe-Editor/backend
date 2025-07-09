@@ -17,7 +17,7 @@ export class ImageGenService {
   async generateImage(imageGenDto: ImageGenDto) {
     const result = await fal.subscribe('fal-ai/imagen4/preview', {
       input: {
-        prompt: imageGenDto.visual_prompt,
+        prompt: `${imageGenDto.visual_prompt}. The image should not be a storyboard kind of image. It should be a single image.`,
       },
       logs: true,
       onQueueUpdate: (update) => {
