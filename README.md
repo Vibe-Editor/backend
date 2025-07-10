@@ -97,7 +97,8 @@ Each feature module should have:
             visual: string, 
             narration: string
         }...], 
-   style: string
+   style: string,
+   art_style: string;
    }
    ```
 
