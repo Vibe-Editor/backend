@@ -17,7 +17,7 @@ export class ImageGenService {
   async generateImage(imageGenDto: ImageGenDto) {
     const result = await fal.subscribe('fal-ai/recraft/v3/text-to-image', {
       input: {
-        prompt: `${imageGenDto.visual_prompt}. The image should not be a storyboard image. It should be a single image.`,
+        prompt: `VISUAL PROMPT: ${imageGenDto.visual_prompt}. ART STYLE: ${imageGenDto.art_style}. Follow the art style but make the image according to the visual prompt. The image should not be a storyboard image. It should be a single image.`,
         style: 'realistic_image',
         format: 'png',
       },
@@ -28,7 +28,7 @@ export class ImageGenService {
         }
       },
     });
-    // console.log(result.data);
+
     return result.data;
   }
 }

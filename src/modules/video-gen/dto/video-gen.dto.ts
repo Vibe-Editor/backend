@@ -3,7 +3,11 @@ import { IsString, IsNotEmpty } from 'class-validator';
 export class VideoGenDto {
   @IsString()
   @IsNotEmpty()
-  narration_prompt: string;
+  animation_prompt: string;
+
+  @IsString()
+  @IsNotEmpty()
+  art_style: string;
 
   @IsString()
   @IsNotEmpty()

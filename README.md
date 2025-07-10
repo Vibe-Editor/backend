@@ -102,7 +102,7 @@ Each feature module should have:
    ```
 
 - `POST /image-gen` - Generate images
-   - takes in ```{visual_prompt: string}``` as parameter
+   - takes in ```{visual_prompt: string, art_style: string}``` as parameter
    - returns 
    ```
    {
@@ -119,7 +119,7 @@ Each feature module should have:
    ```
 
 - `POST /video-gen` - Generate videos
-   - takes in ```{animation_prompt: string, image_url: string}``` as parameters.
+   - takes in ```{animation_prompt: string, image_url: string, art_style: string}``` as parameters.
    - returns 
    ```
    {

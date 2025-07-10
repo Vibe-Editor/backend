@@ -2,7 +2,7 @@ import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import { GoogleGenAI } from '@google/genai';
 import { SegmentationDto } from './dto/segmentation.dto';
 import { TypeSegment } from './segment.interface';
-import { Agent, tool, handoff, run, RunResult } from '@openai/agents';
+import { Agent, tool, handoff, run } from '@openai/agents';
 import { z } from 'zod';
 
 @Injectable()
@@ -20,10 +20,15 @@ export class SegmentationService {
     narrationPrompt: string;
     visualPrompt: string;
     animationPrompt: string;
-  }): Promise<{ narration: string; visual: string; animation: string }> {
+  }): Promise<{
+    narration: string;
+    visual: string;
+    animation: string;
+    artStyle: string;
+  }> {
     const { narrationPrompt, visualPrompt, animationPrompt } = options;
 
-    const [animationRes, narrationRes, visualRes] = await Promise.all([
+    const [animationRes, narrationRes, visualRes, artStyleRes] = await Promise.all([
       this.genAI.models.generateContent({
         model: 'gemini-2.5-flash-preview-05-20',
         contents: animationPrompt,
@@ -36,11 +41,22 @@ export class SegmentationService {
         model: 'gemini-2.5-flash-preview-05-20',
         contents: visualPrompt,
       }),
+      this.genAI.models.generateContent({
+        model: 'gemini-2.5-flash-preview-05-20',
+        contents: `VISUAL PROMPT: ${visualPrompt} \n ANIMATION PROMPT: ${animationPrompt}. \n Your task is to generate a art style prompt using the visual prompt and animation prompt. This is to maintain consistency in the visual and animation style. If there's a person involved in the visual, make sure to mention the looks of the person in the art style prompt.
+        
+        Example Style Prompt for a face wash ad that is minimal:
+        showcase the natural and alovera related positives of the face wash product using minimalistic branding and light colors. The face wash has a white colour pack and consists of a skin enhancing lotion made o alovera and natural ingrideints. Use water and fluid elements to portray freshness.
+
+        Keep this style prompt as short as possible. Must be within 300 characters.
+        `,
+      }),
     ]);
 
     const animation = animationRes.text?.trim();
     const narration = narrationRes.text?.trim();
     const visual = visualRes.text?.trim();
+    const artStyle = artStyleRes.text?.trim();
 
     if (!animation || !narration || !visual) {
       throw new HttpException(
@@ -49,18 +65,15 @@ export class SegmentationService {
       );
     }
 
-    // console.log(`ANIMATION: ${animation}`);
-    // console.log(`NARRATION: ${narration}`);
-    // console.log(`VISUAL: ${visual}`);
-
-    return { narration, visual, animation };
+    return { narration, visual, animation, artStyle };
   }
 
   private async segmentGeneratedScript(script: {
     narration: string;
     visual: string;
     animation: string;
-  }): Promise<{ segments: TypeSegment[] }> {
+    artStyle: string;
+  }): Promise<{ segments: TypeSegment[]; artStyle: string }> {
     const makeSegmentationPrompt = (
       scriptText: string,
       type: 'narration' | 'visual' | 'animation',
@@ -175,18 +188,15 @@ export class SegmentationService {
     const segments: TypeSegment[] = [];
 
     try {
-    //   console.log(`ANIMATION: ${animationSegRes.text}`);
-    //   console.log(`NARRATION: ${narrationSegRes.text}`);
-    //   console.log(`VISUAL: ${visualSegRes.text}`);
       const narrationSegments = JSON.parse(narrationSegRes.text);
       const visualSegments = JSON.parse(visualSegRes.text);
       const animationSegments = JSON.parse(animationSegRes.text);
       for (let i = 0; i <= 4; i++) {
         segments.push({
           id: `seg-${i + 1}`,
-          narration: animationSegments[i].segment, // narration ← animation
-          visual: narrationSegments[i].segment,    // visual ← narration
-          animation: visualSegments[i].segment,    // animation ← visual
+          narration: animationSegments[i].segment,
+          visual: narrationSegments[i].segment,
+          animation: visualSegments[i].segment,
         });
       }
     } catch (err) {
@@ -196,12 +206,13 @@ export class SegmentationService {
       );
     }
 
-    return { segments };
+    return { segments: segments, artStyle: script.artStyle };
   }
 
   async segmentScript(segmentationDto: SegmentationDto): Promise<{
     segments: TypeSegment[];
     style: 'hype' | 'ad';
+    artStyle: string;
   }> {
     const createHypeAgent = () =>
       new Agent<{ prompt: string }>({
@@ -217,9 +228,6 @@ export class SegmentationService {
               prompt: z.string(),
             }) as any,
             execute: async ({ prompt }) => {
-              console.log(
-                `[HYPE] Starting hype video generation for: ${prompt}`,
-              );
               const script = await this.generateScript({
                 animationPrompt: `Create a high-energy animation sequence for a hype video about: "${prompt}". The animation should feel intense, cinematic, and adrenaline-fueled. Use strong pacing like quick cuts, bold transitions, and powerful motion to build excitement. Structure the animation into exactly 5 parts, each escalating in impact. Clearly label each part. Include pacing cues like "build-up", "burst", "climax", etc. Avoid summaries; focus on the animation flow.`,
 
@@ -227,7 +235,6 @@ export class SegmentationService {
 
                 visualPrompt: `Generate a concept description for creating a single impactful image per segment for a hype video based on: "${prompt}". Each image should be bold, cinematic, and emotionally intense — think strong silhouettes, dynamic scenes, action energy, or surreal metaphors. Divide the visual plan into exactly 5 parts, one image per part. Describe the visual content clearly for each image without using terms like "storyboard" or "summary". Maintain consistency in visual tone and escalation.`,
               });
-              // Return the full script and style only - NOT segmented yet
               return { script, style: 'hype' };
             },
           }),
@@ -247,7 +254,6 @@ export class SegmentationService {
               prompt: z.string(),
             }) as any,
             execute: async ({ prompt }) => {
-              //   console.log(`[AD] Starting ad video generation for: ${prompt}`);
               const script = await this.generateScript({
                 animationPrompt: `Create a polished animation storyboard for a professional ad video about: "${prompt}". The animation should feel sleek, smooth, and brand-friendly — think product reveals, clean transitions, and confident pacing. Structure the animation into exactly 5 clear segments such as: Introduction, Problem, Solution, Benefits, Call to Action. Label each part and specify animation dynamics (e.g. fade-in text, motion highlights). Avoid summaries — describe actual animation intent.`,
 
@@ -255,7 +261,6 @@ export class SegmentationService {
 
                 visualPrompt: `Describe 5 standalone visuals, one per segment, for an ad video about: "${prompt}". Each image should represent a clean, modern, brand-aligned scene — such as a product hero shot, customer lifestyle, or UI mockup. Describe each image clearly and concisely. Do not create storyboards or multiple scenes per part. Each segment should yield one cohesive image that complements the narration.`,
               });
-              // Return the full script and style only - NOT segmented yet
               return { script, style: 'ad' };
             },
           }),
@@ -287,19 +292,17 @@ export class SegmentationService {
     });
 
     try {
-      // Use agent only to determine style and generate full script
       const result = await run(triageAgent, [
         { role: 'user', content: segmentationDto.prompt },
       ]);
 
       try {
-        // Use Gemini Flash to parse the entire agent output
         const geminiParseRes = await this.genAI.models.generateContent({
           model: 'gemini-2.0-flash-exp',
-          contents: `Parse this entire agent conversation output and extract the script and style information. Return a JSON object with "script" (containing "narration" and "visual" fields) and "style" (either "hype" or "ad").
+          contents: `Parse this entire agent conversation output and extract the script and style information. Return a JSON object with "script" (containing "narration" and "visual" fields), "style" (either "hype" or "ad") and artStyle.
 
-Full agent output:
-${JSON.stringify(result.output, null, 2)}`,
+          Full agent output:
+          ${JSON.stringify(result.output, null, 2)}`,
           config: {
             responseMimeType: 'application/json',
             responseSchema: {
@@ -318,41 +321,37 @@ ${JSON.stringify(result.output, null, 2)}`,
                   type: 'string',
                   enum: ['hype', 'ad'],
                 },
+                artStyle: { type: 'string' },
               },
-              required: ['script', 'style'],
+              required: ['script', 'style', 'artStyle'],
             },
           },
         } as any);
 
         const agentResult = JSON.parse(geminiParseRes.text);
+        console.log(agentResult);
 
         if (agentResult?.script && agentResult?.style) {
-          // Agent generated the script successfully, now segment it
-          //   console.log(
-          //     `Segmenting ${agentResult.style} script for: ${segmentationDto.prompt}`,
-          //   );
           const segmentedScript = await this.segmentGeneratedScript(
             agentResult.script,
           );
 
-          // Return segmented script with style
           return {
             segments: segmentedScript.segments,
             style: agentResult.style,
+            artStyle: agentResult.artStyle,
           };
         }
       } catch (parseError) {
         console.error('Failed to parse agent result with Gemini:', parseError);
       }
 
-      // If we got here, something went wrong with the agent's output
       throw new HttpException(
         'Agent did not produce a valid script.',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     } catch (error) {
       console.error('Error during agent execution:', error);
-      // Just throw the error, no fallback
       if (error instanceof HttpException) throw error;
       throw new HttpException(
         'An unexpected error occurred.',

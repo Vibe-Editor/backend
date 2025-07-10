@@ -20,7 +20,7 @@ export class VideoGenService {
       'fal-ai/kling-video/v2.1/master/image-to-video',
       {
         input: {
-          prompt: videoGenDto.narration_prompt,
+          prompt: `ANIMATION PROMPT: ${videoGenDto.animation_prompt} \n Art style: ${videoGenDto.art_style}`,
           image_url: videoGenDto.image_url,
         },
         logs: true,
