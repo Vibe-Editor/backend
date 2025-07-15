@@ -1,11 +1,9 @@
-/**
- * Custom Decorators Directory
- * Place all custom decorators in this folder that extract or transform request data
- *
- * Examples of decorators to create here:
- * - @User() - Get user from request
- * - @Roles() - Extract role requirements
- * - @Public() - Mark routes as public
- * - @ApiKey() - Extract API key
- * - @ClientIp() - Get client IP
- */
+import { createParamDecorator, ExecutionContext } from '@nestjs/common';
+import { User } from '../../../generated/prisma';
+
+export const CurrentUser = createParamDecorator(
+  (data: unknown, ctx: ExecutionContext): User => {
+    const request = ctx.switchToHttp().getRequest();
+    return request.user;
+  },
+);
