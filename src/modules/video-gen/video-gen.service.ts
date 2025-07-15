@@ -509,10 +509,10 @@ export class VideoGenService {
       this.logger.log('Starting RunwayML video generation');
       const task = await this.runwayClient.imageToVideo
         .create({
-          model: 'gen3a_turbo',
+          model: 'gen4_turbo',
           promptText: combinedPrompt,
           promptImage: dataUri,
-          ratio: '1280:768',
+          ratio: '1280:720',
           duration: 5,
         })
         .waitForTaskOutput({
@@ -587,7 +587,7 @@ export class VideoGenService {
 
       return {
         s3Keys,
-        model: 'gen3a_turbo',
+        model: 'gen4_turbo',
         totalVideos: s3Keys.length,
       };
     } catch (error) {

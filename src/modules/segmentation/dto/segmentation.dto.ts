@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
 
 export class SegmentationDto {
   @IsString()
@@ -10,6 +10,6 @@ export class SegmentationDto {
   concept: string;
 
   @IsString()
-  @IsNotEmpty()
+  @IsOptional()
   negative_prompt: string;
 }
