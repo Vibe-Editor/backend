@@ -12,9 +12,10 @@ import { HealthModule } from './modules/health/health.module';
 import { VoiceoverModule } from './modules/voiceover/voiceover.module';
 import { GetWebInfoModule } from './modules/get-web-info/get-web-info.module';
 import { ConceptWriterModule } from './modules/concept-writer/concept-writer.module';
+import { UserInputSummarizerModule } from './modules/user-input-summarizer/user-input-summarizer.module';
 
 @Module({
-  imports: [SegmentationModule, ImageGenModule, VideoGenModule, HealthModule, VoiceoverModule, GetWebInfoModule, ConceptWriterModule],
+  imports: [SegmentationModule, ImageGenModule, VideoGenModule, HealthModule, VoiceoverModule, GetWebInfoModule, ConceptWriterModule, UserInputSummarizerModule],
   controllers: [AppController],
   providers: [AppService],
 })
