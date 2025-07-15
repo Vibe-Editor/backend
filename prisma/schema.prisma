@@ -9,11 +9,157 @@ datasource db {
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
-  name      String?
-  avatar    String?
-  provider  String
-  googleId  String   @unique
-  createdAt DateTime @default(now())
+  id              String   @id @default(cuid())
+  email           String   @unique
+  name            String?
+  avatar          String?
+  provider        String
+  googleId        String   @unique
+  openaiKey       String?
+  runwaymlKey     String?
+  elevenlabsKey   String?
+  projectsCreated Int      @default(0)
+  aiGenerations   Int      @default(0)
+  storageUsed     Int      @default(0)
+  createdAt       DateTime @default(now())
+
+  projects Project[]
+  scripts  Script[]
+  images   Image[]
+  videos   Video[]
+
+  @@map("users")
+}
+
+model Project {
+  id           String   @id @default(cuid())
+  title        String
+  description  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  userId       String
+  isPublic     Boolean  @default(false)
+  tags         String[]
+  videoUrl     String?
+  thumbnailUrl String?
+  duration     Int?
+  fileSize     Int?
+  context      String?
+  entityType   String   @default("PROJECT")
+
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scripts  Script[]
+  segments ScriptSegment[]
+  images   Image[]
+  videos   Video[]
+
+  @@map("projects")
+}
+
+model Script {
+  id            String   @id @default(cuid())
+  title         String
+  script        String
+  segments      Json?
+  totalDuration Int
+  videoStyle    String?
+  projectId     String
+  userId        String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  isApproved    Boolean  @default(false)
+  entityType    String   @default("SCRIPT")
+
+  project        Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scriptSegments ScriptSegment[]
+
+  @@map("scripts")
+}
+
+model ScriptSegment {
+  id          String    @id @default(cuid())
+  scriptId    String
+  projectId   String
+  title       String
+  content     String
+  duration    Int
+  visualNotes String?
+  wordCount   Int?
+  order       Int
+  isApproved  Boolean   @default(false)
+  segmentId   String?
+  createdAt   DateTime? @default(now())
+  updatedAt   DateTime? @updatedAt
+
+  script  Script  @relation(fields: [scriptId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  images  Image[]
+
+  @@map("script_segments")
+}
+
+model Image {
+  id               String    @id @default(cuid())
+  segmentId        String
+  projectId        String
+  userId           String
+  filename         String
+  originalName     String?
+  url              String
+  thumbnailUrl     String?
+  mimeType         String
+  fileSize         Int
+  width            Int?
+  height           Int?
+  altText          String?
+  description      String?
+  isGenerated      Boolean   @default(false)
+  generationPrompt String?
+  tags             String[]
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime? @updatedAt
+
+  segment ScriptSegment @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+  project Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  videos  Video[]
+
+  @@map("images")
+}
+
+model Video {
+  id                 String    @id @default(cuid())
+  imageId            String
+  projectId          String
+  userId             String
+  filename           String
+  originalName       String?
+  url                String
+  thumbnailUrl       String?
+  previewUrl         String?
+  mimeType           String
+  fileSize           Int
+  duration           Int?
+  width              Int?
+  height             Int?
+  fps                Int?
+  bitrate            Int?
+  codec              String?
+  isProcessing       Boolean   @default(true)
+  processingStatus   String?
+  generationPrompt   String?
+  generationModel    String?
+  generationSettings Json?
+  errorMessage       String?
+  tags               String[]
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime? @updatedAt
+  completedAt        DateTime?
+
+  image   Image   @relation(fields: [imageId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("videos")
 }
