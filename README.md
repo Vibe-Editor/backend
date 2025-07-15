@@ -106,51 +106,51 @@ Each feature module should have:
    - takes in ```{prompt: string}``` as parameter
    - returns response from Perplexity AI's chat completion API
 
-- `POST /segmentation` - Generated script and segment it into parts.
-   - takes in ```{prompt: string}``` as parameter.
+- `POST /segmentation` - Generate and segment video scripts using AI model handoff (OpenAI GPT-4o or Gemini 2.5 Pro)
+   - takes in ```{prompt: string, negative_prompt: string}``` as parameters
    - returns 
    ```
    {
-    segments: [
+    "segments": [
         {
-            id: string, 
-            visual: string, 
-            narration: string
-        }...], 
-   style: string,
-   art_style: string;
+            "id": string, 
+            "visual": string, 
+            "narration": string,
+            "animation": string
+        }
+    ], 
+    "artStyle": string,
+    "model": string
    }
    ```
 
-- `POST /image-gen` - Generate images
-   - takes in ```{visual_prompt: string, art_style: string}``` as parameter
+- `POST /image-gen` - Generate images using AI model handoff (Recraft AI or Google Imagen)
+   - **Features**: Intelligent model selection based on content type (realistic vs artistic/text-based)
+   - **Models**: Recraft AI for realistic images, Google Imagen for artistic/text content
+   - takes in ```{visual_prompt: string, art_style: string, uuid: string}``` as parameters
    - returns 
    ```
    {
-        "images": [
-            {
-                "url": string,
-                "content_type": "image/png",
-                "file_name": "output.png",
-                "file_size": number
-            }
-        ],
-        "seed": number
-    }
+        "success": boolean,
+        "s3_key": string,
+        "model": string,
+        "message": string,
+        "image_size_bytes": number
+   }
    ```
 
-- `POST /video-gen` - Generate videos
-   - takes in ```{animation_prompt: string, image_url: string, art_style: string}``` as parameters.
+- `POST /video-gen` - Generate videos using AI model handoff (Google Veo2 or RunwayML Gen-3)
+   - **Features**: Intelligent model selection based on content style (cartoonish vs realistic)
+   - **Models**: Google Veo2 for animated/cartoon content, RunwayML Gen-3 Alpha Turbo for realistic content
+   - takes in ```{animation_prompt: string, art_style: string, imageS3Key: string, uuid: string}``` as parameters
    - returns 
    ```
    {
-        "video": {
-            "url": string,
-            "content_type": "video/mp4",
-            "file_name": "output.mp4",
-            "file_size": number
-        }
-    }
+        "success": boolean,
+        "s3Keys": string[],
+        "model": string,
+        "totalVideos": number
+   }
    ```
 
 - `POST /voiceover` - Generate voiceovers
