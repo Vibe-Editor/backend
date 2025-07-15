@@ -18,10 +18,7 @@ export class AuthController {
 
   @Get('google')
   @UseGuards(AuthGuard('google'))
-  async googleAuth(@Req() req: Request) {
-    // Initiates Google OAuth flow
-    // This endpoint will redirect to Google
-  }
+  async googleAuth(@Req() req: Request) {}
 
   @Get('google-redirect')
   @UseGuards(AuthGuard('google'))
@@ -30,10 +27,8 @@ export class AuthController {
       const user = req.user as User;
       const loginResult = await this.authService.login(user);
 
-      // Redirect to desktop app with token
       const redirectUrl = `myapp://auth-callback?token=${loginResult.access_token}&user=${encodeURIComponent(JSON.stringify(loginResult.user))}`;
 
-      // For testing, also return JSON response
       res.status(HttpStatus.OK).json({
         success: true,
         message: 'Authentication successful',

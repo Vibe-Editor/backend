@@ -9,157 +9,130 @@ datasource db {
 }
 
 model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  avatar    String?
+  googleId  String   @unique
+  createdAt DateTime @default(now())
+
+  videoConcepts       VideoConcept[]
+  webResearchQueries  WebResearchQuery[]
+  contentSummaries    ContentSummary[]
+  videoSegmentations  VideoSegmentation[]
+  generatedImages     GeneratedImage[]
+  generatedVideos     GeneratedVideo[]
+  generatedVoiceovers GeneratedVoiceover[]
+}
+
+model VideoConcept {
+  id        String   @id @default(cuid())
+  prompt    String
+  webInfo   String
+  title     String
+  concept   String
+  tone      String
+  goal      String
+  userId    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model WebResearchQuery {
+  id        String   @id @default(cuid())
+  prompt    String
+  response  String
+  userId    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ContentSummary {
   id              String   @id @default(cuid())
-  email           String   @unique
-  name            String?
-  avatar          String?
-  provider        String
-  googleId        String   @unique
-  openaiKey       String?
-  runwaymlKey     String?
-  elevenlabsKey   String?
-  projectsCreated Int      @default(0)
-  aiGenerations   Int      @default(0)
-  storageUsed     Int      @default(0)
+  originalContent String
+  userInput       String
+  summary         String
+  userId          String
   createdAt       DateTime @default(now())
 
-  projects Project[]
-  scripts  Script[]
-  images   Image[]
-  videos   Video[]
-
-  @@map("users")
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-model Project {
-  id           String   @id @default(cuid())
-  title        String
-  description  String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  userId       String
-  isPublic     Boolean  @default(false)
-  tags         String[]
-  videoUrl     String?
-  thumbnailUrl String?
-  duration     Int?
-  fileSize     Int?
-  context      String?
-  entityType   String   @default("PROJECT")
+model VideoSegmentation {
+  id             String   @id @default(cuid())
+  prompt         String
+  concept        String
+  negativePrompt String?
+  artStyle       String
+  model          String
+  userId         String
+  createdAt      DateTime @default(now())
 
-  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  scripts  Script[]
-  segments ScriptSegment[]
-  images   Image[]
-  videos   Video[]
-
-  @@map("projects")
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  segments VideoSegment[]
 }
 
-model Script {
-  id            String   @id @default(cuid())
-  title         String
-  script        String
-  segments      Json?
-  totalDuration Int
-  videoStyle    String?
-  projectId     String
-  userId        String
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  isApproved    Boolean  @default(false)
-  entityType    String   @default("SCRIPT")
+model VideoSegment {
+  id                  String   @id @default(cuid())
+  segmentId           String
+  visual              String
+  narration           String
+  animation           String
+  videoSegmentationId String
+  createdAt           DateTime @default(now())
 
-  project        Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  scriptSegments ScriptSegment[]
-
-  @@map("scripts")
+  videoSegmentation VideoSegmentation @relation(fields: [videoSegmentationId], references: [id], onDelete: Cascade)
 }
 
-model ScriptSegment {
-  id          String    @id @default(cuid())
-  scriptId    String
-  projectId   String
-  title       String
-  content     String
-  duration    Int
-  visualNotes String?
-  wordCount   Int?
-  order       Int
-  isApproved  Boolean   @default(false)
-  segmentId   String?
-  createdAt   DateTime? @default(now())
-  updatedAt   DateTime? @updatedAt
+model GeneratedImage {
+  id             String   @id @default(cuid())
+  visualPrompt   String
+  artStyle       String
+  uuid           String
+  success        Boolean
+  s3Key          String?
+  model          String?
+  message        String?
+  imageSizeBytes Int?
+  userId         String
+  createdAt      DateTime @default(now())
 
-  script  Script  @relation(fields: [scriptId], references: [id], onDelete: Cascade)
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  images  Image[]
-
-  @@map("script_segments")
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-model Image {
-  id               String    @id @default(cuid())
-  segmentId        String
-  projectId        String
-  userId           String
-  filename         String
-  originalName     String?
-  url              String
-  thumbnailUrl     String?
-  mimeType         String
-  fileSize         Int
-  width            Int?
-  height           Int?
-  altText          String?
-  description      String?
-  isGenerated      Boolean   @default(false)
-  generationPrompt String?
-  tags             String[]
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime? @updatedAt
+model GeneratedVideo {
+  id              String   @id @default(cuid())
+  animationPrompt String
+  artStyle        String
+  imageS3Key      String
+  uuid            String
+  success         Boolean
+  model           String?
+  totalVideos     Int?
+  userId          String
+  createdAt       DateTime @default(now())
 
-  segment ScriptSegment @relation(fields: [segmentId], references: [id], onDelete: Cascade)
-  project Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  videos  Video[]
-
-  @@map("images")
+  user       User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  videoFiles GeneratedVideoFile[]
 }
 
-model Video {
-  id                 String    @id @default(cuid())
-  imageId            String
-  projectId          String
-  userId             String
-  filename           String
-  originalName       String?
-  url                String
-  thumbnailUrl       String?
-  previewUrl         String?
-  mimeType           String
-  fileSize           Int
-  duration           Int?
-  width              Int?
-  height             Int?
-  fps                Int?
-  bitrate            Int?
-  codec              String?
-  isProcessing       Boolean   @default(true)
-  processingStatus   String?
-  generationPrompt   String?
-  generationModel    String?
-  generationSettings Json?
-  errorMessage       String?
-  tags               String[]
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime? @updatedAt
-  completedAt        DateTime?
+model GeneratedVideoFile {
+  id               String   @id @default(cuid())
+  s3Key            String
+  generatedVideoId String
+  createdAt        DateTime @default(now())
 
-  image   Image   @relation(fields: [imageId], references: [id], onDelete: Cascade)
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  generatedVideo GeneratedVideo @relation(fields: [generatedVideoId], references: [id], onDelete: Cascade)
+}
 
-  @@map("videos")
+model GeneratedVoiceover {
+  id              String   @id @default(cuid())
+  narrationPrompt String
+  s3Key           String
+  userId          String
+  createdAt       DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
