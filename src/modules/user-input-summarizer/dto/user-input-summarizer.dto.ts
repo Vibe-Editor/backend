@@ -1,15 +1,11 @@
 import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
 
-export class SegmentationDto {
+export class UserInputSummarizerDto {
   @IsString()
   @IsNotEmpty()
-  prompt: string;
+  original_content: string;
 
   @IsString()
   @IsNotEmpty()
-  concept: string;
-
-  @IsString()
-  @IsOptional()
-  negative_prompt: string;
+  user_input: string;
 }

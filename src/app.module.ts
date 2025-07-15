@@ -1,7 +1,3 @@
-/**
- * Root Module
- * Configure app-wide providers and imports here
- */
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
@@ -15,6 +11,7 @@ import { HealthModule } from './modules/health/health.module';
 import { VoiceoverModule } from './modules/voiceover/voiceover.module';
 import { GetWebInfoModule } from './modules/get-web-info/get-web-info.module';
 import { ConceptWriterModule } from './modules/concept-writer/concept-writer.module';
+import { UserInputSummarizerModule } from './modules/user-input-summarizer/user-input-summarizer.module';
 
 @Module({
   imports: [
@@ -30,6 +27,7 @@ import { ConceptWriterModule } from './modules/concept-writer/concept-writer.mod
     VoiceoverModule,
     GetWebInfoModule,
     ConceptWriterModule,
+    UserInputSummarizerModule,
   ],
   controllers: [AppController],
   providers: [AppService],
