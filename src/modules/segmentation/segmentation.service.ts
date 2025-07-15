@@ -4,19 +4,25 @@ import { SegmentationDto } from './dto/segmentation.dto';
 import { TypeSegment } from './segment.interface';
 import { Agent, tool, handoff, run } from '@openai/agents';
 import { z } from 'zod';
+import OpenAI from 'openai';
 
 @Injectable()
 export class SegmentationService {
   private readonly genAI: GoogleGenAI;
+  private readonly openai: OpenAI;
 
   constructor() {
     if (!process.env.GEMINI_API_KEY) {
       throw new Error('GEMINI_API_KEY environment variable not set.');
     }
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error('OPENAI_API_KEY environment variable not set.');
+    }
     this.genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    this.openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   }
 
-  private async generateScript(options: {
+  private async generateScriptWithGemini(options: {
     narrationPrompt: string;
     visualPrompt: string;
     animationPrompt: string;
@@ -28,30 +34,31 @@ export class SegmentationService {
   }> {
     const { narrationPrompt, visualPrompt, animationPrompt } = options;
 
-    const [animationRes, narrationRes, visualRes, artStyleRes] = await Promise.all([
-      this.genAI.models.generateContent({
-        model: 'gemini-2.5-flash-preview-05-20',
-        contents: animationPrompt,
-      }),
-      this.genAI.models.generateContent({
-        model: 'gemini-2.5-flash-preview-05-20',
-        contents: narrationPrompt,
-      }),
-      this.genAI.models.generateContent({
-        model: 'gemini-2.5-flash-preview-05-20',
-        contents: visualPrompt,
-      }),
-      this.genAI.models.generateContent({
-        model: 'gemini-2.5-flash-preview-05-20',
-        contents: `VISUAL PROMPT: ${visualPrompt} \n ANIMATION PROMPT: ${animationPrompt}. \n Your task is to generate a art style prompt using the visual prompt and animation prompt. This is to maintain consistency in the visual and animation style. If there's a person involved in the visual, make sure to mention the looks of the person in the art style prompt.
+    const [animationRes, narrationRes, visualRes, artStyleRes] =
+      await Promise.all([
+        this.genAI.models.generateContent({
+          model: 'gemini-2.5-pro-preview-06-05',
+          contents: animationPrompt,
+        }),
+        this.genAI.models.generateContent({
+          model: 'gemini-2.5-pro-preview-06-05',
+          contents: narrationPrompt,
+        }),
+        this.genAI.models.generateContent({
+          model: 'gemini-2.5-pro-preview-06-05',
+          contents: visualPrompt,
+        }),
+        this.genAI.models.generateContent({
+          model: 'gemini-2.5-pro-preview-06-05',
+          contents: `VISUAL PROMPT: ${visualPrompt} \n ANIMATION PROMPT: ${animationPrompt}. \n Your task is to generate a art style prompt using the visual prompt and animation prompt. This is to maintain consistency in the visual and animation style. If there's a person involved in the visual, make sure to mention the looks of the person in the art style prompt.
         
         Example Style Prompt for a face wash ad that is minimal:
         showcase the natural and alovera related positives of the face wash product using minimalistic branding and light colors. The face wash has a white colour pack and consists of a skin enhancing lotion made o alovera and natural ingrideints. Use water and fluid elements to portray freshness.
 
         Keep this style prompt as short as possible. Must be within 300 characters.
         `,
-      }),
-    ]);
+        }),
+      ]);
 
     const animation = animationRes.text?.trim();
     const narration = narrationRes.text?.trim();
@@ -60,7 +67,60 @@ export class SegmentationService {
 
     if (!animation || !narration || !visual) {
       throw new HttpException(
-        'Failed to generate full script.',
+        'Failed to generate full script with Gemini.',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+
+    return { narration, visual, animation, artStyle };
+  }
+
+  private async generateScriptWithOpenAI(options: {
+    narrationPrompt: string;
+    visualPrompt: string;
+    animationPrompt: string;
+  }): Promise<{
+    narration: string;
+    visual: string;
+    animation: string;
+    artStyle: string;
+  }> {
+    const { narrationPrompt, visualPrompt, animationPrompt } = options;
+
+    const [animationRes, narrationRes, visualRes, artStyleRes] =
+      await Promise.all([
+        this.openai.chat.completions.create({
+          model: 'gpt-4o',
+          messages: [{ role: 'user', content: animationPrompt }],
+        }),
+        this.openai.chat.completions.create({
+          model: 'gpt-4o',
+          messages: [{ role: 'user', content: narrationPrompt }],
+        }),
+        this.openai.chat.completions.create({
+          model: 'gpt-4o',
+          messages: [{ role: 'user', content: visualPrompt }],
+        }),
+        this.openai.chat.completions.create({
+          model: 'gpt-4o',
+          messages: [{ role: 'user', content: `VISUAL PROMPT: ${visualPrompt} \n ANIMATION PROMPT: ${animationPrompt}. \n Your task is to generate a art style prompt using the visual prompt and animation prompt. This is to maintain consistency in the visual and animation style. If there's a person involved in the visual, make sure to mention the looks of the person in the art style prompt.
+        
+        Example Style Prompt for a face wash ad that is minimal:
+        showcase the natural and alovera related positives of the face wash product using minimalistic branding and light colors. The face wash has a white colour pack and consists of a skin enhancing lotion made o alovera and natural ingrideints. Use water and fluid elements to portray freshness.
+
+        Keep this style prompt as short as possible. Must be within 300 characters.
+        ` }],
+        }),
+      ]);
+
+    const animation = animationRes.choices[0]?.message?.content?.trim();
+    const narration = narrationRes.choices[0]?.message?.content?.trim();
+    const visual = visualRes.choices[0]?.message?.content?.trim();
+    const artStyle = artStyleRes.choices[0]?.message?.content?.trim();
+
+    if (!animation || !narration || !visual) {
+      throw new HttpException(
+        'Failed to generate full script with OpenAI.',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -73,10 +133,12 @@ export class SegmentationService {
     visual: string;
     animation: string;
     artStyle: string;
+    negative_prompt: string;
   }): Promise<{ segments: TypeSegment[]; artStyle: string }> {
     const makeSegmentationPrompt = (
       scriptText: string,
       type: 'narration' | 'visual' | 'animation',
+      negativePrompt: string,
     ) => {
       const base = `
       Segment the following ${type} script into exactly 5 distinct parts.
@@ -90,6 +152,7 @@ export class SegmentationService {
       - The segment order must preserve the original flow
       - Do NOT include summaries, markdown, or metadata
       - Each segment should be a standalone piece with meaningful flow
+      - Do not include any negative prompts in the segment - Negative Prompt is ${negativePrompt}
       `;
 
       const narrationAddendum = `
@@ -112,7 +175,7 @@ export class SegmentationService {
       IMPORTANT (for animation scripts):
       Each segment should describe motion and transitions for one continuous shot.
       Avoid visual summaries or multiple scene ideas per segment.
-      Only describe how the camera moves, how things animate, and what’s happening dynamically on screen.
+      Only describe how the camera moves, how things animate, and what's happening dynamically on screen.
       `;
 
       let prompt = base;
@@ -132,7 +195,11 @@ export class SegmentationService {
     const [animationSegRes, narrationSegRes, visualSegRes] = await Promise.all([
       await this.genAI.models.generateContent({
         model: 'gemini-2.5-pro-preview-06-05',
-        contents: makeSegmentationPrompt(script.narration, 'narration'),
+        contents: makeSegmentationPrompt(
+          script.narration,
+          'narration',
+          script.negative_prompt,
+        ),
         config: {
           responseMimeType: 'application/json',
           responseSchema: {
@@ -150,7 +217,11 @@ export class SegmentationService {
 
       await this.genAI.models.generateContent({
         model: 'gemini-2.5-pro-preview-06-05',
-        contents: makeSegmentationPrompt(script.visual, 'visual'),
+        contents: makeSegmentationPrompt(
+          script.visual,
+          'visual',
+          script.negative_prompt,
+        ),
         config: {
           responseMimeType: 'application/json',
           responseSchema: {
@@ -168,7 +239,11 @@ export class SegmentationService {
 
       await this.genAI.models.generateContent({
         model: 'gemini-2.5-pro-preview-06-05',
-        contents: makeSegmentationPrompt(script.animation, 'animation'),
+        contents: makeSegmentationPrompt(
+          script.animation,
+          'animation',
+          script.negative_prompt,
+        ),
         config: {
           responseMimeType: 'application/json',
           responseSchema: {
@@ -211,95 +286,110 @@ export class SegmentationService {
 
   async segmentScript(segmentationDto: SegmentationDto): Promise<{
     segments: TypeSegment[];
-    style: 'hype' | 'ad';
     artStyle: string;
+    model: string;
   }> {
-    const createHypeAgent = () =>
-      new Agent<{ prompt: string }>({
-        name: 'Hype Video Agent',
+    const createGeminiAgent = () =>
+      new Agent<{ prompt: string; negative_prompt: string }>({
+        name: 'Gemini Script Generation Agent',
         instructions:
-          'You create fast-paced, high-energy hype videos that get people pumped up. Use bold visuals and powerful, energetic narration.',
+          'You create high-quality scripts using Gemini 2.5 Pro model. You excel at creative content generation, detailed analysis, and comprehensive script development.',
         tools: [
           tool({
-            name: 'generate_hype_video',
-            description:
-              'Generate a fast-paced, high-energy hype video from a user prompt.',
+            name: 'generate_script_with_gemini',
+            description: 'Generate script using Gemini 2.5 Pro model.',
             parameters: z.object({
               prompt: z.string(),
+              negative_prompt: z.string(),
             }) as any,
-            execute: async ({ prompt }) => {
-              const script = await this.generateScript({
-                animationPrompt: `Create a high-energy animation sequence for a hype video about: "${prompt}". The animation should feel intense, cinematic, and adrenaline-fueled. Use strong pacing like quick cuts, bold transitions, and powerful motion to build excitement. Structure the animation into exactly 5 parts, each escalating in impact. Clearly label each part. Include pacing cues like "build-up", "burst", "climax", etc. Avoid summaries; focus on the animation flow.`,
+            execute: async ({ prompt, negative_prompt }) => {
+              const script = await this.generateScriptWithGemini({
+                animationPrompt: `Create an animation sequence for a video about: "${prompt}". The animation should be engaging and well-paced. Structure the animation into exactly 5 parts that flow naturally. Include specific animation cues and transitions. Focus on the animation flow and visual storytelling.`,
 
-                narrationPrompt: `Write a high-octane voiceover script for a hype video about: "${prompt}". Use short, punchy lines with energetic verbs and emotional intensity. The tone should be motivational, fast-paced, and powerful — something that gets crowds hyped. Structure the script into exactly 5 distinct segments. Do not label them as "summary" or include narration summaries. Each segment should stand alone with a strong voice.`,
+                narrationPrompt: `Write a voiceover script for a video about: "${prompt}". The script should be engaging, clear, and well-structured. Structure the script into exactly 5 distinct segments. Each segment should be standalone and flow naturally into the next. Focus on clear, compelling narration.`,
 
-                visualPrompt: `Generate a concept description for creating a single impactful image per segment for a hype video based on: "${prompt}". Each image should be bold, cinematic, and emotionally intense — think strong silhouettes, dynamic scenes, action energy, or surreal metaphors. Divide the visual plan into exactly 5 parts, one image per part. Describe the visual content clearly for each image without using terms like "storyboard" or "summary". Maintain consistency in visual tone and escalation.`,
+                visualPrompt: `Generate a visual concept for a video about: "${prompt}". Create descriptions for 5 distinct visual segments, each representing a single, cohesive image concept. Each image should be visually compelling and support the overall narrative. Focus on visual composition and storytelling.`,
               });
-              return { script, style: 'hype' };
+                             return { script, model: 'gemini-2.5-pro' };
             },
           }),
         ],
       });
 
-    const createAdAgent = () =>
-      new Agent<{ prompt: string }>({
-        name: 'Ad Video Agent',
+    const createOpenAIAgent = () =>
+      new Agent<{ prompt: string; negative_prompt: string }>({
+        name: 'OpenAI Script Generation Agent',
         instructions:
-          'You create professional, sleek promotional videos that highlight products, services, or ideas in a clean and marketable way.',
+          'You create high-quality scripts using OpenAI GPT-4o model. You excel at natural language processing, creative writing, and structured content generation.',
         tools: [
           tool({
-            name: 'generate_ad_video',
-            description: 'Generate a clean and polished promotional ad video.',
+            name: 'generate_script_with_openai',
+            description: 'Generate script using OpenAI GPT-4o model.',
             parameters: z.object({
               prompt: z.string(),
+              negative_prompt: z.string(),
             }) as any,
-            execute: async ({ prompt }) => {
-              const script = await this.generateScript({
-                animationPrompt: `Create a polished animation storyboard for a professional ad video about: "${prompt}". The animation should feel sleek, smooth, and brand-friendly — think product reveals, clean transitions, and confident pacing. Structure the animation into exactly 5 clear segments such as: Introduction, Problem, Solution, Benefits, Call to Action. Label each part and specify animation dynamics (e.g. fade-in text, motion highlights). Avoid summaries — describe actual animation intent.`,
+            execute: async ({ prompt, negative_prompt }) => {
+              const script = await this.generateScriptWithOpenAI({
+                animationPrompt: `Create an animation sequence for a video about: "${prompt}". The animation should be engaging and well-paced. Structure the animation into exactly 5 parts that flow naturally. Include specific animation cues and transitions. Focus on the animation flow and visual storytelling.`,
 
-                narrationPrompt: `Write a persuasive, professional voiceover script for an advertisement video on: "${prompt}". Keep the tone clear, trustworthy, and motivating. Use crisp, concise sentences with an engaging flow. Divide the narration into exactly 5 labeled parts that follow a marketing arc (e.g. Hook, Need, Offer, Advantage, CTA). Each part should be standalone — avoid any summary language or recap phrasing.`,
+                narrationPrompt: `Write a voiceover script for a video about: "${prompt}". The script should be engaging, clear, and well-structured. Structure the script into exactly 5 distinct segments. Each segment should be standalone and flow naturally into the next. Focus on clear, compelling narration.`,
 
-                visualPrompt: `Describe 5 standalone visuals, one per segment, for an ad video about: "${prompt}". Each image should represent a clean, modern, brand-aligned scene — such as a product hero shot, customer lifestyle, or UI mockup. Describe each image clearly and concisely. Do not create storyboards or multiple scenes per part. Each segment should yield one cohesive image that complements the narration.`,
+                visualPrompt: `Generate a visual concept for a video about: "${prompt}". Create descriptions for 5 distinct visual segments, each representing a single, cohesive image concept. Each image should be visually compelling and support the overall narrative. Focus on visual composition and storytelling.`,
               });
-              return { script, style: 'ad' };
+                             return { script, model: 'gpt-4o' };
             },
           }),
         ],
       });
 
-    const HypeAgent = createHypeAgent();
-    const AdAgent = createAdAgent();
+    const GeminiAgent = createGeminiAgent();
+    const OpenAIAgent = createOpenAIAgent();
 
     const triageAgent = Agent.create({
-      name: 'Triage Agent',
+      name: 'Script Generation Triage Agent',
       instructions: `
-      You are a video director assistant.
-      Based on the user's input prompt, decide the best style and hand off:
-      - Hype for excitement
-      - Ad for product promotions
+      You are a script generation assistant that decides which AI model to use based on the prompt characteristics and requirements.
       
-      IMPORTANT: After handoff, include the generated script in your response.`,
+      Use Gemini 2.5 Pro for:
+      - Creative and artistic content
+      - Complex visual descriptions
+      - Detailed narrative development
+      - Multi-layered storytelling
+      - Content requiring deep contextual understanding
+      
+      Use OpenAI GPT-4o for:
+      - Technical or professional content
+      - Structured information delivery
+      - Clear, concise communication
+      - Business or educational content
+      - Content requiring precise language
+      
+      Analyze the prompt and choose the appropriate model, then hand off to the corresponding agent.`,
       handoffs: [
-        handoff(HypeAgent, {
-          toolNameOverride: 'use_hype_tool',
-          toolDescriptionOverride: 'Send to hype video agent.',
+        handoff(GeminiAgent, {
+          toolNameOverride: 'use_gemini_agent',
+          toolDescriptionOverride: 'Send to Gemini agent for creative/artistic content.',
         }),
-        handoff(AdAgent, {
-          toolNameOverride: 'use_ad_tool',
-          toolDescriptionOverride: 'Send to ad video agent.',
+        handoff(OpenAIAgent, {
+          toolNameOverride: 'use_openai_agent',
+          toolDescriptionOverride: 'Send to OpenAI agent for technical/professional content.',
         }),
       ],
     });
 
     try {
       const result = await run(triageAgent, [
-        { role: 'user', content: segmentationDto.prompt },
+        {
+          role: 'user',
+          content: `PROMPT: ${segmentationDto.prompt} \n NEGATIVE PROMPT: ${segmentationDto.negative_prompt}`,
+        },
       ]);
 
       try {
         const geminiParseRes = await this.genAI.models.generateContent({
           model: 'gemini-2.0-flash-exp',
-          contents: `Parse this entire agent conversation output and extract the script and style information. Return a JSON object with "script" (containing "narration" and "visual" fields), "style" (either "hype" or "ad") and artStyle.
+          contents: `Parse this entire agent conversation output and extract the script, style, and model information. Return a JSON object with "script" (containing "narration", "visual", and "animation" fields), "artStyle", and "model" (the AI model used for script generation).
 
           Full agent output:
           ${JSON.stringify(result.output, null, 2)}`,
@@ -317,13 +407,10 @@ export class SegmentationService {
                   },
                   required: ['narration', 'visual', 'animation'],
                 },
-                style: {
-                  type: 'string',
-                  enum: ['hype', 'ad'],
-                },
                 artStyle: { type: 'string' },
+                model: { type: 'string' },
               },
-              required: ['script', 'style', 'artStyle'],
+              required: ['script', 'artStyle', 'model'],
             },
           },
         } as any);
@@ -331,15 +418,16 @@ export class SegmentationService {
         const agentResult = JSON.parse(geminiParseRes.text);
         console.log(agentResult);
 
-        if (agentResult?.script && agentResult?.style) {
-          const segmentedScript = await this.segmentGeneratedScript(
-            agentResult.script,
-          );
+        if (agentResult?.script && agentResult?.artStyle) {
+          const segmentedScript = await this.segmentGeneratedScript({
+            ...agentResult.script,
+            negative_prompt: segmentationDto.negative_prompt,
+          });
 
           return {
             segments: segmentedScript.segments,
-            style: agentResult.style,
             artStyle: agentResult.artStyle,
+            model: agentResult.model,
           };
         }
       } catch (parseError) {

@@ -86,6 +86,26 @@ Each feature module should have:
 
 - `GET /health` - check if the server is running.
 
+- `POST /concept-writer` - Generate creative video concepts
+   - takes in ```{prompt: string, web_info: string}``` as parameter
+   - returns 
+   ```
+   {
+      "concepts": [
+        {
+          "title": string,
+          "concept": string,
+          "tone": string,
+          "goal": string
+        }
+      ]
+   }
+   ```
+
+- `POST /get-web-info` - Get information from the web using Perplexity AI
+   - takes in ```{prompt: string}``` as parameter
+   - returns response from Perplexity AI's chat completion API
+
 - `POST /segmentation` - Generated script and segment it into parts.
    - takes in ```{prompt: string}``` as parameter.
    - returns 

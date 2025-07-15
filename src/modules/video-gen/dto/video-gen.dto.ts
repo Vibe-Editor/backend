@@ -11,5 +11,9 @@ export class VideoGenDto {
 
   @IsString()
   @IsNotEmpty()
-  image_url: string;
+  imageS3Key: string;
+
+  @IsString()
+  @IsNotEmpty()
+  uuid: string;
 } 

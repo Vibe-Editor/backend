@@ -8,4 +8,8 @@ export class ImageGenDto {
   @IsString()
   @IsNotEmpty()
   art_style: string;
+
+  @IsString()
+  @IsNotEmpty()
+  uuid: string;
 }
