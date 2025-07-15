@@ -107,7 +107,7 @@ Each feature module should have:
    - returns response from Perplexity AI's chat completion API
 
 - `POST /segmentation` - Generate and segment video scripts using AI model handoff (OpenAI GPT-4o or Gemini 2.5 Pro)
-   - takes in ```{prompt: string, negative_prompt: string}``` as parameters
+   - takes in ```{prompt: string, concept:string, negative_prompt: string}``` as parameters
    - returns 
    ```
    {

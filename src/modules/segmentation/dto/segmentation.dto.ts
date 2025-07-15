@@ -7,5 +7,9 @@ export class SegmentationDto {
 
   @IsString()
   @IsNotEmpty()
+  concept: string;
+
+  @IsString()
+  @IsNotEmpty()
   negative_prompt: string;
 }

@@ -103,13 +103,18 @@ export class SegmentationService {
         }),
         this.openai.chat.completions.create({
           model: 'gpt-4o',
-          messages: [{ role: 'user', content: `VISUAL PROMPT: ${visualPrompt} \n ANIMATION PROMPT: ${animationPrompt}. \n Your task is to generate a art style prompt using the visual prompt and animation prompt. This is to maintain consistency in the visual and animation style. If there's a person involved in the visual, make sure to mention the looks of the person in the art style prompt.
+          messages: [
+            {
+              role: 'user',
+              content: `VISUAL PROMPT: ${visualPrompt} \n ANIMATION PROMPT: ${animationPrompt}. \n Your task is to generate a art style prompt using the visual prompt and animation prompt. This is to maintain consistency in the visual and animation style. If there's a person involved in the visual, make sure to mention the looks of the person in the art style prompt.
         
         Example Style Prompt for a face wash ad that is minimal:
         showcase the natural and alovera related positives of the face wash product using minimalistic branding and light colors. The face wash has a white colour pack and consists of a skin enhancing lotion made o alovera and natural ingrideints. Use water and fluid elements to portray freshness.
 
         Keep this style prompt as short as possible. Must be within 300 characters.
-        ` }],
+        `,
+            },
+          ],
         }),
       ]);
 
@@ -310,7 +315,7 @@ export class SegmentationService {
 
                 visualPrompt: `Generate a visual concept for a video about: "${prompt}". Create descriptions for 5 distinct visual segments, each representing a single, cohesive image concept. Each image should be visually compelling and support the overall narrative. Focus on visual composition and storytelling.`,
               });
-                             return { script, model: 'gemini-2.5-pro' };
+              return { script, model: 'gemini-2.5-pro' };
             },
           }),
         ],
@@ -337,7 +342,7 @@ export class SegmentationService {
 
                 visualPrompt: `Generate a visual concept for a video about: "${prompt}". Create descriptions for 5 distinct visual segments, each representing a single, cohesive image concept. Each image should be visually compelling and support the overall narrative. Focus on visual composition and storytelling.`,
               });
-                             return { script, model: 'gpt-4o' };
+              return { script, model: 'gpt-4o' };
             },
           }),
         ],
@@ -369,11 +374,13 @@ export class SegmentationService {
       handoffs: [
         handoff(GeminiAgent, {
           toolNameOverride: 'use_gemini_agent',
-          toolDescriptionOverride: 'Send to Gemini agent for creative/artistic content.',
+          toolDescriptionOverride:
+            'Send to Gemini agent for creative/artistic content.',
         }),
         handoff(OpenAIAgent, {
           toolNameOverride: 'use_openai_agent',
-          toolDescriptionOverride: 'Send to OpenAI agent for technical/professional content.',
+          toolDescriptionOverride:
+            'Send to OpenAI agent for technical/professional content.',
         }),
       ],
     });
@@ -382,7 +389,7 @@ export class SegmentationService {
       const result = await run(triageAgent, [
         {
           role: 'user',
-          content: `PROMPT: ${segmentationDto.prompt} \n NEGATIVE PROMPT: ${segmentationDto.negative_prompt}`,
+          content: `PROMPT: ${segmentationDto.prompt} \n CONCEPT: ${segmentationDto.concept} \n NEGATIVE PROMPT: ${segmentationDto.negative_prompt}`,
         },
       ]);
 
