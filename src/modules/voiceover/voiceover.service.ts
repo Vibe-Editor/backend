@@ -1,9 +1,8 @@
 import { Injectable, Logger, BadRequestException, InternalServerErrorException } from '@nestjs/common';
-import { ElevenLabsClient, play } from '@elevenlabs/elevenlabs-js';
+import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import { VoiceoverDto } from './dto/voiceover.dto';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { randomUUID } from 'crypto';
-import { Readable } from 'stream';
 
 @Injectable()
 export class VoiceoverService {
