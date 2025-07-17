@@ -7,13 +7,16 @@ import {
 import { GoogleGenAI } from '@google/genai';
 import { UserInputSummarizerDto } from './dto/user-input-summarizer.dto';
 import { z } from 'zod';
+import { ProjectHelperService } from '../../common/services/project-helper.service';
+import { PrismaClient } from '../../../generated/prisma';
 
 @Injectable()
 export class UserInputSummarizerService {
   private readonly logger = new Logger(UserInputSummarizerService.name);
   private readonly genAI: GoogleGenAI;
+  private readonly prisma = new PrismaClient();
 
-  constructor() {
+  constructor(private readonly projectHelperService: ProjectHelperService) {
     try {
       if (!process.env.GEMINI_API_KEY) {
         this.logger.error('GEMINI_API_KEY environment variable not set');
@@ -33,7 +36,13 @@ export class UserInputSummarizerService {
 
   async summarizeContent(
     userInputSummarizerDto: UserInputSummarizerDto,
+    userId: string,
   ): Promise<{ summary: string }> {
+    // Ensure user has a project (create default if none exists)
+    const projectId =
+      await this.projectHelperService.ensureUserHasProject(userId);
+    this.logger.log(`Using project ${projectId} for content summarization`);
+
     const startTime = Date.now();
     this.logger.log(
       'Starting content summarization with user input prioritization',
@@ -98,7 +107,7 @@ Create a comprehensive summary that prioritizes user input when conflicts exist 
       this.logger.log('Generating summary with Gemini Flash model');
       const result = await this.genAI.models.generateContent({
         model: 'gemini-2.0-flash-exp',
-        contents: systemPrompt
+        contents: systemPrompt,
       });
 
       const summary = result.text.trim();
@@ -110,6 +119,39 @@ Create a comprehensive summary that prioritizes user input when conflicts exist 
           'AI model returned empty summary',
         );
       }
+
+      // Save to database
+      this.logger.log(`Saving content summary to database`);
+      const savedSummary = await this.prisma.contentSummary.create({
+        data: {
+          originalContent: userInputSummarizerDto.original_content,
+          userInput: userInputSummarizerDto.user_input || '',
+          summary: summary,
+          projectId,
+          userId,
+        },
+      });
+
+      // Save conversation history
+      await this.prisma.conversationHistory.create({
+        data: {
+          type: 'CONTENT_SUMMARY',
+          userInput:
+            userInputSummarizerDto.user_input ||
+            userInputSummarizerDto.original_content.substring(0, 100) + '...',
+          response: JSON.stringify({ summary: summary }),
+          metadata: {
+            originalContentLength:
+              userInputSummarizerDto.original_content.length,
+            summaryLength: summary.length,
+            savedSummaryId: savedSummary.id,
+          },
+          projectId,
+          userId,
+        },
+      });
+
+      this.logger.log(`Successfully saved content summary: ${savedSummary.id}`);
 
       const duration = Date.now() - startTime;
       this.logger.log(

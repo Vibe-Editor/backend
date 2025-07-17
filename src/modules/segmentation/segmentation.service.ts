@@ -5,13 +5,16 @@ import { TypeSegment } from './segment.interface';
 import { Agent, tool, handoff, run } from '@openai/agents';
 import { z } from 'zod';
 import OpenAI from 'openai';
+import { ProjectHelperService } from '../../common/services/project-helper.service';
+import { PrismaClient } from '../../../generated/prisma';
 
 @Injectable()
 export class SegmentationService {
   private readonly genAI: GoogleGenAI;
   private readonly openai: OpenAI;
+  private readonly prisma = new PrismaClient();
 
-  constructor() {
+  constructor(private readonly projectHelperService: ProjectHelperService) {
     if (!process.env.GEMINI_API_KEY) {
       throw new Error('GEMINI_API_KEY environment variable not set.');
     }
@@ -289,11 +292,19 @@ export class SegmentationService {
     return { segments: segments, artStyle: script.artStyle };
   }
 
-  async segmentScript(segmentationDto: SegmentationDto): Promise<{
+  async segmentScript(
+    segmentationDto: SegmentationDto,
+    userId: string,
+  ): Promise<{
     segments: TypeSegment[];
     artStyle: string;
     model: string;
   }> {
+    // Ensure user has a project (create default if none exists)
+    const projectId =
+      await this.projectHelperService.ensureUserHasProject(userId);
+    console.log(`Using project ${projectId} for segmentation`);
+
     const createGeminiAgent = () =>
       new Agent<{ prompt: string; negative_prompt: string }>({
         name: 'Gemini Script Generation Agent',
@@ -430,6 +441,61 @@ export class SegmentationService {
             ...agentResult.script,
             negative_prompt: segmentationDto.negative_prompt,
           });
+
+          // Save to database
+          console.log(`Saving segmentation to database`);
+          const savedSegmentation = await this.prisma.videoSegmentation.create({
+            data: {
+              prompt: segmentationDto.prompt,
+              concept: segmentationDto.concept,
+              negativePrompt: segmentationDto.negative_prompt,
+              artStyle: agentResult.artStyle,
+              model: agentResult.model,
+              projectId,
+              userId,
+            },
+          });
+
+          // Save individual segments
+          const savedSegments = await Promise.all(
+            segmentedScript.segments.map(async (segment, index) => {
+              return await this.prisma.videoSegment.create({
+                data: {
+                  segmentId: `${index + 1}`,
+                  visual: segment.visual,
+                  narration: segment.narration,
+                  animation: segment.animation,
+                  videoSegmentationId: savedSegmentation.id,
+                },
+              });
+            }),
+          );
+
+          // Save conversation history
+          await this.prisma.conversationHistory.create({
+            data: {
+              type: 'VIDEO_SEGMENTATION',
+              userInput: segmentationDto.prompt,
+              response: JSON.stringify({
+                segments: segmentedScript.segments,
+                artStyle: agentResult.artStyle,
+                model: agentResult.model,
+              }),
+              metadata: {
+                concept: segmentationDto.concept,
+                negativePrompt: segmentationDto.negative_prompt,
+                segmentCount: segmentedScript.segments.length,
+                savedSegmentationId: savedSegmentation.id,
+                savedSegmentIds: savedSegments.map((s) => s.id),
+              },
+              projectId,
+              userId,
+            },
+          });
+
+          console.log(
+            `Successfully saved segmentation: ${savedSegmentation.id} with ${savedSegments.length} segments`,
+          );
 
           return {
             segments: segmentedScript.segments,

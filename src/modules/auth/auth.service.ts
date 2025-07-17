@@ -4,7 +4,7 @@ import { UsersService } from '../users/users.service';
 import { User } from '../../../generated/prisma';
 
 export interface JwtPayload {
-  sub: number;
+  sub: string;
   email: string;
   name?: string;
   iat?: number;

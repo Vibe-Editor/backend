@@ -16,6 +16,8 @@ import { randomUUID } from 'crypto';
 import axios from 'axios';
 import { Agent, tool, handoff, run } from '@openai/agents';
 import { z } from 'zod';
+import { ProjectHelperService } from '../../common/services/project-helper.service';
+import { PrismaClient } from '../../../generated/prisma';
 
 interface VideoGenerationResult {
   s3Keys: string[];
@@ -29,8 +31,9 @@ export class VideoGenService {
   private readonly genAI: GoogleGenAI;
   private readonly s3Client: S3Client;
   private readonly runwayClient: RunwayML;
+  private readonly prisma = new PrismaClient();
 
-  constructor() {
+  constructor(private readonly projectHelperService: ProjectHelperService) {
     try {
       if (!process.env.GEMINI_API_KEY) {
         throw new Error('GEMINI_API_KEY environment variable not set.');
@@ -50,7 +53,9 @@ export class VideoGenService {
       }
 
       this.genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      this.runwayClient = new RunwayML({ apiKey: process.env.RUNWAYML_API_KEY });
+      this.runwayClient = new RunwayML({
+        apiKey: process.env.RUNWAYML_API_KEY,
+      });
 
       this.s3Client = new S3Client({
         region: process.env.AWS_REGION,
@@ -60,14 +65,21 @@ export class VideoGenService {
         },
       });
 
-      this.logger.log('Google AI, RunwayML, and S3 clients configured successfully');
+      this.logger.log(
+        'Google AI, RunwayML, and S3 clients configured successfully',
+      );
     } catch (error) {
       this.logger.error('Failed to initialize VideoGenService', error.stack);
       throw error;
     }
   }
 
-  async generateVideo(videoGenDto: VideoGenDto) {
+  async generateVideo(videoGenDto: VideoGenDto, userId: string) {
+    // Ensure user has a project (create default if none exists)
+    const projectId =
+      await this.projectHelperService.ensureUserHasProject(userId);
+    this.logger.log(`Using project ${projectId} for video generation`);
+
     const startTime = Date.now();
     this.logger.log(
       `Starting video generation request for user: ${videoGenDto.uuid}`,
@@ -268,6 +280,61 @@ export class VideoGenService {
               s3Keys: agentResult.s3Keys,
               uuid: videoGenDto.uuid,
             },
+          );
+
+          // Save to database
+          this.logger.log(`Saving video generation to database`);
+          const savedVideo = await this.prisma.generatedVideo.create({
+            data: {
+              animationPrompt: videoGenDto.animation_prompt,
+              artStyle: videoGenDto.art_style,
+              imageS3Key: videoGenDto.imageS3Key,
+              uuid: videoGenDto.uuid,
+              success: true,
+              model: agentResult.model,
+              totalVideos: agentResult.totalVideos,
+              projectId,
+              userId,
+            },
+          });
+
+          // Save individual video files
+          const savedVideoFiles = await Promise.all(
+            agentResult.s3Keys.map(async (s3Key: string) => {
+              return await this.prisma.generatedVideoFile.create({
+                data: {
+                  s3Key,
+                  generatedVideoId: savedVideo.id,
+                },
+              });
+            }),
+          );
+
+          // Save conversation history
+          await this.prisma.conversationHistory.create({
+            data: {
+              type: 'VIDEO_GENERATION',
+              userInput: videoGenDto.animation_prompt,
+              response: JSON.stringify({
+                success: true,
+                s3Keys: agentResult.s3Keys,
+                model: agentResult.model,
+                totalVideos: agentResult.totalVideos,
+              }),
+              metadata: {
+                artStyle: videoGenDto.art_style,
+                imageS3Key: videoGenDto.imageS3Key,
+                uuid: videoGenDto.uuid,
+                savedVideoId: savedVideo.id,
+                savedVideoFileIds: savedVideoFiles.map((f) => f.id),
+              },
+              projectId,
+              userId,
+            },
+          });
+
+          this.logger.log(
+            `Successfully saved video generation: ${savedVideo.id} with ${savedVideoFiles.length} files`,
           );
 
           return {
@@ -496,7 +563,7 @@ export class VideoGenService {
       // Fetch image from S3 and convert to base64 data URI
       this.logger.log(`Fetching image from S3: ${imageS3Key}`);
       const imageBase64 = await this.getImageFromS3AsBase64(imageS3Key);
-      
+
       // Create data URI for RunwayML
       const dataUri = `data:image/png;base64,${imageBase64}`;
       this.logger.log(`Successfully converted image to data URI`);
@@ -529,7 +596,9 @@ export class VideoGenService {
 
       if (!task.output || task.output.length === 0) {
         this.logger.error('RunwayML generation failed - no videos returned');
-        throw new Error('RunwayML video generation failed - no videos returned');
+        throw new Error(
+          'RunwayML video generation failed - no videos returned',
+        );
       }
 
       this.logger.log(
@@ -563,7 +632,7 @@ export class VideoGenService {
               uuid,
             });
 
-            throw new error;
+            throw new error();
           }
         } else {
           this.logger.warn(`Video ${i + 1} has no URL:`, task.output[i]);
@@ -592,11 +661,14 @@ export class VideoGenService {
       };
     } catch (error) {
       const totalTime = Date.now() - startTime;
-      this.logger.error(`RunwayML video generation failed after ${totalTime}ms`, {
-        error: error.message,
-        uuid,
-        stack: error.stack,
-      });
+      this.logger.error(
+        `RunwayML video generation failed after ${totalTime}ms`,
+        {
+          error: error.message,
+          uuid,
+          stack: error.stack,
+        },
+      );
       throw error;
     }
   }

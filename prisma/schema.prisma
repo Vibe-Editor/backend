@@ -16,6 +16,8 @@ model User {
   googleId  String   @unique
   createdAt DateTime @default(now())
 
+  projects            Project[]
+  conversationHistory ConversationHistory[]
   videoConcepts       VideoConcept[]
   webResearchQueries  WebResearchQuery[]
   contentSummaries    ContentSummary[]
@@ -23,6 +25,50 @@ model User {
   generatedImages     GeneratedImage[]
   generatedVideos     GeneratedVideo[]
   generatedVoiceovers GeneratedVoiceover[]
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  userId      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user                User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversations       ConversationHistory[]
+  videoConcepts       VideoConcept[]
+  webResearchQueries  WebResearchQuery[]
+  contentSummaries    ContentSummary[]
+  videoSegmentations  VideoSegmentation[]
+  generatedImages     GeneratedImage[]
+  generatedVideos     GeneratedVideo[]
+  generatedVoiceovers GeneratedVoiceover[]
+}
+
+model ConversationHistory {
+  id        String               @id @default(cuid())
+  type      ConversationTypeEnum
+  userInput String
+  response  String
+  metadata  Json?
+  projectId String
+  userId    String
+  createdAt DateTime             @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum ConversationTypeEnum {
+  CONCEPT_GENERATION
+  WEB_RESEARCH
+  CONTENT_SUMMARY
+  VIDEO_SEGMENTATION
+  IMAGE_GENERATION
+  VIDEO_GENERATION
+  VOICEOVER_GENERATION
+  GENERAL_CHAT
 }
 
 model VideoConcept {
@@ -33,20 +79,24 @@ model VideoConcept {
   concept   String
   tone      String
   goal      String
+  projectId String?
   userId    String
   createdAt DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model WebResearchQuery {
   id        String   @id @default(cuid())
   prompt    String
   response  String
+  projectId String?
   userId    String
   createdAt DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model ContentSummary {
@@ -54,10 +104,12 @@ model ContentSummary {
   originalContent String
   userInput       String
   summary         String
+  projectId       String?
   userId          String
   createdAt       DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model VideoSegmentation {
@@ -67,9 +119,11 @@ model VideoSegmentation {
   negativePrompt String?
   artStyle       String
   model          String
+  projectId      String?
   userId         String
   createdAt      DateTime @default(now())
 
+  project  Project?       @relation(fields: [projectId], references: [id], onDelete: Cascade)
   user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   segments VideoSegment[]
 }
@@ -96,10 +150,12 @@ model GeneratedImage {
   model          String?
   message        String?
   imageSizeBytes Int?
+  projectId      String?
   userId         String
   createdAt      DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model GeneratedVideo {
@@ -111,9 +167,11 @@ model GeneratedVideo {
   success         Boolean
   model           String?
   totalVideos     Int?
+  projectId       String?
   userId          String
   createdAt       DateTime @default(now())
 
+  project    Project?             @relation(fields: [projectId], references: [id], onDelete: Cascade)
   user       User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   videoFiles GeneratedVideoFile[]
 }
@@ -131,8 +189,10 @@ model GeneratedVoiceover {
   id              String   @id @default(cuid())
   narrationPrompt String
   s3Key           String
+  projectId       String?
   userId          String
   createdAt       DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

@@ -4,6 +4,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
+import { ProjectsModule } from './modules/projects/projects.module';
 import { SegmentationModule } from './modules/segmentation/segmentation.module';
 import { ImageGenModule } from './modules/image-gen/image-gen.module';
 import { VideoGenModule } from './modules/video-gen/video-gen.module';
@@ -20,6 +21,7 @@ import { UserInputSummarizerModule } from './modules/user-input-summarizer/user-
     }),
     AuthModule,
     UsersModule,
+    ProjectsModule,
     SegmentationModule,
     ImageGenModule,
     VideoGenModule,

@@ -72,6 +72,12 @@ src/
 │   │   ├── users.module.ts       # Module definition
 │   │   ├── users.controller.ts   # Route handlers
 │   │   └── users.service.ts      # Business logic with Prisma
+│   ├── projects/    # Project management & organization
+│   │   ├── dto/     # Create/update project DTOs
+│   │   ├── interfaces/  # TypeScript interfaces
+│   │   ├── projects.controller.ts   # CRUD endpoints
+│   │   ├── projects.service.ts      # Project business logic
+│   │   └── projects.module.ts       # Project module config
 │   ├── concept-writer/  # AI video concepts
 │   ├── get-web-info/    # Web scraping
 │   ├── segmentation/    # Video segmentation
@@ -181,12 +187,97 @@ Each feature module should have:
 - `GET /users/:id` - Get user by ID
 - `GET /users/email/:email` - Get user by email address
 
+#### Projects (🔒 Protected)
+
+- `POST /projects` - Create new project
+  - **Requires**: JWT Authentication
+  - **Body**: `{name: string, description?: string}`
+  - **Example Request**:
+
+  ```json
+  {
+    "name": "My Video Project",
+    "description": "A promotional video for our product"
+  }
+  ```
+
+  - **Returns**:
+
+  ```json
+  {
+    "id": "clxyz123abc",
+    "name": "My Video Project",
+    "description": "A promotional video for our product",
+    "userId": "cluser123",
+    "createdAt": "2025-01-16T10:30:00Z",
+    "updatedAt": "2025-01-16T10:30:00Z"
+  }
+  ```
+
+- `GET /projects` - Get all user projects with statistics
+  - **Requires**: JWT Authentication
+  - **Returns**: Array of projects with content counts
+
+  ```json
+  [
+    {
+      "id": "clxyz123abc",
+      "name": "My Video Project",
+      "description": "A promotional video",
+      "userId": "cluser123",
+      "createdAt": "2025-01-16T10:30:00Z",
+      "updatedAt": "2025-01-16T10:30:00Z",
+      "_count": {
+        "conversations": 5,
+        "videoConcepts": 2,
+        "generatedImages": 8,
+        "generatedVideos": 3,
+        "generatedVoiceovers": 1
+      }
+    }
+  ]
+  ```
+
+- `GET /projects/:id` - Get specific project with statistics
+  - **Requires**: JWT Authentication
+  - **Returns**: Single project with content counts
+
+- `PATCH /projects/:id` - Update project
+  - **Requires**: JWT Authentication
+  - **Body**: `{name?: string, description?: string}`
+  - **Example Request**:
+
+  ```json
+  {
+    "name": "Updated Project Name",
+    "description": "Updated description for the project"
+  }
+  ```
+
+  - **Returns**: Updated project data
+
+- `DELETE /projects/:id` - Delete project and all related content
+  - **Requires**: JWT Authentication
+  - **Note**: Cascade deletes all conversations, concepts, images, videos, etc.
+  - **Returns**: Success confirmation
+
 #### AI Services
+
+**Note**: All AI services now support optional project assignment and conversation tracking. Include `projectId` in requests to associate content with a specific project.
 
 - `GET /health` - check if the server is running.
 
 - `POST /concept-writer` - Generate creative video concepts
   - takes in `{prompt: string, web_info: string}` as parameter
+  - **Example Request**:
+
+  ```json
+  {
+    "prompt": "Create a promotional video for a new eco-friendly water bottle",
+    "web_info": "Latest trends in sustainable products and environmental awareness campaigns"
+  }
+  ```
+
   - returns
 
   ```
@@ -204,14 +295,41 @@ Each feature module should have:
 
 - `POST /get-web-info` - Get information from the web using Perplexity AI
   - takes in `{prompt: string}` as parameter
+  - **Example Request**:
+
+  ```json
+  {
+    "prompt": "What are the latest trends in sustainable packaging for 2025?"
+  }
+  ```
+
   - returns response from Perplexity AI's chat completion API
 
 - `POST /user-input-summarizer` - Get information from the web using Perplexity AI
-   - takes in ```{original_content: string, user_input: string}``` as parameter
-   - returns ```{summary: string}```
+  - takes in `{original_content: string, user_input: string}` as parameter
+  - **Example Request**:
+
+  ```json
+  {
+    "original_content": "Our company specializes in creating eco-friendly water bottles made from recycled materials...",
+    "user_input": "Make it more focused on the health benefits and target young professionals"
+  }
+  ```
+
+  - returns `{summary: string}`
 
 - `POST /segmentation` - Generate and segment video scripts using AI model handoff (OpenAI GPT-4o or Gemini 2.5 Pro)
   - takes in `{prompt: string, concept:string, negative_prompt: string}` as parameters
+  - **Example Request**:
+
+  ```json
+  {
+    "prompt": "Create a 30-second promotional video showcasing our eco-friendly water bottle",
+    "concept": "Focus on sustainability, health benefits, and modern lifestyle",
+    "negative_prompt": "Avoid plastic waste imagery, don't show competing brands"
+  }
+  ```
+
   - returns
 
   ```
@@ -233,6 +351,16 @@ Each feature module should have:
   - **Features**: Intelligent model selection based on content type (realistic vs artistic/text-based)
   - **Models**: Recraft AI for realistic images, Google Imagen for artistic/text content
   - takes in `{visual_prompt: string, art_style: string, uuid: string}` as parameters
+  - **Example Request**:
+
+  ```json
+  {
+    "visual_prompt": "A sleek eco-friendly water bottle on a wooden desk with green plants in the background",
+    "art_style": "modern minimalist photography",
+    "uuid": "segment-001-image"
+  }
+  ```
+
   - returns
 
   ```
@@ -249,6 +377,17 @@ Each feature module should have:
   - **Features**: Intelligent model selection based on content style (cartoonish vs realistic)
   - **Models**: Google Veo2 for animated/cartoon content, RunwayML Gen-3 Alpha Turbo for realistic content
   - takes in `{animation_prompt: string, art_style: string, imageS3Key: string, uuid: string}` as parameters
+  - **Example Request**:
+
+  ```json
+  {
+    "animation_prompt": "Camera slowly zooms in on the water bottle while a hand reaches for it, smooth professional movement",
+    "art_style": "cinematic realistic",
+    "imageS3Key": "images/segment-001-image.jpg",
+    "uuid": "segment-001-video"
+  }
+  ```
+
   - returns
 
   ```
@@ -262,6 +401,13 @@ Each feature module should have:
 
 - `POST /voiceover` - Generate voiceovers
   - takes in `{narration_prompt: string}` as parameters.
+  - **Example Request**:
+  ```json
+  {
+    "narration_prompt": "Introducing the future of hydration - our new eco-friendly water bottle that's as good for you as it is for the planet."
+  }
+  ```
+
   - returns
   ```
   {
@@ -325,6 +471,86 @@ export class ProtectedController {
   }
 }
 ```
+
+## Project Organization System
+
+### Content Hierarchy
+
+```
+User
+├── Project A
+│   ├── Conversations (chat history)
+│   ├── Video Concepts
+│   ├── Web Research Queries
+│   ├── Content Summaries
+│   ├── Video Segmentations
+│   ├── Generated Images
+│   ├── Generated Videos
+│   └── Generated Voiceovers
+└── Project B
+    └── (same structure)
+```
+
+### Benefits
+
+1. **Organization**: Users can group related content into projects
+2. **Isolation**: Each project maintains its own conversation history and assets
+3. **Analytics**: Track progress and usage per project
+4. **Collaboration**: Future-ready for team features
+5. **Cleanup**: Easy bulk deletion of project content
+
+### Conversation Tracking
+
+The system automatically tracks all user interactions and AI responses in the `ConversationHistory` table:
+
+#### Conversation Types
+
+- `CONCEPT_GENERATION` - Video concept creation interactions
+- `WEB_RESEARCH` - Web information gathering
+- `CONTENT_SUMMARY` - Content summarization requests
+- `VIDEO_SEGMENTATION` - Video script segmentation
+- `IMAGE_GENERATION` - Image creation requests
+- `VIDEO_GENERATION` - Video generation requests
+- `VOICEOVER_GENERATION` - Voice synthesis requests
+- `GENERAL_CHAT` - General user interactions
+
+#### Implementation in Services
+
+To add conversation tracking to existing services:
+
+```typescript
+// Example: Save conversation history after AI response
+await this.prisma.conversationHistory.create({
+  data: {
+    type: 'CONCEPT_GENERATION',
+    userInput: JSON.stringify(conceptWriterDto),
+    response: JSON.stringify(result),
+    metadata: {
+      model: 'gemini-2.5-pro',
+      tokens: responseTokens,
+      processingTime: duration,
+    },
+    projectId: conceptWriterDto.projectId, // Optional
+    userId: userId,
+  },
+});
+```
+
+### Project Integration Guide
+
+#### For Frontend Developers
+
+1. **Project Selection**: Implement project picker in UI
+2. **Context Passing**: Include `projectId` in API requests when available
+3. **Organization**: Group content by projects in UI
+4. **Analytics**: Display project statistics from `_count` fields
+
+#### For Backend Developers
+
+1. **Service Updates**: Add optional `projectId` parameter to existing services
+2. **Conversation Logging**: Implement conversation tracking in service methods
+3. **Authorization**: Ensure users can only access their own projects
+4. **Migration**: Update existing content to support project assignment
 
 ## Best Practices
 

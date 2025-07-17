@@ -12,6 +12,8 @@ import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { randomUUID } from 'crypto';
 import { Agent, tool, handoff, run } from '@openai/agents';
 import { z } from 'zod';
+import { ProjectHelperService } from '../../common/services/project-helper.service';
+import { PrismaClient } from '../../../generated/prisma';
 
 interface ImageGenerationResult {
   s3_key: string;
@@ -22,12 +24,13 @@ interface ImageGenerationResult {
 @Injectable()
 export class ImageGenService {
   private readonly logger = new Logger(ImageGenService.name);
+  private readonly prisma = new PrismaClient();
   private readonly fal: typeof fal;
   private readonly genAI: GoogleGenAI;
   private readonly s3: S3Client;
   private readonly bucketName = process.env.S3_BUCKET_NAME;
 
-  constructor() {
+  constructor(private readonly projectHelperService: ProjectHelperService) {
     try {
       // Validate environment variables
       if (!process.env.FAL_KEY) {
@@ -84,7 +87,12 @@ export class ImageGenService {
     }
   }
 
-  async generateImage(imageGenDto: ImageGenDto) {
+  async generateImage(imageGenDto: ImageGenDto, userId: string) {
+    // Ensure user has a project (create default if none exists)
+    const projectId =
+      await this.projectHelperService.ensureUserHasProject(userId);
+    this.logger.log(`Using project ${projectId} for image generation`);
+
     const startTime = Date.now();
     const operationId = imageGenDto.uuid;
 
@@ -123,7 +131,9 @@ export class ImageGenService {
                 );
               } catch (error) {
                 this.logger.error('Recraft image generation failed:', error);
-                throw new Error(`Recraft image generation failed: ${error.message}`);
+                throw new Error(
+                  `Recraft image generation failed: ${error.message}`,
+                );
               }
             },
           }),
@@ -138,11 +148,12 @@ export class ImageGenService {
       }>({
         name: 'Imagen Text-Based Image Agent',
         instructions:
-          'You create images with text, stylized content, and artistic visuals using Google\'s Imagen model. Perfect for images containing text, logos, signs, artistic styles, and creative content.',
+          "You create images with text, stylized content, and artistic visuals using Google's Imagen model. Perfect for images containing text, logos, signs, artistic styles, and creative content.",
         tools: [
           tool({
             name: 'generate_imagen_image',
-            description: 'Generate image with text/artistic content using Imagen model.',
+            description:
+              'Generate image with text/artistic content using Imagen model.',
             parameters: z.object({
               visual_prompt: z.string(),
               art_style: z.string(),
@@ -160,7 +171,9 @@ export class ImageGenService {
                 );
               } catch (error) {
                 this.logger.error('Imagen image generation failed:', error);
-                throw new Error(`Imagen image generation failed: ${error.message}`);
+                throw new Error(
+                  `Imagen image generation failed: ${error.message}`,
+                );
               }
             },
           }),
@@ -245,11 +258,14 @@ export class ImageGenService {
       console.log(result.output);
 
       // Check if the agent execution contains any errors
-      const hasErrors = result.output.some(msg => 
-        msg.type === 'function_call_result' && 
-        msg.status === 'completed' && 
-        msg.output?.type === 'text' &&
-        msg.output?.text?.includes('An error occurred while running the tool')
+      const hasErrors = result.output.some(
+        (msg) =>
+          msg.type === 'function_call_result' &&
+          msg.status === 'completed' &&
+          msg.output?.type === 'text' &&
+          msg.output?.text?.includes(
+            'An error occurred while running the tool',
+          ),
       );
 
       if (hasErrors) {
@@ -286,20 +302,30 @@ export class ImageGenService {
         this.logger.debug('Parsed agent result:', agentResult);
 
         // Validate that the result is not fake/invalid
-        if (agentResult?.s3_key && (
-          agentResult.s3_key.includes('fake') ||
-          agentResult.s3_key.includes('s3://') ||
-          agentResult.s3_key === 'fake-key.png' ||
-          !agentResult.s3_key.startsWith(imageGenDto.uuid)
-        )) {
-          this.logger.error('Detected fake/invalid S3 key from agent result:', agentResult);
+        if (
+          agentResult?.s3_key &&
+          (agentResult.s3_key.includes('fake') ||
+            agentResult.s3_key.includes('s3://') ||
+            agentResult.s3_key === 'fake-key.png' ||
+            !agentResult.s3_key.startsWith(imageGenDto.uuid))
+        ) {
+          this.logger.error(
+            'Detected fake/invalid S3 key from agent result:',
+            agentResult,
+          );
           throw new InternalServerErrorException(
             'Image generation failed - invalid response from agent',
           );
         }
 
-        if (agentResult?.image_size_bytes && agentResult.image_size_bytes < 1000) {
-          this.logger.error('Detected fake/invalid image size from agent result:', agentResult);
+        if (
+          agentResult?.image_size_bytes &&
+          agentResult.image_size_bytes < 1000
+        ) {
+          this.logger.error(
+            'Detected fake/invalid image size from agent result:',
+            agentResult,
+          );
           throw new InternalServerErrorException(
             'Image generation failed - invalid image size in response',
           );
@@ -315,6 +341,49 @@ export class ImageGenService {
               image_size_bytes: agentResult.image_size_bytes,
               uuid: imageGenDto.uuid,
             },
+          );
+
+          // Save to database
+          this.logger.log(`Saving image generation to database`);
+          const savedImage = await this.prisma.generatedImage.create({
+            data: {
+              visualPrompt: imageGenDto.visual_prompt,
+              artStyle: imageGenDto.art_style,
+              uuid: imageGenDto.uuid,
+              success: true,
+              s3Key: agentResult.s3_key,
+              model: agentResult.model,
+              message: 'Image generated and uploaded successfully',
+              imageSizeBytes: agentResult.image_size_bytes,
+              projectId,
+              userId,
+            },
+          });
+
+          // Save conversation history
+          await this.prisma.conversationHistory.create({
+            data: {
+              type: 'IMAGE_GENERATION',
+              userInput: imageGenDto.visual_prompt,
+              response: JSON.stringify({
+                success: true,
+                s3_key: agentResult.s3_key,
+                model: agentResult.model,
+                message: 'Image generated and uploaded successfully',
+                image_size_bytes: agentResult.image_size_bytes,
+              }),
+              metadata: {
+                artStyle: imageGenDto.art_style,
+                uuid: imageGenDto.uuid,
+                savedImageId: savedImage.id,
+              },
+              projectId,
+              userId,
+            },
+          });
+
+          this.logger.log(
+            `Successfully saved image generation: ${savedImage.id}`,
           );
 
           return {
@@ -436,7 +505,10 @@ export class ImageGenService {
 
       // Determine substyle based on art_style
       let substyle = 'natural';
-      if (art_style.toLowerCase().includes('black and white') || art_style.toLowerCase().includes('b&w')) {
+      if (
+        art_style.toLowerCase().includes('black and white') ||
+        art_style.toLowerCase().includes('b&w')
+      ) {
         substyle = 'b_and_w';
       } else if (art_style.toLowerCase().includes('cinematic')) {
         substyle = 'cinematic';
@@ -462,7 +534,7 @@ export class ImageGenService {
           },
           {
             headers: {
-              'Authorization': `Bearer ${process.env.RECRAFT_API_KEY}`,
+              Authorization: `Bearer ${process.env.RECRAFT_API_KEY}`,
               'Content-Type': 'application/json',
             },
           },
@@ -474,13 +546,19 @@ export class ImageGenService {
           data: axiosError.response?.data,
           message: axiosError.message,
         });
-        
+
         if (axiosError.response?.status === 400) {
-          throw new Error(`Recraft API returned 400 Bad Request: ${JSON.stringify(axiosError.response.data)}`);
+          throw new Error(
+            `Recraft API returned 400 Bad Request: ${JSON.stringify(axiosError.response.data)}`,
+          );
         } else if (axiosError.response?.status === 401) {
-          throw new Error('Recraft API authentication failed - invalid API key');
+          throw new Error(
+            'Recraft API authentication failed - invalid API key',
+          );
         } else if (axiosError.response?.status === 429) {
-          throw new Error('Recraft API rate limit exceeded - please try again later');
+          throw new Error(
+            'Recraft API rate limit exceeded - please try again later',
+          );
         } else {
           throw new Error(`Recraft API request failed: ${axiosError.message}`);
         }
@@ -488,7 +566,11 @@ export class ImageGenService {
 
       this.logger.log('Recraft image generation completed');
 
-      if (!response.data || !response.data.data || response.data.data.length === 0) {
+      if (
+        !response.data ||
+        !response.data.data ||
+        response.data.data.length === 0
+      ) {
         this.logger.error('Recraft generation failed - no images returned');
         throw new Error('Recraft image generation failed - no images returned');
       }
@@ -498,11 +580,13 @@ export class ImageGenService {
 
       if (!imageUrl) {
         this.logger.error('Recraft generation failed - no image URL returned');
-        throw new Error('Recraft image generation failed - no image URL returned');
+        throw new Error(
+          'Recraft image generation failed - no image URL returned',
+        );
       }
 
       this.logger.log('Downloading generated image from Recraft');
-      
+
       // Download the image
       const imageResponse = await axios.get(imageUrl, {
         responseType: 'arraybuffer',
@@ -545,11 +629,14 @@ export class ImageGenService {
       };
     } catch (error) {
       const totalTime = Date.now() - startTime;
-      this.logger.error(`Recraft image generation failed after ${totalTime}ms`, {
-        error: error.message,
-        uuid,
-        stack: error.stack,
-      });
+      this.logger.error(
+        `Recraft image generation failed after ${totalTime}ms`,
+        {
+          error: error.message,
+          uuid,
+          stack: error.stack,
+        },
+      );
       throw error;
     }
   }

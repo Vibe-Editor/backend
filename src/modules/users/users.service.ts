@@ -31,7 +31,6 @@ export class UsersService {
               googleId: userData.googleId,
               name: userData.name || user.name,
               avatar: userData.avatar || user.avatar,
-              provider: 'google',
             },
           });
         }
@@ -45,7 +44,6 @@ export class UsersService {
             googleId: userData.googleId,
             name: userData.name,
             avatar: userData.avatar,
-            provider: 'google',
           },
         });
       }
@@ -56,7 +54,7 @@ export class UsersService {
     }
   }
 
-  async findById(id: number): Promise<User | null> {
+  async findById(id: string): Promise<User | null> {
     return this.prisma.user.findUnique({
       where: { id },
     });
@@ -78,14 +76,14 @@ export class UsersService {
     return this.prisma.user.findMany();
   }
 
-  async updateUser(id: number, updateData: Partial<User>): Promise<User> {
+  async updateUser(id: string, updateData: Partial<User>): Promise<User> {
     return this.prisma.user.update({
       where: { id },
       data: updateData,
     });
   }
 
-  async deleteUser(id: number): Promise<User> {
+  async deleteUser(id: string): Promise<User> {
     return this.prisma.user.delete({
       where: { id },
     });
