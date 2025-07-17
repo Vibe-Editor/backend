@@ -9,6 +9,7 @@ import { VideoGenDto } from './dto/video-gen.dto';
 import { Agent, handoff, run } from '@openai/agents';
 import { createVeo2Agent } from './agents/veo2.agent';
 import { createRunwayMLAgent } from './agents/runwayml.agent';
+import { createKlingAgent } from './agents/kling.agent';
 
 export interface VideoGenerationResult {
   s3Keys: string[];
@@ -57,6 +58,7 @@ export class VideoGenService {
 
     const Veo2Agent = createVeo2Agent();
     const RunwayMLAgent = createRunwayMLAgent();
+    const KlingAgent = createKlingAgent();
 
     const triageAgent = Agent.create({
       name: 'Video Generation Triage Agent',
@@ -91,6 +93,11 @@ export class VideoGenService {
           toolNameOverride: 'use_runwayml_agent',
           toolDescriptionOverride:
             'Send to RunwayML agent for realistic/high-quality content.',
+        }),
+        handoff(KlingAgent, {
+          toolNameOverride: 'use_kling_agent',
+          toolDescriptionOverride:
+            'Send to Kling agent for cinematic/fluid content.',
         }),
       ],
     });

@@ -1,0 +1,112 @@
+import { Agent, tool } from '@openai/agents';
+import { z } from 'zod';
+import { VideoGenerationResult } from '../video-gen.service';
+import { Logger } from '@nestjs/common';
+import { getImageFromS3AsBase64, uploadVideoToS3 } from '../s3/s3.service';
+import { fal } from '@fal-ai/client';
+import 'dotenv/config';
+
+const logger = new Logger('Kling Agent');
+
+export const createKlingAgent = () =>
+  new Agent<{
+    animation_prompt: string;
+    art_style: string;
+    imageS3Key: string;
+    uuid: string;
+  }>({
+    name: 'Kling 2.1 Master Video Agent',
+    instructions:
+      'You create cinematic, fluid, and visually stunning videos using Kling 2.1 Master. Ideal for top-tier motion, creative storytelling, and prompt precision.',
+    tools: [
+      tool({
+        name: 'generate_kling_video',
+        description:
+          'Generate cinematic video using Kling 2.1 Master (fal.ai).',
+        parameters: z.object({
+          animation_prompt: z.string(),
+          imageS3Key: z.string(),
+          art_style: z.string(),
+          uuid: z.string(),
+        }) as any,
+        execute: async ({ animation_prompt, art_style, imageS3Key, uuid }) => {
+          logger.log('Agent selected Kling 2.1 Master for cinematic content');
+          return await generateKlingVideo(
+            animation_prompt,
+            art_style,
+            imageS3Key,
+            uuid,
+          );
+        },
+      }),
+    ],
+  });
+
+async function generateKlingVideo(
+  animation_prompt: string,
+  art_style: string,
+  imageS3Key: string,
+  uuid: string,
+): Promise<VideoGenerationResult> {
+  const startTime = Date.now();
+  logger.log(`Starting Kling video generation for user: ${uuid}`);
+
+  try {
+    // Get image from S3 as base64 and convert to data URI
+    const imageBase64 = await getImageFromS3AsBase64(imageS3Key);
+    const dataUri = `data:image/png;base64,${imageBase64}`;
+
+    // Combine prompt and art style
+    const combinedPrompt = `${animation_prompt}. Art style: ${art_style}`;
+
+    // Call fal.ai Kling 2.1 Master API
+    const result = await fal.subscribe(
+      'fal-ai/kling-video/v2.1/master/image-to-video',
+      {
+        input: {
+          prompt: combinedPrompt,
+          image_url: dataUri,
+          duration: '8', // default duration
+          negative_prompt: 'blur, distort, and low quality',
+          cfg_scale: 0.5,
+        },
+        logs: true,
+        onQueueUpdate: (update) => {
+          if (update.status === 'IN_PROGRESS') {
+            update.logs?.map((log) => log.message).forEach((msg) => logger.debug(msg));
+          }
+        },
+      },
+    );
+
+    if (!result?.data?.video?.url) {
+      logger.error('Kling generation failed - no video URL returned');
+      throw new Error('Kling video generation failed - no video URL returned');
+    }
+
+    // Upload video to S3
+    logger.debug('Uploading Kling video to S3');
+    const s3Key = await uploadVideoToS3(result.data.video.url, uuid);
+    logger.log(`Successfully uploaded Kling video to S3: ${s3Key}`);
+
+    const totalTime = Date.now() - startTime;
+    logger.log(`Kling video generation completed successfully in ${totalTime}ms`, {
+      s3Key,
+      uuid,
+    });
+
+    return {
+      s3Keys: [s3Key],
+      model: 'kling-v2.1-master',
+      totalVideos: 1,
+    };
+  } catch (error) {
+    const totalTime = Date.now() - startTime;
+    logger.error(`Kling video generation failed after ${totalTime}ms`, {
+      error: error.message,
+      uuid,
+      stack: error.stack,
+    });
+    throw error;
+  }
+}
