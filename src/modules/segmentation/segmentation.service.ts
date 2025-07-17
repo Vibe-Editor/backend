@@ -202,7 +202,7 @@ export class SegmentationService {
 
     const [animationSegRes, narrationSegRes, visualSegRes] = await Promise.all([
       await this.genAI.models.generateContent({
-        model: 'gemini-2.5-pro-preview-06-05',
+        model: 'gemini-2.5-flash',
         contents: makeSegmentationPrompt(
           script.narration,
           'narration',
@@ -224,7 +224,7 @@ export class SegmentationService {
       }),
 
       await this.genAI.models.generateContent({
-        model: 'gemini-2.5-pro-preview-06-05',
+        model: 'gemini-2.5-flash',
         contents: makeSegmentationPrompt(
           script.visual,
           'visual',
@@ -246,7 +246,7 @@ export class SegmentationService {
       }),
 
       await this.genAI.models.generateContent({
-        model: 'gemini-2.5-pro-preview-06-05',
+        model: 'gemini-2.5-flash',
         contents: makeSegmentationPrompt(
           script.animation,
           'animation',
@@ -364,6 +364,7 @@ export class SegmentationService {
 
     const triageAgent = Agent.create({
       name: 'Script Generation Triage Agent',
+      model: 'gpt-4o-mini',
       instructions: `
       You are a script generation assistant that decides which AI model to use based on the prompt characteristics and requirements.
       
