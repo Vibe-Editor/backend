@@ -7,6 +7,8 @@ import {
 import { ImageGenDto } from './dto/image-gen.dto';
 import { GoogleGenAI } from '@google/genai';
 import { Agent, handoff, run } from '@openai/agents';
+import { ProjectHelperService } from '../../common/services/project-helper.service';
+import { PrismaClient } from '../../../generated/prisma';
 import { createRecraftAgent } from './agents/recraft.agent';
 import { createImagenAgent } from './agents/imagen.agent';
 
@@ -19,9 +21,10 @@ export interface ImageGenerationResult {
 @Injectable()
 export class ImageGenService {
   private readonly logger = new Logger(ImageGenService.name);
+  private readonly prisma = new PrismaClient();
   private readonly genAI: GoogleGenAI;
 
-  constructor() {
+  constructor(private readonly projectHelperService: ProjectHelperService) {
     try {
       // Validate environment variables
       if (!process.env.GEMINI_API_KEY) {
@@ -50,7 +53,12 @@ export class ImageGenService {
     }
   }
 
-  async generateImage(imageGenDto: ImageGenDto) {
+  async generateImage(imageGenDto: ImageGenDto, userId: string) {
+    // Ensure user has a project (create default if none exists)
+    const projectId =
+      await this.projectHelperService.ensureUserHasProject(userId);
+    this.logger.log(`Using project ${projectId} for image generation`);
+
     const startTime = Date.now();
     const operationId = imageGenDto.uuid;
 
@@ -206,6 +214,49 @@ export class ImageGenService {
             },
           );
 
+          // Save to database
+          this.logger.log(`Saving image generation to database`);
+          const savedImage = await this.prisma.generatedImage.create({
+            data: {
+              visualPrompt: imageGenDto.visual_prompt,
+              artStyle: imageGenDto.art_style,
+              uuid: imageGenDto.uuid,
+              success: true,
+              s3Key: agentResult.s3_key,
+              model: agentResult.model,
+              message: 'Image generated and uploaded successfully',
+              imageSizeBytes: agentResult.image_size_bytes,
+              projectId,
+              userId,
+            },
+          });
+
+          // Save conversation history
+          await this.prisma.conversationHistory.create({
+            data: {
+              type: 'IMAGE_GENERATION',
+              userInput: imageGenDto.visual_prompt,
+              response: JSON.stringify({
+                success: true,
+                s3_key: agentResult.s3_key,
+                model: agentResult.model,
+                message: 'Image generated and uploaded successfully',
+                image_size_bytes: agentResult.image_size_bytes,
+              }),
+              metadata: {
+                artStyle: imageGenDto.art_style,
+                uuid: imageGenDto.uuid,
+                savedImageId: savedImage.id,
+              },
+              projectId,
+              userId,
+            },
+          });
+
+          this.logger.log(
+            `Successfully saved image generation: ${savedImage.id}`,
+          );
+
           return {
             success: true,
             s3_key: agentResult.s3_key,
@@ -245,12 +296,17 @@ export class ImageGenService {
       });
 
       // If it's a known NestJS exception, rethrow it
-      if (error instanceof BadRequestException || error instanceof InternalServerErrorException) {
+      if (
+        error instanceof BadRequestException ||
+        error instanceof InternalServerErrorException
+      ) {
         throw error;
       }
 
       // Otherwise, throw the original error message as an internal server error
-      throw new InternalServerErrorException(error.message || 'Failed to generate image.');
+      throw new InternalServerErrorException(
+        error.message || 'Failed to generate image.',
+      );
     }
   }
 }

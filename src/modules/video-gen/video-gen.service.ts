@@ -6,7 +6,12 @@ import {
 } from '@nestjs/common';
 import { GoogleGenAI } from '@google/genai';
 import { VideoGenDto } from './dto/video-gen.dto';
+import { randomUUID } from 'crypto';
+import axios from 'axios';
 import { Agent, handoff, run } from '@openai/agents';
+import { z } from 'zod';
+import { ProjectHelperService } from '../../common/services/project-helper.service';
+import { PrismaClient } from '../../../generated/prisma';
 import { createVeo2Agent } from './agents/veo2.agent';
 import { createRunwayMLAgent } from './agents/runwayml.agent';
 import { createKlingAgent } from './agents/kling.agent';
@@ -21,8 +26,9 @@ export interface VideoGenerationResult {
 export class VideoGenService {
   private readonly logger = new Logger(VideoGenService.name);
   private readonly genAI: GoogleGenAI;
+  private readonly prisma = new PrismaClient();
 
-  constructor() {
+  constructor(private readonly projectHelperService: ProjectHelperService) {
     try {
       if (!process.env.GEMINI_API_KEY) {
         throw new Error('GEMINI_API_KEY environment variable not set.');
@@ -52,9 +58,16 @@ export class VideoGenService {
     }
   }
 
-  async generateVideo(videoGenDto: VideoGenDto) {
+  async generateVideo(videoGenDto: VideoGenDto, userId: string) {
+    // Ensure user has a project (create default if none exists)
+    const projectId =
+      await this.projectHelperService.ensureUserHasProject(userId);
+    this.logger.log(`Using project ${projectId} for video generation`);
+
     const startTime = Date.now();
-    this.logger.log(`Starting video generation request for user: ${videoGenDto.uuid}`);
+    this.logger.log(
+      `Starting video generation request for user: ${videoGenDto.uuid}`,
+    );
 
     const Veo2Agent = createVeo2Agent();
     const RunwayMLAgent = createRunwayMLAgent();
@@ -171,6 +184,58 @@ export class VideoGenService {
               s3Keys: agentResult.s3Keys,
               uuid: videoGenDto.uuid,
             },
+          );
+
+          this.logger.log(`Saving video generation to database`);
+          const savedVideo = await this.prisma.generatedVideo.create({
+            data: {
+              animationPrompt: videoGenDto.animation_prompt,
+              artStyle: videoGenDto.art_style,
+              imageS3Key: videoGenDto.imageS3Key,
+              uuid: videoGenDto.uuid,
+              success: true,
+              model: agentResult.model,
+              totalVideos: agentResult.totalVideos,
+              projectId,
+              userId,
+            },
+          });
+
+          const savedVideoFiles = await Promise.all(
+            agentResult.s3Keys.map(async (s3Key: string) => {
+              return await this.prisma.generatedVideoFile.create({
+                data: {
+                  s3Key,
+                  generatedVideoId: savedVideo.id,
+                },
+              });
+            }),
+          );
+
+          await this.prisma.conversationHistory.create({
+            data: {
+              type: 'VIDEO_GENERATION',
+              userInput: videoGenDto.animation_prompt,
+              response: JSON.stringify({
+                success: true,
+                s3Keys: agentResult.s3Keys,
+                model: agentResult.model,
+                totalVideos: agentResult.totalVideos,
+              }),
+              metadata: {
+                artStyle: videoGenDto.art_style,
+                imageS3Key: videoGenDto.imageS3Key,
+                uuid: videoGenDto.uuid,
+                savedVideoId: savedVideo.id,
+                savedVideoFileIds: savedVideoFiles.map((f) => f.id),
+              },
+              projectId,
+              userId,
+            },
+          });
+
+          this.logger.log(
+            `Successfully saved video generation: ${savedVideo.id} with ${savedVideoFiles.length} files`,
           );
 
           return {

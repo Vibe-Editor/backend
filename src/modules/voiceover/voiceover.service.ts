@@ -1,8 +1,15 @@
-import { Injectable, Logger, BadRequestException, InternalServerErrorException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  BadRequestException,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import { VoiceoverDto } from './dto/voiceover.dto';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { randomUUID } from 'crypto';
+import { ProjectHelperService } from '../../common/services/project-helper.service';
+import { PrismaClient } from '../../../generated/prisma';
 
 @Injectable()
 export class VoiceoverService {
@@ -10,8 +17,9 @@ export class VoiceoverService {
   private readonly elevenLabs: ElevenLabsClient;
   private readonly s3: S3Client;
   private readonly bucketName = process.env.S3_BUCKET_NAME;
+  private readonly prisma = new PrismaClient();
 
-  constructor() {
+  constructor(private readonly projectHelperService: ProjectHelperService) {
     try {
       // Validate environment variables
       if (!process.env.ELEVENLABS_API_KEY) {
@@ -19,9 +27,15 @@ export class VoiceoverService {
         throw new Error('ELEVENLABS_API_KEY environment variable not set');
       }
 
-      if (!process.env.AWS_REGION || !process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
+      if (
+        !process.env.AWS_REGION ||
+        !process.env.AWS_ACCESS_KEY_ID ||
+        !process.env.AWS_SECRET_ACCESS_KEY
+      ) {
         this.logger.error('Missing AWS configuration environment variables');
-        throw new Error('Missing AWS configuration: AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY are required');
+        throw new Error(
+          'Missing AWS configuration: AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY are required',
+        );
       }
 
       if (!process.env.S3_BUCKET_NAME) {
@@ -48,25 +62,37 @@ export class VoiceoverService {
     }
   }
 
-  async generateVoiceover(voiceoverDto: VoiceoverDto) {
+  async generateVoiceover(voiceoverDto: VoiceoverDto, userId: string) {
+    const projectId =
+      await this.projectHelperService.ensureUserHasProject(userId);
+    this.logger.log(`Using project ${projectId} for voiceover generation`);
+
     const operationId = randomUUID();
-    
+
     try {
       this.logger.log(`Starting voiceover generation [${operationId}]`);
-      
-      // Validate input
-      if (!voiceoverDto.narration_prompt || voiceoverDto.narration_prompt.trim().length === 0) {
+
+      if (
+        !voiceoverDto.narration_prompt ||
+        voiceoverDto.narration_prompt.trim().length === 0
+      ) {
         this.logger.error(`Missing or empty narration_prompt [${operationId}]`);
-        throw new BadRequestException('narration_prompt is required and cannot be empty');
+        throw new BadRequestException(
+          'narration_prompt is required and cannot be empty',
+        );
       }
 
       if (voiceoverDto.narration_prompt.length > 5000) {
-        this.logger.error(`Narration prompt too long: ${voiceoverDto.narration_prompt.length} characters [${operationId}]`);
-        throw new BadRequestException('narration_prompt must be less than 5000 characters');
+        this.logger.error(
+          `Narration prompt too long: ${voiceoverDto.narration_prompt.length} characters [${operationId}]`,
+        );
+        throw new BadRequestException(
+          'narration_prompt must be less than 5000 characters',
+        );
       }
 
       this.logger.log(`Generating audio with ElevenLabs [${operationId}]`);
-      
+
       const stream = await this.elevenLabs.textToSpeech.convert(
         'JBFqnCBsd6RMkjVDRZzb',
         {
@@ -81,7 +107,9 @@ export class VoiceoverService {
 
       if (!audioBuffer || audioBuffer.length === 0) {
         this.logger.error(`Empty audio buffer received [${operationId}]`);
-        throw new InternalServerErrorException('Failed to generate audio: empty response from ElevenLabs');
+        throw new InternalServerErrorException(
+          'Failed to generate audio: empty response from ElevenLabs',
+        );
       }
 
       const s3Key = `voiceovers/${randomUUID()}.mp3`;
@@ -97,18 +125,56 @@ export class VoiceoverService {
 
       await this.s3.send(command);
 
-      this.logger.log(`Voiceover generation completed successfully [${operationId}]`);
+      this.logger.log(`Saving voiceover to database [${operationId}]`);
+
+      const savedVoiceover = await this.prisma.generatedVoiceover.create({
+        data: {
+          narrationPrompt: voiceoverDto.narration_prompt,
+          s3Key: s3Key,
+          projectId,
+          userId,
+        },
+      });
+
+      await this.prisma.conversationHistory.create({
+        data: {
+          type: 'VOICEOVER_GENERATION',
+          userInput: voiceoverDto.narration_prompt,
+          response: JSON.stringify({
+            success: true,
+            s3_key: s3Key,
+            message: 'Voiceover generated and uploaded successfully',
+            audio_size_bytes: audioBuffer.length,
+          }),
+          metadata: {
+            voiceId: 'JBFqnCBsd6RMkjVDRZzb',
+            model: 'eleven_multilingual_v2',
+            audioSizeBytes: audioBuffer.length,
+            savedVoiceoverId: savedVoiceover.id,
+          },
+          projectId,
+          userId,
+        },
+      });
+
+      this.logger.log(
+        `Successfully saved voiceover to database: ${savedVoiceover.id} [${operationId}]`,
+      );
+
+      this.logger.log(
+        `Voiceover generation completed successfully [${operationId}]`,
+      );
       return {
         success: true,
         s3_key: s3Key,
         message: 'Voiceover generated and uploaded successfully',
-        audio_size_bytes: audioBuffer.length
+        audio_size_bytes: audioBuffer.length,
       };
     } catch (error) {
       this.logger.error(`Voiceover generation failed [${operationId}]`, {
         error: error.message,
         stack: error.stack,
-        promptLength: voiceoverDto.narration_prompt?.length || 0
+        promptLength: voiceoverDto.narration_prompt?.length || 0,
       });
 
       if (error instanceof BadRequestException) {
@@ -116,30 +182,55 @@ export class VoiceoverService {
       }
 
       // Handle ElevenLabs specific errors
-      if (error.message?.includes('quota') || error.message?.includes('limit') || error.message?.includes('credits')) {
-        throw new InternalServerErrorException('ElevenLabs API quota exceeded. Please try again later.');
+      if (
+        error.message?.includes('quota') ||
+        error.message?.includes('limit') ||
+        error.message?.includes('credits')
+      ) {
+        throw new InternalServerErrorException(
+          'ElevenLabs API quota exceeded. Please try again later.',
+        );
       }
 
-      if (error.message?.includes('unauthorized') || error.message?.includes('authentication') || error.message?.includes('API key')) {
-        throw new InternalServerErrorException('ElevenLabs API authentication failed. Please contact support.');
+      if (
+        error.message?.includes('unauthorized') ||
+        error.message?.includes('authentication') ||
+        error.message?.includes('API key')
+      ) {
+        throw new InternalServerErrorException(
+          'ElevenLabs API authentication failed. Please contact support.',
+        );
       }
 
       // Handle S3 specific errors
       if (error.name === 'NoSuchBucket' || error.message?.includes('bucket')) {
-        this.logger.error(`S3 bucket error: ${this.bucketName} [${operationId}]`);
-        throw new InternalServerErrorException('Storage configuration error. Please contact support.');
+        this.logger.error(
+          `S3 bucket error: ${this.bucketName} [${operationId}]`,
+        );
+        throw new InternalServerErrorException(
+          'Storage configuration error. Please contact support.',
+        );
       }
 
-      if (error.name === 'AccessDenied' || error.message?.includes('access denied')) {
+      if (
+        error.name === 'AccessDenied' ||
+        error.message?.includes('access denied')
+      ) {
         this.logger.error(`S3 access denied [${operationId}]`);
-        throw new InternalServerErrorException('Storage access denied. Please contact support.');
+        throw new InternalServerErrorException(
+          'Storage access denied. Please contact support.',
+        );
       }
 
-      throw new InternalServerErrorException('Failed to generate voiceover. Please try again later.');
+      throw new InternalServerErrorException(
+        'Failed to generate voiceover. Please try again later.',
+      );
     }
   }
 
-  private async streamToBuffer(stream: ReadableStream<Uint8Array>): Promise<Buffer> {
+  private async streamToBuffer(
+    stream: ReadableStream<Uint8Array>,
+  ): Promise<Buffer> {
     try {
       const reader = stream.getReader();
       const chunks: Uint8Array[] = [];
