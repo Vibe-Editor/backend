@@ -47,7 +47,7 @@ export class ConceptWriterService {
 
     try {
       const result = await this.gemini.models.generateContent({
-        model: 'gemini-2.5-flash-preview-05-20',
+        model: 'gemini-2.5-flash',
         contents: systemPrompt,
         config: {
           responseMimeType: 'application/json',
