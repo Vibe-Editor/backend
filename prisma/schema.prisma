@@ -1,0 +1,198 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  avatar    String?
+  googleId  String   @unique
+  createdAt DateTime @default(now())
+
+  projects            Project[]
+  conversationHistory ConversationHistory[]
+  videoConcepts       VideoConcept[]
+  webResearchQueries  WebResearchQuery[]
+  contentSummaries    ContentSummary[]
+  videoSegmentations  VideoSegmentation[]
+  generatedImages     GeneratedImage[]
+  generatedVideos     GeneratedVideo[]
+  generatedVoiceovers GeneratedVoiceover[]
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  userId      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user                User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversations       ConversationHistory[]
+  videoConcepts       VideoConcept[]
+  webResearchQueries  WebResearchQuery[]
+  contentSummaries    ContentSummary[]
+  videoSegmentations  VideoSegmentation[]
+  generatedImages     GeneratedImage[]
+  generatedVideos     GeneratedVideo[]
+  generatedVoiceovers GeneratedVoiceover[]
+}
+
+model ConversationHistory {
+  id        String               @id @default(cuid())
+  type      ConversationTypeEnum
+  userInput String
+  response  String
+  metadata  Json?
+  projectId String
+  userId    String
+  createdAt DateTime             @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum ConversationTypeEnum {
+  CONCEPT_GENERATION
+  WEB_RESEARCH
+  CONTENT_SUMMARY
+  VIDEO_SEGMENTATION
+  IMAGE_GENERATION
+  VIDEO_GENERATION
+  VOICEOVER_GENERATION
+  GENERAL_CHAT
+}
+
+model VideoConcept {
+  id        String   @id @default(cuid())
+  prompt    String
+  webInfo   String
+  title     String
+  concept   String
+  tone      String
+  goal      String
+  projectId String?
+  userId    String
+  createdAt DateTime @default(now())
+
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model WebResearchQuery {
+  id        String   @id @default(cuid())
+  prompt    String
+  response  String
+  projectId String?
+  userId    String
+  createdAt DateTime @default(now())
+
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ContentSummary {
+  id              String   @id @default(cuid())
+  originalContent String
+  userInput       String
+  summary         String
+  projectId       String?
+  userId          String
+  createdAt       DateTime @default(now())
+
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VideoSegmentation {
+  id             String   @id @default(cuid())
+  prompt         String
+  concept        String
+  negativePrompt String?
+  artStyle       String
+  model          String
+  projectId      String?
+  userId         String
+  createdAt      DateTime @default(now())
+
+  project  Project?       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  segments VideoSegment[]
+}
+
+model VideoSegment {
+  id                  String   @id @default(cuid())
+  segmentId           String
+  visual              String
+  narration           String
+  animation           String
+  videoSegmentationId String
+  createdAt           DateTime @default(now())
+
+  videoSegmentation VideoSegmentation @relation(fields: [videoSegmentationId], references: [id], onDelete: Cascade)
+}
+
+model GeneratedImage {
+  id             String   @id @default(cuid())
+  visualPrompt   String
+  artStyle       String
+  uuid           String
+  success        Boolean
+  s3Key          String?
+  model          String?
+  message        String?
+  imageSizeBytes Int?
+  projectId      String?
+  userId         String
+  createdAt      DateTime @default(now())
+
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model GeneratedVideo {
+  id              String   @id @default(cuid())
+  animationPrompt String
+  artStyle        String
+  imageS3Key      String
+  uuid            String
+  success         Boolean
+  model           String?
+  totalVideos     Int?
+  projectId       String?
+  userId          String
+  createdAt       DateTime @default(now())
+
+  project    Project?             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user       User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  videoFiles GeneratedVideoFile[]
+}
+
+model GeneratedVideoFile {
+  id               String   @id @default(cuid())
+  s3Key            String
+  generatedVideoId String
+  createdAt        DateTime @default(now())
+
+  generatedVideo GeneratedVideo @relation(fields: [generatedVideoId], references: [id], onDelete: Cascade)
+}
+
+model GeneratedVoiceover {
+  id              String   @id @default(cuid())
+  narrationPrompt String
+  s3Key           String
+  projectId       String?
+  userId          String
+  createdAt       DateTime @default(now())
+
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

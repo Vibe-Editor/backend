@@ -2,13 +2,16 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConceptWriterDto } from './dto/concept-writer.dto';
 import { GoogleGenAI } from '@google/genai';
 import { GeneratedResponse } from './concept-writer.interface';
+import { ProjectHelperService } from '../../common/services/project-helper.service';
+import { PrismaClient } from '../../../generated/prisma';
 
 @Injectable()
 export class ConceptWriterService {
   private gemini: GoogleGenAI;
   private readonly logger = new Logger(ConceptWriterService.name);
+  private readonly prisma = new PrismaClient();
 
-  constructor() {
+  constructor(private readonly projectHelperService: ProjectHelperService) {
     if (!process.env.GEMINI_API_KEY) {
       throw new Error('GEMINI_API_KEY environment variable not set.');
     }
@@ -17,7 +20,13 @@ export class ConceptWriterService {
 
   async getConcept(
     conceptWriterDto: ConceptWriterDto,
+    userId: string,
   ): Promise<GeneratedResponse> {
+    // Ensure user has a project (create default if none exists)
+    const projectId =
+      await this.projectHelperService.ensureUserHasProject(userId);
+    this.logger.log(`Using project ${projectId} for concept generation`);
+
     const { prompt, web_info } = conceptWriterDto;
 
     const systemPrompt = `Generate 3-4 creative video concept ideas based on this prompt: "${prompt}"
@@ -72,7 +81,7 @@ export class ConceptWriterService {
           },
         },
       });
-      
+
       let text = result.text.trim();
 
       // Try to find JSON in the response
@@ -85,10 +94,62 @@ export class ConceptWriterService {
 
       try {
         const parsed = JSON.parse(text) as GeneratedResponse;
-        
-        if (!parsed.concepts || !Array.isArray(parsed.concepts) || parsed.concepts.length === 0) {
-          throw new Error('Invalid response structure: missing or empty concepts array');
+
+        if (
+          !parsed.concepts ||
+          !Array.isArray(parsed.concepts) ||
+          parsed.concepts.length === 0
+        ) {
+          throw new Error(
+            'Invalid response structure: missing or empty concepts array',
+          );
         }
+
+        // Save each concept to the database
+        this.logger.log(
+          `Saving ${parsed.concepts.length} concepts to database`,
+        );
+
+        const savedConcepts = await Promise.all(
+          parsed.concepts.map(async (concept) => {
+            const savedConcept = await this.prisma.videoConcept.create({
+              data: {
+                prompt,
+                webInfo: web_info || '',
+                title: concept.title,
+                concept: concept.concept,
+                tone: concept.tone,
+                goal: concept.goal,
+                projectId,
+                userId,
+              },
+            });
+            this.logger.log(
+              `Saved concept: ${savedConcept.id} - ${concept.title}`,
+            );
+            return savedConcept;
+          }),
+        );
+
+        // Also save to conversation history
+        await this.prisma.conversationHistory.create({
+          data: {
+            type: 'CONCEPT_GENERATION',
+            userInput: prompt,
+            response: JSON.stringify(parsed),
+            metadata: {
+              webInfo: web_info,
+              conceptCount: parsed.concepts.length,
+              savedConceptIds: savedConcepts.map((c) => c.id),
+            },
+            projectId,
+            userId,
+          },
+        });
+
+        this.logger.log(
+          `Successfully saved ${savedConcepts.length} concepts and conversation history`,
+        );
 
         return parsed;
       } catch (parseError) {

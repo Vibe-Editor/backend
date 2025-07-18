@@ -1,10 +1,10 @@
-/**
- * Root Module
- * Configure app-wide providers and imports here
- */
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AuthModule } from './modules/auth/auth.module';
+import { UsersModule } from './modules/users/users.module';
+import { ProjectsModule } from './modules/projects/projects.module';
 import { SegmentationModule } from './modules/segmentation/segmentation.module';
 import { ImageGenModule } from './modules/image-gen/image-gen.module';
 import { VideoGenModule } from './modules/video-gen/video-gen.module';
@@ -15,7 +15,22 @@ import { ConceptWriterModule } from './modules/concept-writer/concept-writer.mod
 import { UserInputSummarizerModule } from './modules/user-input-summarizer/user-input-summarizer.module';
 
 @Module({
-  imports: [SegmentationModule, ImageGenModule, VideoGenModule, HealthModule, VoiceoverModule, GetWebInfoModule, ConceptWriterModule, UserInputSummarizerModule],
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+    }),
+    AuthModule,
+    UsersModule,
+    ProjectsModule,
+    SegmentationModule,
+    ImageGenModule,
+    VideoGenModule,
+    HealthModule,
+    VoiceoverModule,
+    GetWebInfoModule,
+    ConceptWriterModule,
+    UserInputSummarizerModule,
+  ],
   controllers: [AppController],
   providers: [AppService],
 })

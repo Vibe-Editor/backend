@@ -1,16 +1,26 @@
-/**
- * Controller File Guidelines
- * Place all route handlers for this module here
- *
- * Common endpoints to create:
- * - GET    / - List all resources
- * - GET    /:id - Get single resource
- * - POST   / - Create resource
- * - PATCH  /:id - Update resource
- * - DELETE /:id - Remove resource
- *
- * Additional patterns:
- * - GET    /search - Search resources
- * - POST   /bulk - Bulk operations
- * - GET    /:id/related - Get related data
- */
+import { Controller, Get, Param, UseGuards } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { UsersService } from './users.service';
+import { User } from '../../../generated/prisma';
+import { CurrentUser } from 'src/common/decorators/user.decorator';
+
+@Controller('users')
+@UseGuards(JwtAuthGuard)
+export class UsersController {
+  constructor(private readonly usersService: UsersService) {}
+
+  @Get('profile')
+  async getProfile(@CurrentUser() user: any) {
+    return this.usersService.findById(user.id);
+  }
+
+  @Get(':id')
+  async findById(@Param('id') id: string) {
+    return this.usersService.findById(id);
+  }
+
+  @Get('email/:email')
+  async findByEmail(@Param('email') email: string): Promise<User | null> {
+    return this.usersService.findByEmail(email);
+  }
+}
