@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConceptWriterDto } from './dto/concept-writer.dto';
 import { GoogleGenAI } from '@google/genai';
 import { GeneratedResponse } from './concept-writer.interface';
@@ -160,6 +160,91 @@ export class ConceptWriterService {
     } catch (error) {
       this.logger.error(`Failed to generate concepts: ${error.message}`);
       throw new Error(`Failed to generate concepts: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get all concepts for a user, optionally filtered by project
+   */
+  async getAllConcepts(userId: string, projectId?: string) {
+    try {
+      const where = {
+        userId,
+        ...(projectId && { projectId }),
+      };
+
+      const concepts = await this.prisma.videoConcept.findMany({
+        where,
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+
+      this.logger.log(
+        `Retrieved ${concepts.length} concepts for user ${userId}${
+          projectId ? ` in project ${projectId}` : ''
+        }`,
+      );
+
+      return {
+        success: true,
+        count: concepts.length,
+        concepts,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to retrieve concepts: ${error.message}`);
+      throw new Error(`Failed to retrieve concepts: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get a specific concept by ID for a user
+   */
+  async getConceptById(conceptId: string, userId: string) {
+    try {
+      const concept = await this.prisma.videoConcept.findFirst({
+        where: {
+          id: conceptId,
+          userId, // Ensure user can only access their own concepts
+        },
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      if (!concept) {
+        throw new NotFoundException(
+          `Concept with ID ${conceptId} not found or you don't have access to it`,
+        );
+      }
+
+      this.logger.log(`Retrieved concept ${conceptId} for user ${userId}`);
+
+      return {
+        success: true,
+        concept,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to retrieve concept ${conceptId}: ${error.message}`,
+      );
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new Error(`Failed to retrieve concept: ${error.message}`);
     }
   }
 }

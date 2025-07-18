@@ -3,6 +3,7 @@ import {
   Logger,
   BadRequestException,
   InternalServerErrorException,
+  NotFoundException,
 } from '@nestjs/common';
 import { GoogleGenAI } from '@google/genai';
 import { VideoGenDto } from './dto/video-gen.dto';
@@ -300,6 +301,99 @@ export class VideoGenService {
 
       throw new InternalServerErrorException(
         'Failed to generate video. Please try again later.',
+      );
+    }
+  }
+
+  /**
+   * Get all generated videos for a user, optionally filtered by project
+   */
+  async getAllVideos(userId: string, projectId?: string) {
+    try {
+      const where = {
+        userId,
+        ...(projectId && { projectId }),
+      };
+
+      const videos = await this.prisma.generatedVideo.findMany({
+        where,
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          videoFiles: true,
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+
+      this.logger.log(
+        `Retrieved ${videos.length} generated videos for user ${userId}${
+          projectId ? ` in project ${projectId}` : ''
+        }`,
+      );
+
+      return {
+        success: true,
+        count: videos.length,
+        videos,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to retrieve videos: ${error.message}`);
+      throw new InternalServerErrorException(
+        `Failed to retrieve videos: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Get a specific generated video by ID for a user
+   */
+  async getVideoById(videoId: string, userId: string) {
+    try {
+      const video = await this.prisma.generatedVideo.findFirst({
+        where: {
+          id: videoId,
+          userId, // Ensure user can only access their own videos
+        },
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          videoFiles: true,
+        },
+      });
+
+      if (!video) {
+        throw new NotFoundException(
+          `Generated video with ID ${videoId} not found or you don't have access to it`,
+        );
+      }
+
+      this.logger.log(
+        `Retrieved generated video ${videoId} for user ${userId}`,
+      );
+
+      return {
+        success: true,
+        video,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to retrieve video ${videoId}: ${error.message}`,
+      );
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(
+        `Failed to retrieve video: ${error.message}`,
       );
     }
   }

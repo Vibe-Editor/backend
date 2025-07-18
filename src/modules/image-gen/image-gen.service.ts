@@ -3,6 +3,7 @@ import {
   Logger,
   BadRequestException,
   InternalServerErrorException,
+  NotFoundException,
 } from '@nestjs/common';
 import { ImageGenDto } from './dto/image-gen.dto';
 import { GoogleGenAI } from '@google/genai';
@@ -306,6 +307,97 @@ export class ImageGenService {
       // Otherwise, throw the original error message as an internal server error
       throw new InternalServerErrorException(
         error.message || 'Failed to generate image.',
+      );
+    }
+  }
+
+  /**
+   * Get all generated images for a user, optionally filtered by project
+   */
+  async getAllImages(userId: string, projectId?: string) {
+    try {
+      const where = {
+        userId,
+        ...(projectId && { projectId }),
+      };
+
+      const images = await this.prisma.generatedImage.findMany({
+        where,
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+
+      this.logger.log(
+        `Retrieved ${images.length} generated images for user ${userId}${
+          projectId ? ` in project ${projectId}` : ''
+        }`,
+      );
+
+      return {
+        success: true,
+        count: images.length,
+        images,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to retrieve images: ${error.message}`);
+      throw new InternalServerErrorException(
+        `Failed to retrieve images: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Get a specific generated image by ID for a user
+   */
+  async getImageById(imageId: string, userId: string) {
+    try {
+      const image = await this.prisma.generatedImage.findFirst({
+        where: {
+          id: imageId,
+          userId, // Ensure user can only access their own images
+        },
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      if (!image) {
+        throw new NotFoundException(
+          `Generated image with ID ${imageId} not found or you don't have access to it`,
+        );
+      }
+
+      this.logger.log(
+        `Retrieved generated image ${imageId} for user ${userId}`,
+      );
+
+      return {
+        success: true,
+        image,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to retrieve image ${imageId}: ${error.message}`,
+      );
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(
+        `Failed to retrieve image: ${error.message}`,
       );
     }
   }

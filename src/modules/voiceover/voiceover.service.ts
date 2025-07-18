@@ -3,6 +3,7 @@ import {
   Logger,
   BadRequestException,
   InternalServerErrorException,
+  NotFoundException,
 } from '@nestjs/common';
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import { VoiceoverDto } from './dto/voiceover.dto';
@@ -245,6 +246,97 @@ export class VoiceoverService {
     } catch (error) {
       this.logger.error('Failed to convert stream to buffer', error.stack);
       throw new InternalServerErrorException('Failed to process audio stream');
+    }
+  }
+
+  /**
+   * Get all generated voiceovers for a user, optionally filtered by project
+   */
+  async getAllVoiceovers(userId: string, projectId?: string) {
+    try {
+      const where = {
+        userId,
+        ...(projectId && { projectId }),
+      };
+
+      const voiceovers = await this.prisma.generatedVoiceover.findMany({
+        where,
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+
+      this.logger.log(
+        `Retrieved ${voiceovers.length} generated voiceovers for user ${userId}${
+          projectId ? ` in project ${projectId}` : ''
+        }`,
+      );
+
+      return {
+        success: true,
+        count: voiceovers.length,
+        voiceovers,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to retrieve voiceovers: ${error.message}`);
+      throw new InternalServerErrorException(
+        `Failed to retrieve voiceovers: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Get a specific generated voiceover by ID for a user
+   */
+  async getVoiceoverById(voiceoverId: string, userId: string) {
+    try {
+      const voiceover = await this.prisma.generatedVoiceover.findFirst({
+        where: {
+          id: voiceoverId,
+          userId, // Ensure user can only access their own voiceovers
+        },
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      if (!voiceover) {
+        throw new NotFoundException(
+          `Generated voiceover with ID ${voiceoverId} not found or you don't have access to it`,
+        );
+      }
+
+      this.logger.log(
+        `Retrieved generated voiceover ${voiceoverId} for user ${userId}`,
+      );
+
+      return {
+        success: true,
+        voiceover,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to retrieve voiceover ${voiceoverId}: ${error.message}`,
+      );
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(
+        `Failed to retrieve voiceover: ${error.message}`,
+      );
     }
   }
 }

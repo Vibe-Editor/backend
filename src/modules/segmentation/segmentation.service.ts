@@ -1,4 +1,9 @@
-import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
+import {
+  Injectable,
+  HttpException,
+  HttpStatus,
+  NotFoundException,
+} from '@nestjs/common';
 import { GoogleGenAI } from '@google/genai';
 import { SegmentationDto } from './dto/segmentation.dto';
 import { TypeSegment } from './segment.interface';
@@ -517,6 +522,120 @@ export class SegmentationService {
       if (error instanceof HttpException) throw error;
       throw new HttpException(
         'An unexpected error occurred.',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * Get all video segmentations for a user, optionally filtered by project
+   */
+  async getAllSegmentations(userId: string, projectId?: string) {
+    try {
+      const where = {
+        userId,
+        ...(projectId && { projectId }),
+      };
+
+      const segmentations = await this.prisma.videoSegmentation.findMany({
+        where,
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          segments: {
+            orderBy: {
+              segmentId: 'asc',
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+
+      console.log(
+        `Retrieved ${segmentations.length} video segmentations for user ${userId}${
+          projectId ? ` in project ${projectId}` : ''
+        }`,
+      );
+
+      return {
+        success: true,
+        count: segmentations.length,
+        segmentations,
+      };
+    } catch (error) {
+      console.error(`Failed to retrieve segmentations: ${error.message}`);
+      throw new HttpException(
+        `Failed to retrieve segmentations: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * Get a specific video segmentation by ID for a user
+   */
+  async getSegmentationById(segmentationId: string, userId: string) {
+    try {
+      const segmentation = await this.prisma.videoSegmentation.findFirst({
+        where: {
+          id: segmentationId,
+          userId, // Ensure user can only access their own segmentations
+        },
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          segments: {
+            orderBy: {
+              segmentId: 'asc',
+            },
+          },
+        },
+      });
+
+      if (!segmentation) {
+        throw new NotFoundException(
+          `Video segmentation with ID ${segmentationId} not found or you don't have access to it`,
+        );
+      }
+
+      console.log(
+        `Retrieved video segmentation ${segmentationId} for user ${userId}`,
+      );
+
+      // Transform segments to match the expected format
+      const transformedSegments = segmentation.segments.map((segment) => ({
+        id: segment.segmentId,
+        visual: segment.visual,
+        narration: segment.narration,
+        animation: segment.animation,
+      }));
+
+      return {
+        success: true,
+        segmentation: {
+          ...segmentation,
+          segments: transformedSegments,
+        },
+      };
+    } catch (error) {
+      console.error(
+        `Failed to retrieve segmentation ${segmentationId}: ${error.message}`,
+      );
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new HttpException(
+        `Failed to retrieve segmentation: ${error.message}`,
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
