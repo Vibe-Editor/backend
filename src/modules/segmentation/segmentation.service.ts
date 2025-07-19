@@ -640,4 +640,107 @@ export class SegmentationService {
       );
     }
   }
+
+  /**
+   * Select a segmentation as the active one for a project
+   */
+  async selectSegmentation(segmentationId: string, userId: string) {
+    try {
+      // First, verify the segmentation exists and belongs to the user
+      const segmentation = await this.prisma.videoSegmentation.findFirst({
+        where: {
+          id: segmentationId,
+          userId,
+        },
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      if (!segmentation) {
+        throw new NotFoundException(
+          `Video segmentation with ID ${segmentationId} not found or you don't have access to it`,
+        );
+      }
+
+      // If this segmentation has a project, deselect all other segmentations in the same project
+      if (segmentation.projectId) {
+        await this.prisma.videoSegmentation.updateMany({
+          where: {
+            projectId: segmentation.projectId,
+            userId,
+            id: {
+              not: segmentationId,
+            },
+          },
+          data: {
+            isSelected: false,
+          },
+        });
+      } else {
+        // If no project, deselect all segmentations for this user without project
+        await this.prisma.videoSegmentation.updateMany({
+          where: {
+            projectId: null,
+            userId,
+            id: {
+              not: segmentationId,
+            },
+          },
+          data: {
+            isSelected: false,
+          },
+        });
+      }
+
+      // Now select the current segmentation
+      const updatedSegmentation = await this.prisma.videoSegmentation.update({
+        where: {
+          id: segmentationId,
+        },
+        data: {
+          isSelected: true,
+        },
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          segments: {
+            orderBy: {
+              segmentId: 'asc',
+            },
+          },
+        },
+      });
+
+      console.log(
+        `Selected segmentation ${segmentationId} for user ${userId} in project ${segmentation.projectId || 'default'}`,
+      );
+
+      return {
+        success: true,
+        message: 'Segmentation selected successfully',
+        segmentation: updatedSegmentation,
+      };
+    } catch (error) {
+      console.error(
+        `Failed to select segmentation ${segmentationId}: ${error.message}`,
+      );
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new HttpException(
+        `Failed to select segmentation: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
 }

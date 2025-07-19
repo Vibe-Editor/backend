@@ -1,4 +1,13 @@
-import { Controller, Post, Body, UseGuards, Get, Query } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  UseGuards,
+  Get,
+  Query,
+  Patch,
+  Param,
+} from '@nestjs/common';
 import { SegmentationService } from './segmentation.service';
 import { SegmentationDto } from './dto/segmentation.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -30,5 +39,13 @@ export class SegmentationController {
       );
     }
     return this.segmentationService.getAllSegmentations(userId, projectId);
+  }
+
+  @Patch(':id/select')
+  async selectSegmentation(
+    @Param('id') segmentationId: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.segmentationService.selectSegmentation(segmentationId, userId);
   }
 }

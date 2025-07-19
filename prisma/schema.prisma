@@ -119,6 +119,7 @@ model VideoSegmentation {
   negativePrompt String?
   artStyle       String
   model          String
+  isSelected     Boolean  @default(false)
   projectId      String?
   userId         String
   createdAt      DateTime @default(now())

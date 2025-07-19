@@ -98,6 +98,88 @@ export class ProjectsService {
     }
   }
 
+  async findOneWithAllContent(id: string, userId: string) {
+    this.logger.log(
+      `Fetching project with all content: ${id} for user: ${userId}`,
+    );
+
+    try {
+      const project = await this.prisma.project.findFirst({
+        where: { id, userId },
+        include: {
+          conversations: {
+            orderBy: { createdAt: 'desc' },
+          },
+          videoConcepts: {
+            orderBy: { createdAt: 'desc' },
+          },
+          webResearchQueries: {
+            orderBy: { createdAt: 'desc' },
+          },
+          contentSummaries: {
+            orderBy: { createdAt: 'desc' },
+          },
+          videoSegmentations: {
+            include: {
+              segments: {
+                orderBy: { segmentId: 'asc' },
+              },
+            },
+            orderBy: { createdAt: 'desc' },
+          },
+          generatedImages: {
+            orderBy: { createdAt: 'desc' },
+          },
+          generatedVideos: {
+            include: {
+              videoFiles: true,
+            },
+            orderBy: { createdAt: 'desc' },
+          },
+          generatedVoiceovers: {
+            orderBy: { createdAt: 'desc' },
+          },
+          _count: {
+            select: {
+              conversations: true,
+              videoConcepts: true,
+              webResearchQueries: true,
+              contentSummaries: true,
+              videoSegmentations: true,
+              generatedImages: true,
+              generatedVideos: true,
+              generatedVoiceovers: true,
+            },
+          },
+        },
+      });
+
+      if (!project) {
+        throw new NotFoundException('Project not found');
+      }
+
+      // Find the selected segmentation
+      const selectedSegmentation = project.videoSegmentations.find(
+        (seg) => seg.isSelected,
+      );
+
+      this.logger.log(`Project with all content found: ${project.id}`);
+
+      return {
+        success: true,
+        project: {
+          ...project,
+          selectedSegmentation,
+        },
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to fetch project with content: ${error.message}`,
+      );
+      throw error;
+    }
+  }
+
   async update(
     id: string,
     updateProjectDto: UpdateProjectDto,
