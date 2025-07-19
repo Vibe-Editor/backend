@@ -1,4 +1,4 @@
-import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Post, UseGuards, Get, Query } from '@nestjs/common';
 import { ImageGenDto } from './dto/image-gen.dto';
 import { ImageGenService } from './image-gen.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -15,5 +15,17 @@ export class ImageGenController {
     @CurrentUser('id') userId: string,
   ) {
     return this.imageGenService.generateImage(imageGenDto, userId);
+  }
+
+  @Get()
+  async getStoredImages(
+    @CurrentUser('id') userId: string,
+    @Query('id') imageId?: string,
+    @Query('projectId') projectId?: string,
+  ) {
+    if (imageId) {
+      return this.imageGenService.getImageById(imageId, userId);
+    }
+    return this.imageGenService.getAllImages(userId, projectId);
   }
 }

@@ -38,6 +38,14 @@ export class ProjectsController {
     return this.projectsService.findOne(id, userId);
   }
 
+  @Get(':id/full')
+  findOneWithAllContent(
+    @Param('id') id: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.projectsService.findOneWithAllContent(id, userId);
+  }
+
   @Patch(':id')
   update(
     @Param('id') id: string,

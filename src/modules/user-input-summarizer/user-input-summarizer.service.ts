@@ -3,6 +3,7 @@ import {
   Logger,
   BadRequestException,
   InternalServerErrorException,
+  NotFoundException,
 } from '@nestjs/common';
 import { GoogleGenAI } from '@google/genai';
 import { UserInputSummarizerDto } from './dto/user-input-summarizer.dto';
@@ -174,6 +175,97 @@ Create a comprehensive summary that prioritizes user input when conflicts exist 
 
       throw new InternalServerErrorException(
         `Failed to summarize content: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Get all content summaries for a user, optionally filtered by project
+   */
+  async getAllSummaries(userId: string, projectId?: string) {
+    try {
+      const where = {
+        userId,
+        ...(projectId && { projectId }),
+      };
+
+      const summaries = await this.prisma.contentSummary.findMany({
+        where,
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+
+      this.logger.log(
+        `Retrieved ${summaries.length} content summaries for user ${userId}${
+          projectId ? ` in project ${projectId}` : ''
+        }`,
+      );
+
+      return {
+        success: true,
+        count: summaries.length,
+        summaries,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to retrieve summaries: ${error.message}`);
+      throw new InternalServerErrorException(
+        `Failed to retrieve summaries: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Get a specific content summary by ID for a user
+   */
+  async getSummaryById(summaryId: string, userId: string) {
+    try {
+      const summary = await this.prisma.contentSummary.findFirst({
+        where: {
+          id: summaryId,
+          userId, // Ensure user can only access their own summaries
+        },
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      if (!summary) {
+        throw new NotFoundException(
+          `Content summary with ID ${summaryId} not found or you don't have access to it`,
+        );
+      }
+
+      this.logger.log(
+        `Retrieved content summary ${summaryId} for user ${userId}`,
+      );
+
+      return {
+        success: true,
+        summary,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to retrieve summary ${summaryId}: ${error.message}`,
+      );
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(
+        `Failed to retrieve summary: ${error.message}`,
       );
     }
   }
