@@ -17,6 +17,19 @@ export class ProjectsService {
   private readonly logger = new Logger(ProjectsService.name);
   private readonly prisma = new PrismaClient();
 
+  /**
+   * Safely parse JSON string, return original value if parsing fails
+   */
+  private safeJsonParse(jsonString: string): any {
+    try {
+      return JSON.parse(jsonString);
+    } catch {
+      // If parsing fails, return the original string
+      // This handles cases where the field might not be JSON
+      return jsonString;
+    }
+  }
+
   async create(
     createProjectDto: CreateProjectDto,
     userId: string,
@@ -163,12 +176,20 @@ export class ProjectsService {
         (seg) => seg.isSelected,
       );
 
+      // Parse JSON strings in conversation history
+      const parsedConversations = project.conversations.map((conversation) => ({
+        ...conversation,
+        userInput: this.safeJsonParse(conversation.userInput),
+        response: this.safeJsonParse(conversation.response),
+      }));
+
       this.logger.log(`Project with all content found: ${project.id}`);
 
       return {
         success: true,
         project: {
           ...project,
+          conversations: parsedConversations,
           selectedSegmentation,
         },
       };
