@@ -642,11 +642,11 @@ export class SegmentationService {
   }
 
   /**
-   * Select a segmentation as the active one for a project
+   * Select a segmentation (supports multiple selections per project)
+   * This allows users to select multiple segmentations throughout their iterative workflow
    */
   async selectSegmentation(segmentationId: string, userId: string) {
     try {
-      // First, verify the segmentation exists and belongs to the user
       const segmentation = await this.prisma.videoSegmentation.findFirst({
         where: {
           id: segmentationId,
@@ -668,37 +668,8 @@ export class SegmentationService {
         );
       }
 
-      // If this segmentation has a project, deselect all other segmentations in the same project
-      if (segmentation.projectId) {
-        await this.prisma.videoSegmentation.updateMany({
-          where: {
-            projectId: segmentation.projectId,
-            userId,
-            id: {
-              not: segmentationId,
-            },
-          },
-          data: {
-            isSelected: false,
-          },
-        });
-      } else {
-        // If no project, deselect all segmentations for this user without project
-        await this.prisma.videoSegmentation.updateMany({
-          where: {
-            projectId: null,
-            userId,
-            id: {
-              not: segmentationId,
-            },
-          },
-          data: {
-            isSelected: false,
-          },
-        });
-      }
-
-      // Now select the current segmentation
+      // Select the current segmentation without deselecting others
+      // This supports the iterative workflow where multiple segmentations can be selected per project
       const updatedSegmentation = await this.prisma.videoSegmentation.update({
         where: {
           id: segmentationId,
@@ -722,7 +693,7 @@ export class SegmentationService {
       });
 
       console.log(
-        `Selected segmentation ${segmentationId} for user ${userId} in project ${segmentation.projectId || 'default'}`,
+        `Selected segmentation ${segmentationId} for user ${userId} - supports multiple selections per project`,
       );
 
       return {
