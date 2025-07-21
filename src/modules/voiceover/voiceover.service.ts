@@ -339,4 +339,96 @@ export class VoiceoverService {
       );
     }
   }
+
+  /**
+   * Update the narration prompt of a specific generated voiceover
+   */
+  async updateVoiceoverPrompt(
+    voiceoverId: string,
+    newPrompt: string,
+    userId: string,
+  ) {
+    try {
+      // First, verify the voiceover exists and belongs to the user
+      const existingVoiceover = await this.prisma.generatedVoiceover.findFirst({
+        where: {
+          id: voiceoverId,
+          userId,
+        },
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      if (!existingVoiceover) {
+        throw new NotFoundException(
+          `Generated voiceover with ID ${voiceoverId} not found or you don't have access to it`,
+        );
+      }
+
+      // Update only the narration prompt
+      const updatedVoiceover = await this.prisma.generatedVoiceover.update({
+        where: {
+          id: voiceoverId,
+        },
+        data: {
+          narrationPrompt: newPrompt,
+        },
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      // Log the update in conversation history
+      if (existingVoiceover.projectId) {
+        await this.prisma.conversationHistory.create({
+          data: {
+            type: 'VOICEOVER_GENERATION',
+            userInput: JSON.stringify({
+              action: 'update_prompt',
+              voiceoverId: voiceoverId,
+              newPrompt: newPrompt,
+              oldPrompt: existingVoiceover.narrationPrompt,
+            }),
+            response: JSON.stringify({
+              success: true,
+              message: 'Voiceover prompt updated successfully',
+            }),
+            projectId: existingVoiceover.projectId,
+            userId: userId,
+          },
+        });
+      }
+
+      this.logger.log(
+        `Updated narration prompt for voiceover ${voiceoverId} for user ${userId}`,
+      );
+
+      return {
+        success: true,
+        message: 'Voiceover prompt updated successfully',
+        voiceover: updatedVoiceover,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to update voiceover prompt ${voiceoverId}: ${error.message}`,
+      );
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(
+        `Failed to update voiceover prompt: ${error.message}`,
+      );
+    }
+  }
 }

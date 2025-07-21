@@ -73,7 +73,9 @@ async function generateKlingVideo(
         logs: true,
         onQueueUpdate: (update) => {
           if (update.status === 'IN_PROGRESS') {
-            update.logs?.map((log) => log.message).forEach((msg) => logger.debug(msg));
+            update.logs
+              ?.map((log) => log.message)
+              .forEach((msg) => logger.debug(msg));
           }
         },
       },
@@ -90,10 +92,13 @@ async function generateKlingVideo(
     logger.log(`Successfully uploaded Kling video to S3: ${s3Key}`);
 
     const totalTime = Date.now() - startTime;
-    logger.log(`Kling video generation completed successfully in ${totalTime}ms`, {
-      s3Key,
-      uuid,
-    });
+    logger.log(
+      `Kling video generation completed successfully in ${totalTime}ms`,
+      {
+        s3Key,
+        uuid,
+      },
+    );
 
     return {
       s3Keys: [s3Key],

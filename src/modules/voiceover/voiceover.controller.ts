@@ -1,6 +1,16 @@
-import { Controller, Post, Body, UseGuards, Get, Query } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  UseGuards,
+  Get,
+  Query,
+  Patch,
+  Param,
+} from '@nestjs/common';
 import { VoiceoverService } from './voiceover.service';
 import { VoiceoverDto } from './dto/voiceover.dto';
+import { UpdateVoiceoverDto } from './dto/update-voiceover.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/user.decorator';
 
@@ -27,5 +37,18 @@ export class VoiceoverController {
       return this.voiceoverService.getVoiceoverById(voiceoverId, userId);
     }
     return this.voiceoverService.getAllVoiceovers(userId, projectId);
+  }
+
+  @Patch(':id')
+  async updateVoiceoverPrompt(
+    @Param('id') voiceoverId: string,
+    @Body() updateVoiceoverDto: UpdateVoiceoverDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.voiceoverService.updateVoiceoverPrompt(
+      voiceoverId,
+      updateVoiceoverDto.narration_prompt,
+      userId,
+    );
   }
 }

@@ -269,4 +269,94 @@ Create a comprehensive summary that prioritizes user input when conflicts exist 
       );
     }
   }
+
+  /**
+   * Update a specific content summary by ID for a user
+   */
+  async updateSummary(summaryId: string, updateData: any, userId: string) {
+    try {
+      // First check if the summary exists and belongs to the user
+      const existingSummary = await this.prisma.contentSummary.findFirst({
+        where: {
+          id: summaryId,
+          userId, // Ensure user can only update their own summaries
+        },
+      });
+
+      if (!existingSummary) {
+        throw new NotFoundException(
+          `Content summary with ID ${summaryId} not found or you don't have access to it`,
+        );
+      }
+
+      // Prepare update data - only include fields that are provided
+      const updateFields: any = {};
+      if (updateData.original_content !== undefined) {
+        updateFields.originalContent = updateData.original_content;
+      }
+      if (updateData.user_input !== undefined) {
+        updateFields.userInput = updateData.user_input;
+      }
+
+      // Update the content summary
+      const updatedSummary = await this.prisma.contentSummary.update({
+        where: {
+          id: summaryId,
+        },
+        data: updateFields,
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      this.logger.log(
+        `Updated content summary ${summaryId} for user ${userId}`,
+      );
+
+      // Log the update in conversation history
+      await this.prisma.conversationHistory.create({
+        data: {
+          type: 'CONTENT_SUMMARY',
+          userInput: `Updated content summary ${summaryId}`,
+          response: JSON.stringify({
+            action: 'update_summary',
+            summaryId,
+            updatedFields: updateFields,
+            oldValues: {
+              originalContent: existingSummary.originalContent,
+              userInput: existingSummary.userInput,
+            },
+          }),
+          metadata: {
+            action: 'update',
+            summaryId,
+            updatedFields: Object.keys(updateFields),
+          },
+          projectId: updatedSummary.projectId,
+          userId,
+        },
+      });
+
+      return {
+        success: true,
+        message: 'Content summary updated successfully',
+        summary: updatedSummary,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to update content summary ${summaryId}: ${error.message}`,
+      );
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(
+        `Failed to update content summary: ${error.message}`,
+      );
+    }
+  }
 }

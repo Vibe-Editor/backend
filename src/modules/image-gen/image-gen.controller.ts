@@ -1,5 +1,15 @@
-import { Body, Controller, Post, UseGuards, Get, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Post,
+  UseGuards,
+  Get,
+  Query,
+  Patch,
+  Param,
+} from '@nestjs/common';
 import { ImageGenDto } from './dto/image-gen.dto';
+import { UpdateImageGenDto } from './dto/update-image-gen.dto';
 import { ImageGenService } from './image-gen.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/user.decorator';
@@ -27,5 +37,18 @@ export class ImageGenController {
       return this.imageGenService.getImageById(imageId, userId);
     }
     return this.imageGenService.getAllImages(userId, projectId);
+  }
+
+  @Patch(':id')
+  async updateImagePrompt(
+    @Param('id') imageId: string,
+    @Body() updateImageGenDto: UpdateImageGenDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.imageGenService.updateImagePrompt(
+      imageId,
+      updateImageGenDto.visual_prompt,
+      userId,
+    );
   }
 }

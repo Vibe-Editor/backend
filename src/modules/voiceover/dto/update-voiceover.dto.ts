@@ -1,7 +1,7 @@
 import { IsString, IsNotEmpty } from 'class-validator';
 
-export class GetWebInfoDto {
+export class UpdateVoiceoverDto {
   @IsString()
   @IsNotEmpty()
-  prompt: string;
+  narration_prompt: string;
 }

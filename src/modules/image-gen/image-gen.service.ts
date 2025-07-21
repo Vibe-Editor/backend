@@ -401,4 +401,92 @@ export class ImageGenService {
       );
     }
   }
+
+  /**
+   * Update the visual prompt of a specific generated image
+   */
+  async updateImagePrompt(imageId: string, newPrompt: string, userId: string) {
+    try {
+      // First, verify the image exists and belongs to the user
+      const existingImage = await this.prisma.generatedImage.findFirst({
+        where: {
+          id: imageId,
+          userId,
+        },
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      if (!existingImage) {
+        throw new NotFoundException(
+          `Generated image with ID ${imageId} not found or you don't have access to it`,
+        );
+      }
+
+      // Update only the visual prompt
+      const updatedImage = await this.prisma.generatedImage.update({
+        where: {
+          id: imageId,
+        },
+        data: {
+          visualPrompt: newPrompt,
+        },
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      // Log the update in conversation history
+      if (existingImage.projectId) {
+        await this.prisma.conversationHistory.create({
+          data: {
+            type: 'IMAGE_GENERATION',
+            userInput: JSON.stringify({
+              action: 'update_prompt',
+              imageId: imageId,
+              newPrompt: newPrompt,
+              oldPrompt: existingImage.visualPrompt,
+            }),
+            response: JSON.stringify({
+              success: true,
+              message: 'Image prompt updated successfully',
+            }),
+            projectId: existingImage.projectId,
+            userId: userId,
+          },
+        });
+      }
+
+      this.logger.log(
+        `Updated visual prompt for image ${imageId} for user ${userId}`,
+      );
+
+      return {
+        success: true,
+        message: 'Image prompt updated successfully',
+        image: updatedImage,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to update image prompt ${imageId}: ${error.message}`,
+      );
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(
+        `Failed to update image prompt: ${error.message}`,
+      );
+    }
+  }
 }

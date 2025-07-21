@@ -1,7 +1,7 @@
 import { IsString, IsNotEmpty } from 'class-validator';
 
-export class GetWebInfoDto {
+export class UpdateVideoGenDto {
   @IsString()
   @IsNotEmpty()
-  prompt: string;
+  animation_prompt: string;
 }

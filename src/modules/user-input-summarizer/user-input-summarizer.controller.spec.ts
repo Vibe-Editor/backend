@@ -9,7 +9,9 @@ describe('UserInputSummarizerController', () => {
       controllers: [UserInputSummarizerController],
     }).compile();
 
-    controller = module.get<UserInputSummarizerController>(UserInputSummarizerController);
+    controller = module.get<UserInputSummarizerController>(
+      UserInputSummarizerController,
+    );
   });
 
   it('should be defined', () => {
