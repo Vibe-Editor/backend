@@ -4,4 +4,8 @@ export class UpdateVideoGenDto {
   @IsString()
   @IsNotEmpty()
   animation_prompt: string;
+
+  @IsString()
+  @IsNotEmpty()
+  art_style: string;
 }

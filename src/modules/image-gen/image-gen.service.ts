@@ -403,9 +403,14 @@ export class ImageGenService {
   }
 
   /**
-   * Update the visual prompt of a specific generated image
+   * Update the visual prompt and art style of a specific generated image
    */
-  async updateImagePrompt(imageId: string, newPrompt: string, userId: string) {
+  async updateImagePrompt(
+    imageId: string,
+    newPrompt: string,
+    newArtStyle: string,
+    userId: string,
+  ) {
     try {
       // First, verify the image exists and belongs to the user
       const existingImage = await this.prisma.generatedImage.findFirst({
@@ -429,13 +434,14 @@ export class ImageGenService {
         );
       }
 
-      // Update only the visual prompt
+      // Update the visual prompt and art style
       const updatedImage = await this.prisma.generatedImage.update({
         where: {
           id: imageId,
         },
         data: {
           visualPrompt: newPrompt,
+          artStyle: newArtStyle,
         },
         include: {
           project: {
@@ -453,14 +459,16 @@ export class ImageGenService {
           data: {
             type: 'IMAGE_GENERATION',
             userInput: JSON.stringify({
-              action: 'update_prompt',
+              action: 'update_prompt_and_style',
               imageId: imageId,
               newPrompt: newPrompt,
               oldPrompt: existingImage.visualPrompt,
+              newArtStyle: newArtStyle,
+              oldArtStyle: existingImage.artStyle,
             }),
             response: JSON.stringify({
               success: true,
-              message: 'Image prompt updated successfully',
+              message: 'Image prompt and art style updated successfully',
             }),
             projectId: existingImage.projectId,
             userId: userId,
@@ -469,17 +477,17 @@ export class ImageGenService {
       }
 
       this.logger.log(
-        `Updated visual prompt for image ${imageId} for user ${userId}`,
+        `Updated visual prompt and art style for image ${imageId} for user ${userId}`,
       );
 
       return {
         success: true,
-        message: 'Image prompt updated successfully',
+        message: 'Image prompt and art style updated successfully',
         image: updatedImage,
       };
     } catch (error) {
       this.logger.error(
-        `Failed to update image prompt ${imageId}: ${error.message}`,
+        `Failed to update image prompt and art style ${imageId}: ${error.message}`,
       );
       if (error instanceof NotFoundException) {
         throw error;
