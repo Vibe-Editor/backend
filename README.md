@@ -859,16 +859,17 @@ Each feature module should have:
     - `projectId` (optional): Filter images by project
   - **Returns**: Array of all user's generated images
 
-- `PATCH /image-gen/:id` - Update the visual prompt and art style of a specific generated image
+- `PATCH /image-gen/:id` - Update the visual prompt, art style, and/or S3 key of a specific generated image
   - **Requires**: JWT Authentication
   - **URL Parameter**: `id` - The image ID to update
-  - **Body**: `{visual_prompt: string, art_style: string}` - The new visual prompt and art style to update
+  - **Body**: `{visual_prompt: string, art_style: string, s3_key?: string}` - The new visual prompt, art style, and optionally S3 key to update
   - **Example Request**:
 
   ```json
   {
     "visual_prompt": "A sleek eco-friendly water bottle on a wooden desk with green plants in the background, focusing on sustainability and health benefits",
-    "art_style": "cinematic photography with soft lighting"
+    "art_style": "cinematic photography with soft lighting",
+    "s3_key": "images/updated-segment-001-image.jpg"
   }
   ```
 
@@ -877,14 +878,14 @@ Each feature module should have:
   ```json
   {
     "success": true,
-    "message": "Image prompt and art style updated successfully",
+    "message": "Image prompt, art style, and S3 key updated successfully",
     "image": {
       "id": "clxyz123abc",
       "visualPrompt": "A sleek eco-friendly water bottle on a wooden desk with green plants in the background, focusing on sustainability and health benefits",
       "artStyle": "cinematic photography with soft lighting",
       "uuid": "segment-001-image",
       "success": true,
-      "s3Key": "images/segment-001-image.jpg",
+      "s3Key": "images/updated-segment-001-image.jpg",
       "model": "recraft-ai",
       "message": null,
       "imageSizeBytes": 245760,
@@ -900,11 +901,12 @@ Each feature module should have:
   ```
 
   - **Features**:
-    - Updates both the visual prompt and art style fields of the image
+    - Updates the visual prompt, art style, and optionally the S3 key fields of the image
+    - S3 key parameter is optional - if not provided, only the prompt and art style are updated
     - Validates that the image belongs to the authenticated user
     - Logs the update in conversation history for tracking
     - Returns the updated image with project information
-    - Maintains all other image data (S3 key, model, etc.) unchanged
+    - Maintains all other image data (model, size, etc.) unchanged
 
 - `POST /video-gen` - Generate videos using AI model handoff (Google Veo2 or RunwayML Gen-3)
   - **Features**: Intelligent model selection based on content style (cartoonish vs realistic)
@@ -942,16 +944,17 @@ Each feature module should have:
     - `projectId` (optional): Filter videos by project
   - **Returns**: Array of all user's generated videos
 
-- `PATCH /video-gen/:id` - Update the animation prompt and art style of a specific generated video
+- `PATCH /video-gen/:id` - Update the animation prompt, art style, and/or input image S3 key of a specific generated video
   - **Requires**: JWT Authentication
   - **URL Parameter**: `id` - The video ID to update
-  - **Body**: `{animation_prompt: string, art_style: string}` - The new animation prompt and art style to update
+  - **Body**: `{animation_prompt: string, art_style: string, imageS3Key?: string}` - The new animation prompt, art style, and optionally input image S3 key to update
   - **Example Request**:
 
   ```json
   {
     "animation_prompt": "Camera slowly zooms in on the water bottle while a hand reaches for it, emphasizing the health benefits with smooth professional movement and soft lighting",
-    "art_style": "cinematic realistic with dramatic lighting"
+    "art_style": "cinematic realistic with dramatic lighting",
+    "imageS3Key": "images/updated-segment-001-image.jpg"
   }
   ```
 
@@ -960,12 +963,12 @@ Each feature module should have:
   ```json
   {
     "success": true,
-    "message": "Video prompt and art style updated successfully",
+    "message": "Video prompt, art style, and image S3 key updated successfully",
     "video": {
       "id": "clxyz123abc",
       "animationPrompt": "Camera slowly zooms in on the water bottle while a hand reaches for it, emphasizing the health benefits with smooth professional movement and soft lighting",
       "artStyle": "cinematic realistic with dramatic lighting",
-      "imageS3Key": "images/segment-001-image.jpg",
+      "imageS3Key": "images/updated-segment-001-image.jpg",
       "uuid": "segment-001-video",
       "success": true,
       "model": "runwayml-gen3",
@@ -996,11 +999,12 @@ Each feature module should have:
   ```
 
   - **Features**:
-    - Updates both the animation prompt and art style fields of the video
+    - Updates the animation prompt, art style, and optionally the input image S3 key fields of the video
+    - Input image S3 key parameter is optional - if not provided, only the prompt and art style are updated
     - Validates that the video belongs to the authenticated user
     - Logs the update in conversation history for tracking
     - Returns the updated video with project information and video files
-    - Maintains all other video data (S3 keys, model, etc.) unchanged
+    - Maintains all other video data (output video S3 keys, model, etc.) unchanged
 
 - `POST /voiceover` - Generate voiceovers
   - **Example Request**:
@@ -1027,15 +1031,16 @@ Each feature module should have:
     - `projectId` (optional): Filter voiceovers by project
   - **Returns**: Array of all user's generated voiceovers
 
-- `PATCH /voiceover/:id` - Update the narration prompt of a specific generated voiceover
+- `PATCH /voiceover/:id` - Update the narration prompt and/or S3 key of a specific generated voiceover
   - **Requires**: JWT Authentication
   - **URL Parameter**: `id` - The voiceover ID to update
-  - **Body**: `{narration_prompt: string}` - The new narration prompt to update
+  - **Body**: `{narration_prompt: string, s3_key?: string}` - The new narration prompt and optionally S3 key to update
   - **Example Request**:
 
   ```json
   {
-    "narration_prompt": "Introducing the future of hydration - our revolutionary eco-friendly water bottle that's designed for health-conscious athletes and environmentally aware consumers."
+    "narration_prompt": "Introducing the future of hydration - our revolutionary eco-friendly water bottle that's designed for health-conscious athletes and environmentally aware consumers.",
+    "s3_key": "voiceovers/updated-narration-001.mp3"
   }
   ```
 
@@ -1044,11 +1049,11 @@ Each feature module should have:
   ```json
   {
     "success": true,
-    "message": "Voiceover prompt updated successfully",
+    "message": "Voiceover prompt and S3 key updated successfully",
     "voiceover": {
       "id": "clxyz123abc",
       "narrationPrompt": "Introducing the future of hydration - our revolutionary eco-friendly water bottle that's designed for health-conscious athletes and environmentally aware consumers.",
-      "s3Key": "voiceovers/narration-001.mp3",
+      "s3Key": "voiceovers/updated-narration-001.mp3",
       "projectId": "proj123",
       "userId": "user123",
       "createdAt": "2025-01-16T10:30:00Z",
@@ -1061,11 +1066,12 @@ Each feature module should have:
   ```
 
   - **Features**:
-    - Only updates the narration prompt field of the voiceover
+    - Updates the narration prompt and optionally the S3 key field of the voiceover
+    - S3 key parameter is optional - if not provided, only the prompt is updated
     - Validates that the voiceover belongs to the authenticated user
     - Logs the update in conversation history for tracking
     - Returns the updated voiceover with project information
-    - Maintains all other voiceover data (S3 key, project association, etc.) unchanged
+    - Maintains all other voiceover data unchanged
 
 ## Authentication Flow
 

@@ -49,6 +49,7 @@ export class VoiceoverController {
       voiceoverId,
       updateVoiceoverDto.narration_prompt,
       userId,
+      updateVoiceoverDto.s3_key,
     );
   }
 }
