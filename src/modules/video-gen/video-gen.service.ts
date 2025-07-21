@@ -399,9 +399,14 @@ export class VideoGenService {
   }
 
   /**
-   * Update the animation prompt of a specific generated video
+   * Update the animation prompt and art style of a specific generated video
    */
-  async updateVideoPrompt(videoId: string, newPrompt: string, userId: string) {
+  async updateVideoPrompt(
+    videoId: string,
+    newPrompt: string,
+    newArtStyle: string,
+    userId: string,
+  ) {
     try {
       // First, verify the video exists and belongs to the user
       const existingVideo = await this.prisma.generatedVideo.findFirst({
@@ -426,13 +431,14 @@ export class VideoGenService {
         );
       }
 
-      // Update only the animation prompt
+      // Update the animation prompt and art style
       const updatedVideo = await this.prisma.generatedVideo.update({
         where: {
           id: videoId,
         },
         data: {
           animationPrompt: newPrompt,
+          artStyle: newArtStyle,
         },
         include: {
           project: {
@@ -451,14 +457,16 @@ export class VideoGenService {
           data: {
             type: 'VIDEO_GENERATION',
             userInput: JSON.stringify({
-              action: 'update_prompt',
+              action: 'update_prompt_and_style',
               videoId: videoId,
               newPrompt: newPrompt,
               oldPrompt: existingVideo.animationPrompt,
+              newArtStyle: newArtStyle,
+              oldArtStyle: existingVideo.artStyle,
             }),
             response: JSON.stringify({
               success: true,
-              message: 'Video prompt updated successfully',
+              message: 'Video prompt and art style updated successfully',
             }),
             projectId: existingVideo.projectId,
             userId: userId,
@@ -467,23 +475,23 @@ export class VideoGenService {
       }
 
       this.logger.log(
-        `Updated animation prompt for video ${videoId} for user ${userId}`,
+        `Updated animation prompt and art style for video ${videoId} for user ${userId}`,
       );
 
       return {
         success: true,
-        message: 'Video prompt updated successfully',
+        message: 'Video prompt and art style updated successfully',
         video: updatedVideo,
       };
     } catch (error) {
       this.logger.error(
-        `Failed to update video prompt ${videoId}: ${error.message}`,
+        `Failed to update video prompt and art style ${videoId}: ${error.message}`,
       );
       if (error instanceof NotFoundException) {
         throw error;
       }
       throw new InternalServerErrorException(
-        `Failed to update video prompt: ${error.message}`,
+        `Failed to update video prompt and art style: ${error.message}`,
       );
     }
   }

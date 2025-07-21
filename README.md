@@ -859,15 +859,16 @@ Each feature module should have:
     - `projectId` (optional): Filter images by project
   - **Returns**: Array of all user's generated images
 
-- `PATCH /image-gen/:id` - Update the visual prompt of a specific generated image
+- `PATCH /image-gen/:id` - Update the visual prompt and art style of a specific generated image
   - **Requires**: JWT Authentication
   - **URL Parameter**: `id` - The image ID to update
-  - **Body**: `{visual_prompt: string}` - The new visual prompt to update
+  - **Body**: `{visual_prompt: string, art_style: string}` - The new visual prompt and art style to update
   - **Example Request**:
 
   ```json
   {
-    "visual_prompt": "A sleek eco-friendly water bottle on a wooden desk with green plants in the background, focusing on sustainability and health benefits"
+    "visual_prompt": "A sleek eco-friendly water bottle on a wooden desk with green plants in the background, focusing on sustainability and health benefits",
+    "art_style": "cinematic photography with soft lighting"
   }
   ```
 
@@ -876,11 +877,11 @@ Each feature module should have:
   ```json
   {
     "success": true,
-    "message": "Image prompt updated successfully",
+    "message": "Image prompt and art style updated successfully",
     "image": {
       "id": "clxyz123abc",
       "visualPrompt": "A sleek eco-friendly water bottle on a wooden desk with green plants in the background, focusing on sustainability and health benefits",
-      "artStyle": "modern minimalist photography",
+      "artStyle": "cinematic photography with soft lighting",
       "uuid": "segment-001-image",
       "success": true,
       "s3Key": "images/segment-001-image.jpg",
@@ -899,11 +900,11 @@ Each feature module should have:
   ```
 
   - **Features**:
-    - Only updates the visual prompt field of the image
+    - Updates both the visual prompt and art style fields of the image
     - Validates that the image belongs to the authenticated user
     - Logs the update in conversation history for tracking
     - Returns the updated image with project information
-    - Maintains all other image data (S3 key, model, art style, etc.) unchanged
+    - Maintains all other image data (S3 key, model, etc.) unchanged
 
 - `POST /video-gen` - Generate videos using AI model handoff (Google Veo2 or RunwayML Gen-3)
   - **Features**: Intelligent model selection based on content style (cartoonish vs realistic)
@@ -941,15 +942,16 @@ Each feature module should have:
     - `projectId` (optional): Filter videos by project
   - **Returns**: Array of all user's generated videos
 
-- `PATCH /video-gen/:id` - Update the animation prompt of a specific generated video
+- `PATCH /video-gen/:id` - Update the animation prompt and art style of a specific generated video
   - **Requires**: JWT Authentication
   - **URL Parameter**: `id` - The video ID to update
-  - **Body**: `{animation_prompt: string}` - The new animation prompt to update
+  - **Body**: `{animation_prompt: string, art_style: string}` - The new animation prompt and art style to update
   - **Example Request**:
 
   ```json
   {
-    "animation_prompt": "Camera slowly zooms in on the water bottle while a hand reaches for it, emphasizing the health benefits with smooth professional movement and soft lighting"
+    "animation_prompt": "Camera slowly zooms in on the water bottle while a hand reaches for it, emphasizing the health benefits with smooth professional movement and soft lighting",
+    "art_style": "cinematic realistic with dramatic lighting"
   }
   ```
 
@@ -958,11 +960,11 @@ Each feature module should have:
   ```json
   {
     "success": true,
-    "message": "Video prompt updated successfully",
+    "message": "Video prompt and art style updated successfully",
     "video": {
       "id": "clxyz123abc",
       "animationPrompt": "Camera slowly zooms in on the water bottle while a hand reaches for it, emphasizing the health benefits with smooth professional movement and soft lighting",
-      "artStyle": "cinematic realistic",
+      "artStyle": "cinematic realistic with dramatic lighting",
       "imageS3Key": "images/segment-001-image.jpg",
       "uuid": "segment-001-video",
       "success": true,
@@ -994,11 +996,11 @@ Each feature module should have:
   ```
 
   - **Features**:
-    - Only updates the animation prompt field of the video
+    - Updates both the animation prompt and art style fields of the video
     - Validates that the video belongs to the authenticated user
     - Logs the update in conversation history for tracking
     - Returns the updated video with project information and video files
-    - Maintains all other video data (S3 keys, model, art style, etc.) unchanged
+    - Maintains all other video data (S3 keys, model, etc.) unchanged
 
 - `POST /voiceover` - Generate voiceovers
   - **Example Request**:
