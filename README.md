@@ -254,45 +254,191 @@ Each feature module should have:
   - **Requires**: JWT Authentication
   - **Example Request**: `GET /projects/clxyz123abc/full`
   - **Returns**: Project with all foreign keys to videos, images, segmentations, concepts, etc.
-  - **Features**: Shows selected segmentation and S3 keys for media files
-  - **Response Example**:
+  - **Features**: Shows multiple selected segmentations and S3 keys for media files
+  - **Response Schema**:
 
-  ```json
+  ```typescript
   {
-    "success": true,
-    "project": {
-      "id": "clxyz123abc",
-      "name": "Eco Water Bottle Promo",
-      "videoConcepts": [
-        { "id": "concept-1", "title": "Sustainability Focus", "concept": "..." }
-      ],
-      "videoSegmentations": [
-        {
-          "id": "seg-1",
-          "isSelected": true,
-          "segments": [
-            {
-              "id": "segment-1",
-              "visual": "Water bottle on desk",
-              "narration": "Introducing..."
-            }
-          ]
-        }
-      ],
-      "selectedSegmentation": { "id": "seg-1", "isSelected": true },
-      "generatedImages": [
-        { "id": "img-1", "s3Key": "images/bottle-scene.jpg", "success": true }
-      ],
-      "generatedVideos": [
-        { "id": "vid-1", "videoFiles": [{ "s3Key": "videos/promo.mp4" }] }
-      ],
-      "generatedVoiceovers": [
-        { "id": "voice-1", "s3Key": "audio/narration.mp3" }
-      ],
-      "_count": { "generatedImages": 3, "generatedVideos": 2 }
+    success: boolean;
+    project: {
+      // Basic project info
+      id: string;
+      name: string;
+      description: string | null;
+      userId: string;
+      createdAt: string; // ISO date
+      updatedAt: string; // ISO date
+
+      // Conversations with parsed JSON
+      conversations: Array<{
+        id: string;
+        type:
+          | 'CONCEPT_GENERATION'
+          | 'WEB_RESEARCH'
+          | 'CONTENT_SUMMARY'
+          | 'VIDEO_SEGMENTATION'
+          | 'IMAGE_GENERATION'
+          | 'VIDEO_GENERATION'
+          | 'VOICEOVER_GENERATION'
+          | 'GENERAL_CHAT';
+        userInput: any; // Parsed JSON object
+        response: any; // Parsed JSON object
+        metadata: any | null; // Optional metadata
+        projectId: string;
+        userId: string;
+        createdAt: string;
+      }>;
+
+      // Video concepts
+      videoConcepts: Array<{
+        id: string;
+        prompt: string;
+        webInfo: string;
+        title: string;
+        concept: string;
+        tone: string;
+        goal: string;
+        projectId: string | null;
+        userId: string;
+        createdAt: string;
+      }>;
+
+      // Web research queries
+      webResearchQueries: Array<{
+        id: string;
+        prompt: string;
+        response: string;
+        projectId: string | null;
+        userId: string;
+        createdAt: string;
+      }>;
+
+      // Content summaries
+      contentSummaries: Array<{
+        id: string;
+        originalContent: string;
+        userInput: string;
+        summary: string;
+        projectId: string | null;
+        userId: string;
+        createdAt: string;
+      }>;
+
+      // Video segmentations with segments (supports multiple selections)
+      videoSegmentations: Array<{
+        id: string;
+        prompt: string;
+        concept: string;
+        negativePrompt: string | null;
+        artStyle: string;
+        model: string;
+        isSelected: boolean; // Multiple can be true per project
+        projectId: string | null;
+        userId: string;
+        createdAt: string;
+        segments: Array<{
+          id: string;
+          segmentId: string;
+          visual: string;
+          narration: string;
+          animation: string;
+          videoSegmentationId: string;
+          createdAt: string;
+        }>;
+      }>;
+
+      // Selected segmentations (convenience field - array of all selected ones)
+      selectedSegmentations: Array<{
+        id: string;
+        prompt: string;
+        concept: string;
+        negativePrompt: string | null;
+        artStyle: string;
+        model: string;
+        isSelected: true; // Always true
+        projectId: string | null;
+        userId: string;
+        createdAt: string;
+        segments: Array<{
+          id: string;
+          segmentId: string;
+          visual: string;
+          narration: string;
+          animation: string;
+          videoSegmentationId: string;
+          createdAt: string;
+        }>;
+      }>;
+
+      // Generated images with S3 keys
+      generatedImages: Array<{
+        id: string;
+        visualPrompt: string;
+        artStyle: string;
+        uuid: string;
+        success: boolean;
+        s3Key: string | null; // S3 file path for download
+        model: string | null;
+        message: string | null;
+        imageSizeBytes: number | null;
+        projectId: string | null;
+        userId: string;
+        createdAt: string;
+      }>;
+
+      // Generated videos with file arrays
+      generatedVideos: Array<{
+        id: string;
+        animationPrompt: string;
+        artStyle: string;
+        imageS3Key: string;
+        uuid: string;
+        success: boolean;
+        model: string | null;
+        totalVideos: number | null;
+        projectId: string | null;
+        userId: string;
+        createdAt: string;
+        videoFiles: Array<{
+          id: string;
+          s3Key: string; // S3 file path for download
+          generatedVideoId: string;
+          createdAt: string;
+        }>;
+      }>;
+
+      // Generated voiceovers
+      generatedVoiceovers: Array<{
+        id: string;
+        narrationPrompt: string;
+        s3Key: string; // S3 file path for download
+        projectId: string | null;
+        userId: string;
+        createdAt: string;
+      }>;
+
+      // Content statistics
+      _count: {
+        conversations: number;
+        videoConcepts: number;
+        webResearchQueries: number;
+        contentSummaries: number;
+        videoSegmentations: number;
+        generatedImages: number;
+        generatedVideos: number;
+        generatedVoiceovers: number;
+      }
     }
   }
   ```
+
+  **Key Features:**
+  - **Multiple Segmentation Selections**: Supports iterative workflow where multiple segmentations can be selected per project
+  - **Parsed JSON**: Conversation `userInput` and `response` fields are automatically parsed from JSON strings
+  - **File References**: All S3 keys for media files (images, videos, audio) are included
+  - **Statistics**: Content counts for analytics and progress tracking
+  - **Relationships**: Full foreign key relationships with nested data
+  - **Chronological Order**: All arrays sorted by creation date (newest first)
 
 - `PATCH /projects/:id` - Update project
   - **Requires**: JWT Authentication
@@ -458,13 +604,15 @@ Each feature module should have:
     - `projectId` (optional): Filter segmentations by project
   - **Returns**: Array of all user's video segmentations
 
-- `PATCH /segmentation/:id/select` - Select a segmentation as active for production
+- `PATCH /segmentation/:id/select` - Select a segmentation for production
   - **Requires**: JWT Authentication
-  - **Purpose**: Mark a specific segmentation as the selected one for a project
+  - **Purpose**: Mark a specific segmentation as selected (supports multiple selections per project)
   - **Features**:
-    - Automatically deselects other segmentations in the same project
-    - Tracks user choice when multiple segmentation options are generated
-    - Updates `isSelected` field in database
+    - Allows multiple segmentations to be selected throughout project lifecycle
+    - Each generation round can have its own selected segmentation
+    - Does NOT deselect previous selections
+    - Updates `isSelected` field to true for chosen segmentation
+  - **Workflow**: Generate 2 parallel requests → User selects 1 → Process repeats with new prompts
   - **Example Response**:
 
   ```json
