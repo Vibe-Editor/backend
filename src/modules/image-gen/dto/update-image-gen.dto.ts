@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
 
 export class UpdateImageGenDto {
   @IsString()
@@ -8,4 +8,8 @@ export class UpdateImageGenDto {
   @IsString()
   @IsNotEmpty()
   art_style: string;
+
+  @IsString()
+  @IsOptional()
+  s3_key?: string;
 }

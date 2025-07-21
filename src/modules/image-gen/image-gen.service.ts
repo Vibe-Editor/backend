@@ -403,13 +403,14 @@ export class ImageGenService {
   }
 
   /**
-   * Update the visual prompt and art style of a specific generated image
+   * Update the visual prompt, art style, and S3 key of a specific generated image
    */
   async updateImagePrompt(
     imageId: string,
     newPrompt: string,
     newArtStyle: string,
     userId: string,
+    newS3Key?: string,
   ) {
     try {
       // First, verify the image exists and belongs to the user
@@ -434,15 +435,21 @@ export class ImageGenService {
         );
       }
 
-      // Update the visual prompt and art style
+      // Update the visual prompt, art style, and optionally the S3 key
+      const updateData: any = {
+        visualPrompt: newPrompt,
+        artStyle: newArtStyle,
+      };
+
+      if (newS3Key) {
+        updateData.s3Key = newS3Key;
+      }
+
       const updatedImage = await this.prisma.generatedImage.update({
         where: {
           id: imageId,
         },
-        data: {
-          visualPrompt: newPrompt,
-          artStyle: newArtStyle,
-        },
+        data: updateData,
         include: {
           project: {
             select: {
@@ -455,20 +462,31 @@ export class ImageGenService {
 
       // Log the update in conversation history
       if (existingImage.projectId) {
+        const userInputData: any = {
+          action: newS3Key
+            ? 'update_prompt_style_and_s3key'
+            : 'update_prompt_and_style',
+          imageId: imageId,
+          newPrompt: newPrompt,
+          oldPrompt: existingImage.visualPrompt,
+          newArtStyle: newArtStyle,
+          oldArtStyle: existingImage.artStyle,
+        };
+
+        if (newS3Key) {
+          userInputData.newS3Key = newS3Key;
+          userInputData.oldS3Key = existingImage.s3Key;
+        }
+
         await this.prisma.conversationHistory.create({
           data: {
             type: 'IMAGE_GENERATION',
-            userInput: JSON.stringify({
-              action: 'update_prompt_and_style',
-              imageId: imageId,
-              newPrompt: newPrompt,
-              oldPrompt: existingImage.visualPrompt,
-              newArtStyle: newArtStyle,
-              oldArtStyle: existingImage.artStyle,
-            }),
+            userInput: JSON.stringify(userInputData),
             response: JSON.stringify({
               success: true,
-              message: 'Image prompt and art style updated successfully',
+              message: newS3Key
+                ? 'Image prompt, art style, and S3 key updated successfully'
+                : 'Image prompt and art style updated successfully',
             }),
             projectId: existingImage.projectId,
             userId: userId,
@@ -477,17 +495,19 @@ export class ImageGenService {
       }
 
       this.logger.log(
-        `Updated visual prompt and art style for image ${imageId} for user ${userId}`,
+        `Updated visual prompt, art style${newS3Key ? ', and S3 key' : ''} for image ${imageId} for user ${userId}`,
       );
 
       return {
         success: true,
-        message: 'Image prompt and art style updated successfully',
+        message: newS3Key
+          ? 'Image prompt, art style, and S3 key updated successfully'
+          : 'Image prompt and art style updated successfully',
         image: updatedImage,
       };
     } catch (error) {
       this.logger.error(
-        `Failed to update image prompt and art style ${imageId}: ${error.message}`,
+        `Failed to update image prompt, art style${newS3Key ? ', and S3 key' : ''} ${imageId}: ${error.message}`,
       );
       if (error instanceof NotFoundException) {
         throw error;

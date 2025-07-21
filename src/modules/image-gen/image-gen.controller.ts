@@ -50,6 +50,7 @@ export class ImageGenController {
       updateImageGenDto.visual_prompt,
       updateImageGenDto.art_style,
       userId,
+      updateImageGenDto.s3_key,
     );
   }
 }
