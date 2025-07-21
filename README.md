@@ -517,6 +517,50 @@ Each feature module should have:
   ]
   ```
 
+- `PATCH /concept-writer/:id` - Update the prompt of a specific video concept
+  - **Requires**: JWT Authentication
+  - **URL Parameter**: `id` - The concept ID to update
+  - **Body**: `{prompt: string}` - The new prompt to update
+  - **Example Request**:
+
+  ```json
+  {
+    "prompt": "Create a promotional video for an eco-friendly water bottle focusing on health benefits for athletes"
+  }
+  ```
+
+  - **Example Response**:
+
+  ```json
+  {
+    "success": true,
+    "message": "Concept prompt updated successfully",
+    "concept": {
+      "id": "clxyz123abc",
+      "prompt": "Create a promotional video for an eco-friendly water bottle focusing on health benefits for athletes",
+      "webInfo": "Latest trends in sustainable products...",
+      "title": "Eco-Friendly Water Bottle Promo",
+      "concept": "A 30-second video showcasing...",
+      "tone": "inspirational and modern",
+      "goal": "increase brand awareness",
+      "projectId": "proj123",
+      "userId": "user123",
+      "createdAt": "2025-01-16T10:30:00Z",
+      "project": {
+        "id": "proj123",
+        "name": "My Video Project"
+      }
+    }
+  }
+  ```
+
+  - **Features**:
+    - Only updates the prompt field of the concept
+    - Validates that the concept belongs to the authenticated user
+    - Logs the update in conversation history for tracking
+    - Returns the updated concept with project information
+    - Maintains all other concept data (title, tone, goal, etc.) unchanged
+
 ##### Web Research
 
 - `POST /get-web-info` - Get information from the web using Perplexity AI
@@ -537,6 +581,61 @@ Each feature module should have:
     - `id` (optional): Get specific research result by ID
     - `projectId` (optional): Filter research by project
   - **Returns**: Array of all user's research queries and responses
+
+- `PATCH /get-web-info/:id` - Update the prompt of a specific web research query
+  - **Requires**: JWT Authentication
+  - **URL Parameter**: `id` - The web research query ID to update
+  - **Body**: `{prompt: string}` - The new prompt to update
+  - **Example Request**:
+
+  ```json
+  {
+    "prompt": "What are the latest trends in sustainable packaging for 2025, specifically focusing on biodegradable materials?"
+  }
+  ```
+
+  - **Example Response**:
+
+  ```json
+  {
+    "success": true,
+    "message": "Web info query prompt updated successfully",
+    "webInfoQuery": {
+      "id": "clxyz123abc",
+      "prompt": "What are the latest trends in sustainable packaging for 2025, specifically focusing on biodegradable materials?",
+      "response": {
+        "id": "response-id",
+        "object": "chat.completion",
+        "created": 1642765890,
+        "model": "sonar",
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "stop",
+            "message": {
+              "role": "assistant",
+              "content": "Based on the latest research, biodegradable packaging trends for 2025 include..."
+            }
+          }
+        ]
+      },
+      "projectId": "proj123",
+      "userId": "user123",
+      "createdAt": "2025-01-16T10:30:00Z",
+      "project": {
+        "id": "proj123",
+        "name": "My Video Project"
+      }
+    }
+  }
+  ```
+
+  - **Features**:
+    - Only updates the prompt field of the web research query
+    - Validates that the query belongs to the authenticated user
+    - Logs the update in conversation history for tracking
+    - Returns the updated query with project information and parsed response
+    - Maintains the original response data from Perplexity AI unchanged
 
 ##### Content Summarization
 
@@ -559,6 +658,48 @@ Each feature module should have:
     - `id` (optional): Get specific summary by ID
     - `projectId` (optional): Filter summaries by project
   - **Returns**: Array of all user's content summaries
+
+- `PATCH /user-input-summarizer/:id` - Update a specific content summary
+  - **Requires**: JWT Authentication
+  - **URL Parameter**: `id` - The content summary ID to update
+  - **Body**: `{original_content?: string, user_input?: string}` - Fields to update (all optional)
+  - **Example Request**:
+
+  ```json
+  {
+    "original_content": "Our company specializes in creating eco-friendly water bottles made from recycled materials with advanced filtration technology...",
+    "user_input": "Make it more focused on the health benefits and target young professionals and athletes"
+  }
+  ```
+
+  - **Example Response**:
+
+  ```json
+  {
+    "success": true,
+    "message": "Content summary updated successfully",
+    "summary": {
+      "id": "clxyz123abc",
+      "originalContent": "Our company specializes in creating eco-friendly water bottles made from recycled materials with advanced filtration technology...",
+      "userInput": "Make it more focused on the health benefits and target young professionals and athletes",
+      "summary": "A 30-second video showcasing...",
+      "projectId": "proj123",
+      "userId": "user123",
+      "createdAt": "2025-01-16T10:30:00Z",
+      "project": {
+        "id": "proj123",
+        "name": "My Video Project"
+      }
+    }
+  }
+  ```
+
+  - **Features**:
+    - Updates only the provided fields (original_content and/or user_input)
+    - Validates that the summary belongs to the authenticated user
+    - Logs the update in conversation history for tracking
+    - Returns the updated summary with project information
+    - Maintains the generated summary content unchanged
 
 ##### Video Segmentation
 
@@ -627,6 +768,62 @@ Each feature module should have:
   }
   ```
 
+- `PATCH /segmentation/:id` - Update a specific video segmentation
+  - **Requires**: JWT Authentication
+  - **URL Parameter**: `id` - The segmentation ID to update
+  - **Body**: `{prompt?: string, concept?: string, negative_prompt?: string}` - Fields to update (all optional)
+  - **Example Request**:
+
+  ```json
+  {
+    "prompt": "Create a 45-second promotional video showcasing our eco-friendly water bottle with lifestyle focus",
+    "concept": "Focus on sustainability, health benefits, modern lifestyle, and athletic performance",
+    "negative_prompt": "Avoid plastic waste imagery, don't show competing brands, no medical claims"
+  }
+  ```
+
+  - **Example Response**:
+
+  ```json
+  {
+    "success": true,
+    "message": "Segmentation updated successfully",
+    "segmentation": {
+      "id": "seg-123",
+      "prompt": "Create a 45-second promotional video showcasing our eco-friendly water bottle with lifestyle focus",
+      "concept": "Focus on sustainability, health benefits, modern lifestyle, and athletic performance",
+      "negativePrompt": "Avoid plastic waste imagery, don't show competing brands, no medical claims",
+      "artStyle": "modern minimalist",
+      "model": "gpt-4o",
+      "isSelected": false,
+      "projectId": "proj123",
+      "userId": "user123",
+      "createdAt": "2025-01-16T10:30:00Z",
+      "project": {
+        "id": "proj123",
+        "name": "My Video Project"
+      },
+      "segments": [
+        {
+          "id": "segment-1",
+          "segmentId": "seg-1",
+          "visual": "Close-up of sleek water bottle on wooden desk with plants",
+          "narration": "Meet the future of hydration",
+          "animation": "Smooth zoom-in on bottle label",
+          "createdAt": "2025-01-16T10:30:00Z"
+        }
+      ]
+    }
+  }
+  ```
+
+  - **Features**:
+    - Updates only the provided fields (prompt, concept, and/or negative_prompt)
+    - Validates that the segmentation belongs to the authenticated user
+    - Logs the update in conversation history for tracking
+    - Returns the updated segmentation with project information and segments
+    - Maintains all generated segments and other data unchanged
+
 ##### Image Generation
 
 - `POST /image-gen` - Generate images using AI model handoff (Recraft AI or Google Imagen)
@@ -661,6 +858,52 @@ Each feature module should have:
     - `id` (optional): Get specific image by ID
     - `projectId` (optional): Filter images by project
   - **Returns**: Array of all user's generated images
+
+- `PATCH /image-gen/:id` - Update the visual prompt of a specific generated image
+  - **Requires**: JWT Authentication
+  - **URL Parameter**: `id` - The image ID to update
+  - **Body**: `{visual_prompt: string}` - The new visual prompt to update
+  - **Example Request**:
+
+  ```json
+  {
+    "visual_prompt": "A sleek eco-friendly water bottle on a wooden desk with green plants in the background, focusing on sustainability and health benefits"
+  }
+  ```
+
+  - **Example Response**:
+
+  ```json
+  {
+    "success": true,
+    "message": "Image prompt updated successfully",
+    "image": {
+      "id": "clxyz123abc",
+      "visualPrompt": "A sleek eco-friendly water bottle on a wooden desk with green plants in the background, focusing on sustainability and health benefits",
+      "artStyle": "modern minimalist photography",
+      "uuid": "segment-001-image",
+      "success": true,
+      "s3Key": "images/segment-001-image.jpg",
+      "model": "recraft-ai",
+      "message": null,
+      "imageSizeBytes": 245760,
+      "projectId": "proj123",
+      "userId": "user123",
+      "createdAt": "2025-01-16T10:30:00Z",
+      "project": {
+        "id": "proj123",
+        "name": "My Video Project"
+      }
+    }
+  }
+  ```
+
+  - **Features**:
+    - Only updates the visual prompt field of the image
+    - Validates that the image belongs to the authenticated user
+    - Logs the update in conversation history for tracking
+    - Returns the updated image with project information
+    - Maintains all other image data (S3 key, model, art style, etc.) unchanged
 
 - `POST /video-gen` - Generate videos using AI model handoff (Google Veo2 or RunwayML Gen-3)
   - **Features**: Intelligent model selection based on content style (cartoonish vs realistic)
@@ -698,6 +941,65 @@ Each feature module should have:
     - `projectId` (optional): Filter videos by project
   - **Returns**: Array of all user's generated videos
 
+- `PATCH /video-gen/:id` - Update the animation prompt of a specific generated video
+  - **Requires**: JWT Authentication
+  - **URL Parameter**: `id` - The video ID to update
+  - **Body**: `{animation_prompt: string}` - The new animation prompt to update
+  - **Example Request**:
+
+  ```json
+  {
+    "animation_prompt": "Camera slowly zooms in on the water bottle while a hand reaches for it, emphasizing the health benefits with smooth professional movement and soft lighting"
+  }
+  ```
+
+  - **Example Response**:
+
+  ```json
+  {
+    "success": true,
+    "message": "Video prompt updated successfully",
+    "video": {
+      "id": "clxyz123abc",
+      "animationPrompt": "Camera slowly zooms in on the water bottle while a hand reaches for it, emphasizing the health benefits with smooth professional movement and soft lighting",
+      "artStyle": "cinematic realistic",
+      "imageS3Key": "images/segment-001-image.jpg",
+      "uuid": "segment-001-video",
+      "success": true,
+      "model": "runwayml-gen3",
+      "totalVideos": 2,
+      "projectId": "proj123",
+      "userId": "user123",
+      "createdAt": "2025-01-16T10:30:00Z",
+      "project": {
+        "id": "proj123",
+        "name": "My Video Project"
+      },
+      "videoFiles": [
+        {
+          "id": "file1",
+          "s3Key": "videos/segment-001-video-1.mp4",
+          "generatedVideoId": "clxyz123abc",
+          "createdAt": "2025-01-16T10:30:00Z"
+        },
+        {
+          "id": "file2",
+          "s3Key": "videos/segment-001-video-2.mp4",
+          "generatedVideoId": "clxyz123abc",
+          "createdAt": "2025-01-16T10:30:00Z"
+        }
+      ]
+    }
+  }
+  ```
+
+  - **Features**:
+    - Only updates the animation prompt field of the video
+    - Validates that the video belongs to the authenticated user
+    - Logs the update in conversation history for tracking
+    - Returns the updated video with project information and video files
+    - Maintains all other video data (S3 keys, model, art style, etc.) unchanged
+
 - `POST /voiceover` - Generate voiceovers
   - **Example Request**:
 
@@ -722,6 +1024,46 @@ Each feature module should have:
     - `id` (optional): Get specific voiceover by ID
     - `projectId` (optional): Filter voiceovers by project
   - **Returns**: Array of all user's generated voiceovers
+
+- `PATCH /voiceover/:id` - Update the narration prompt of a specific generated voiceover
+  - **Requires**: JWT Authentication
+  - **URL Parameter**: `id` - The voiceover ID to update
+  - **Body**: `{narration_prompt: string}` - The new narration prompt to update
+  - **Example Request**:
+
+  ```json
+  {
+    "narration_prompt": "Introducing the future of hydration - our revolutionary eco-friendly water bottle that's designed for health-conscious athletes and environmentally aware consumers."
+  }
+  ```
+
+  - **Example Response**:
+
+  ```json
+  {
+    "success": true,
+    "message": "Voiceover prompt updated successfully",
+    "voiceover": {
+      "id": "clxyz123abc",
+      "narrationPrompt": "Introducing the future of hydration - our revolutionary eco-friendly water bottle that's designed for health-conscious athletes and environmentally aware consumers.",
+      "s3Key": "voiceovers/narration-001.mp3",
+      "projectId": "proj123",
+      "userId": "user123",
+      "createdAt": "2025-01-16T10:30:00Z",
+      "project": {
+        "id": "proj123",
+        "name": "My Video Project"
+      }
+    }
+  }
+  ```
+
+  - **Features**:
+    - Only updates the narration prompt field of the voiceover
+    - Validates that the voiceover belongs to the authenticated user
+    - Logs the update in conversation history for tracking
+    - Returns the updated voiceover with project information
+    - Maintains all other voiceover data (S3 key, project association, etc.) unchanged
 
 ## Authentication Flow
 

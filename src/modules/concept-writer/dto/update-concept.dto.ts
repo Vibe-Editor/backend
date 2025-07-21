@@ -1,11 +1,7 @@
 import { IsString, IsNotEmpty } from 'class-validator';
 
-export class ConceptWriterDto {
+export class UpdateConceptDto {
   @IsString()
   @IsNotEmpty()
   prompt: string;
-
-  @IsString()
-  @IsNotEmpty()
-  web_info: string;
 }

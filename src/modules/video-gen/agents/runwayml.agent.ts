@@ -31,9 +31,9 @@ export const createRunwayMLAgent = () =>
           uuid: z.string(),
         }) as any,
         execute: async ({ animation_prompt, art_style, imageS3Key, uuid }) => {
-            logger.log(
-              'Agent selected RunwayML for realistic/high-quality content',
-            );
+          logger.log(
+            'Agent selected RunwayML for realistic/high-quality content',
+          );
           return await generateRunwayMLVideo(
             animation_prompt,
             art_style,

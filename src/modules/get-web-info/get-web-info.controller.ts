@@ -1,6 +1,16 @@
-import { Controller, Post, Body, UseGuards, Get, Query } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  UseGuards,
+  Get,
+  Query,
+  Patch,
+  Param,
+} from '@nestjs/common';
 import { GetWebInfoService } from './get-web-info.service';
 import { GetWebInfoDto } from './dto/get-web-info.dto';
+import { UpdateWebInfoDto } from './dto/update-web-info.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/user.decorator';
 
@@ -27,5 +37,18 @@ export class GetWebInfoController {
       return this.getWebInfoService.getWebInfoById(webInfoId, userId);
     }
     return this.getWebInfoService.getAllWebInfo(userId, projectId);
+  }
+
+  @Patch(':id')
+  async updateWebInfoPrompt(
+    @Param('id') webInfoId: string,
+    @Body() updateWebInfoDto: UpdateWebInfoDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.getWebInfoService.updateWebInfoPrompt(
+      webInfoId,
+      updateWebInfoDto.prompt,
+      userId,
+    );
   }
 }

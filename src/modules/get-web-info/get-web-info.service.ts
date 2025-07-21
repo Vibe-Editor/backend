@@ -163,4 +163,97 @@ export class GetWebInfoService {
       throw new Error(`Failed to retrieve web info query: ${error.message}`);
     }
   }
+
+  /**
+   * Update the prompt of a specific web info query by ID for a user
+   */
+  async updateWebInfoPrompt(
+    webInfoId: string,
+    newPrompt: string,
+    userId: string,
+  ) {
+    try {
+      // First check if the web info query exists and belongs to the user
+      const existingWebInfo = await this.prisma.webResearchQuery.findFirst({
+        where: {
+          id: webInfoId,
+          userId, // Ensure user can only update their own queries
+        },
+      });
+
+      if (!existingWebInfo) {
+        throw new NotFoundException(
+          `Web info query with ID ${webInfoId} not found or you don't have access to it`,
+        );
+      }
+
+      // Update the web info query prompt
+      const updatedWebInfo = await this.prisma.webResearchQuery.update({
+        where: {
+          id: webInfoId,
+        },
+        data: {
+          prompt: newPrompt,
+        },
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      console.log(
+        `Updated web info query ${webInfoId} prompt for user ${userId}`,
+      );
+
+      // Log the update in conversation history
+      await this.prisma.conversationHistory.create({
+        data: {
+          type: 'WEB_RESEARCH',
+          userInput: `Updated prompt for web info query ${webInfoId}`,
+          response: JSON.stringify({
+            action: 'update_prompt',
+            webInfoId,
+            oldPrompt: existingWebInfo.prompt,
+            newPrompt,
+          }),
+          metadata: {
+            action: 'update',
+            webInfoId,
+            oldPrompt: existingWebInfo.prompt,
+          },
+          projectId: updatedWebInfo.projectId,
+          userId,
+        },
+      });
+
+      // Parse the response JSON if it's stored as string
+      let parsedResponse;
+      try {
+        parsedResponse = JSON.parse(updatedWebInfo.response);
+      } catch {
+        parsedResponse = updatedWebInfo.response;
+      }
+
+      return {
+        success: true,
+        message: 'Web info query prompt updated successfully',
+        webInfoQuery: {
+          ...updatedWebInfo,
+          response: parsedResponse,
+        },
+      };
+    } catch (error) {
+      console.error(
+        `Failed to update web info query ${webInfoId}: ${error.message}`,
+      );
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new Error(`Failed to update web info query: ${error.message}`);
+    }
+  }
 }

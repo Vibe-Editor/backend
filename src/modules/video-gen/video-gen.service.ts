@@ -397,4 +397,94 @@ export class VideoGenService {
       );
     }
   }
+
+  /**
+   * Update the animation prompt of a specific generated video
+   */
+  async updateVideoPrompt(videoId: string, newPrompt: string, userId: string) {
+    try {
+      // First, verify the video exists and belongs to the user
+      const existingVideo = await this.prisma.generatedVideo.findFirst({
+        where: {
+          id: videoId,
+          userId,
+        },
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          videoFiles: true,
+        },
+      });
+
+      if (!existingVideo) {
+        throw new NotFoundException(
+          `Generated video with ID ${videoId} not found or you don't have access to it`,
+        );
+      }
+
+      // Update only the animation prompt
+      const updatedVideo = await this.prisma.generatedVideo.update({
+        where: {
+          id: videoId,
+        },
+        data: {
+          animationPrompt: newPrompt,
+        },
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          videoFiles: true,
+        },
+      });
+
+      // Log the update in conversation history
+      if (existingVideo.projectId) {
+        await this.prisma.conversationHistory.create({
+          data: {
+            type: 'VIDEO_GENERATION',
+            userInput: JSON.stringify({
+              action: 'update_prompt',
+              videoId: videoId,
+              newPrompt: newPrompt,
+              oldPrompt: existingVideo.animationPrompt,
+            }),
+            response: JSON.stringify({
+              success: true,
+              message: 'Video prompt updated successfully',
+            }),
+            projectId: existingVideo.projectId,
+            userId: userId,
+          },
+        });
+      }
+
+      this.logger.log(
+        `Updated animation prompt for video ${videoId} for user ${userId}`,
+      );
+
+      return {
+        success: true,
+        message: 'Video prompt updated successfully',
+        video: updatedVideo,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to update video prompt ${videoId}: ${error.message}`,
+      );
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(
+        `Failed to update video prompt: ${error.message}`,
+      );
+    }
+  }
 }

@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { SegmentationService } from './segmentation.service';
 import { SegmentationDto } from './dto/segmentation.dto';
+import { UpdateSegmentationDto } from './dto/update-segmentation.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/user.decorator';
 
@@ -47,5 +48,18 @@ export class SegmentationController {
     @CurrentUser('id') userId: string,
   ) {
     return this.segmentationService.selectSegmentation(segmentationId, userId);
+  }
+
+  @Patch(':id')
+  async updateSegmentation(
+    @Param('id') segmentationId: string,
+    @Body() updateSegmentationDto: UpdateSegmentationDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.segmentationService.updateSegmentation(
+      segmentationId,
+      updateSegmentationDto,
+      userId,
+    );
   }
 }

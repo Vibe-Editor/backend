@@ -1,7 +1,7 @@
 import { IsString, IsNotEmpty } from 'class-validator';
 
-export class GetWebInfoDto {
+export class UpdateImageGenDto {
   @IsString()
   @IsNotEmpty()
-  prompt: string;
+  visual_prompt: string;
 }

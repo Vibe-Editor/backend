@@ -247,4 +247,84 @@ export class ConceptWriterService {
       throw new Error(`Failed to retrieve concept: ${error.message}`);
     }
   }
+
+  /**
+   * Update the prompt of a specific concept by ID for a user
+   */
+  async updateConceptPrompt(
+    conceptId: string,
+    newPrompt: string,
+    userId: string,
+  ) {
+    try {
+      // First check if the concept exists and belongs to the user
+      const existingConcept = await this.prisma.videoConcept.findFirst({
+        where: {
+          id: conceptId,
+          userId, // Ensure user can only update their own concepts
+        },
+      });
+
+      if (!existingConcept) {
+        throw new NotFoundException(
+          `Concept with ID ${conceptId} not found or you don't have access to it`,
+        );
+      }
+
+      // Update the concept prompt
+      const updatedConcept = await this.prisma.videoConcept.update({
+        where: {
+          id: conceptId,
+        },
+        data: {
+          prompt: newPrompt,
+        },
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      this.logger.log(`Updated concept ${conceptId} prompt for user ${userId}`);
+
+      // Log the update in conversation history
+      await this.prisma.conversationHistory.create({
+        data: {
+          type: 'CONCEPT_GENERATION',
+          userInput: `Updated prompt for concept ${conceptId}`,
+          response: JSON.stringify({
+            action: 'update_prompt',
+            conceptId,
+            oldPrompt: existingConcept.prompt,
+            newPrompt,
+          }),
+          metadata: {
+            action: 'update',
+            conceptId,
+            oldPrompt: existingConcept.prompt,
+          },
+          projectId: updatedConcept.projectId,
+          userId,
+        },
+      });
+
+      return {
+        success: true,
+        message: 'Concept prompt updated successfully',
+        concept: updatedConcept,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to update concept ${conceptId}: ${error.message}`,
+      );
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new Error(`Failed to update concept: ${error.message}`);
+    }
+  }
 }

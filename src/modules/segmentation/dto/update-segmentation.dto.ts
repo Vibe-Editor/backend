@@ -1,15 +1,17 @@
 import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
 
-export class SegmentationDto {
+export class UpdateSegmentationDto {
   @IsString()
   @IsNotEmpty()
-  prompt: string;
+  @IsOptional()
+  prompt?: string;
 
   @IsString()
   @IsNotEmpty()
-  concept: string;
+  @IsOptional()
+  concept?: string;
 
   @IsString()
   @IsOptional()
-  negative_prompt: string;
+  negative_prompt?: string;
 }

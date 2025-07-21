@@ -714,4 +714,107 @@ export class SegmentationService {
       );
     }
   }
+
+  /**
+   * Update a specific segmentation by ID for a user
+   */
+  async updateSegmentation(
+    segmentationId: string,
+    updateData: any,
+    userId: string,
+  ) {
+    try {
+      // First check if the segmentation exists and belongs to the user
+      const existingSegmentation =
+        await this.prisma.videoSegmentation.findFirst({
+          where: {
+            id: segmentationId,
+            userId, // Ensure user can only update their own segmentations
+          },
+        });
+
+      if (!existingSegmentation) {
+        throw new NotFoundException(
+          `Segmentation with ID ${segmentationId} not found or you don't have access to it`,
+        );
+      }
+
+      // Prepare update data - only include fields that are provided
+      const updateFields: any = {};
+      if (updateData.prompt !== undefined) {
+        updateFields.prompt = updateData.prompt;
+      }
+      if (updateData.concept !== undefined) {
+        updateFields.concept = updateData.concept;
+      }
+      if (updateData.negative_prompt !== undefined) {
+        updateFields.negativePrompt = updateData.negative_prompt;
+      }
+
+      // Update the segmentation
+      const updatedSegmentation = await this.prisma.videoSegmentation.update({
+        where: {
+          id: segmentationId,
+        },
+        data: updateFields,
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          segments: {
+            orderBy: {
+              createdAt: 'asc',
+            },
+          },
+        },
+      });
+
+      console.log(`Updated segmentation ${segmentationId} for user ${userId}`);
+
+      // Log the update in conversation history
+      await this.prisma.conversationHistory.create({
+        data: {
+          type: 'VIDEO_SEGMENTATION',
+          userInput: `Updated segmentation ${segmentationId}`,
+          response: JSON.stringify({
+            action: 'update_segmentation',
+            segmentationId,
+            updatedFields: updateFields,
+            oldValues: {
+              prompt: existingSegmentation.prompt,
+              concept: existingSegmentation.concept,
+              negativePrompt: existingSegmentation.negativePrompt,
+            },
+          }),
+          metadata: {
+            action: 'update',
+            segmentationId,
+            updatedFields: Object.keys(updateFields),
+          },
+          projectId: updatedSegmentation.projectId,
+          userId,
+        },
+      });
+
+      return {
+        success: true,
+        message: 'Segmentation updated successfully',
+        segmentation: updatedSegmentation,
+      };
+    } catch (error) {
+      console.error(
+        `Failed to update segmentation ${segmentationId}: ${error.message}`,
+      );
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new HttpException(
+        `Failed to update segmentation: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
 }

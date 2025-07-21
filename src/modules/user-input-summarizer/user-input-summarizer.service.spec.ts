@@ -9,7 +9,9 @@ describe('UserInputSummarizerService', () => {
       providers: [UserInputSummarizerService],
     }).compile();
 
-    service = module.get<UserInputSummarizerService>(UserInputSummarizerService);
+    service = module.get<UserInputSummarizerService>(
+      UserInputSummarizerService,
+    );
   });
 
   it('should be defined', () => {
