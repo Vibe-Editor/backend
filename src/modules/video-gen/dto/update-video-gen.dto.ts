@@ -11,5 +11,5 @@ export class UpdateVideoGenDto {
 
   @IsString()
   @IsOptional()
-  imageS3Key?: string;
+  s3_key?: string;
 }

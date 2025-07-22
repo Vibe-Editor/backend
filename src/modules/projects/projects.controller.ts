@@ -8,6 +8,7 @@ import {
   Delete,
   UseGuards,
   Request,
+  Query,
 } from '@nestjs/common';
 import { ProjectsService } from './projects.service';
 import { CreateProjectDto } from './dto/create-project.dto';
@@ -44,6 +45,23 @@ export class ProjectsController {
     @CurrentUser('id') userId: string,
   ) {
     return this.projectsService.findOneWithAllContent(id, userId);
+  }
+
+  @Get(':id/conversations')
+  findProjectConversations(
+    @Param('id') id: string,
+    @CurrentUser('id') userId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? parseInt(limit, 10) : 10;
+    return this.projectsService.findProjectConversations(
+      id,
+      userId,
+      pageNum,
+      limitNum,
+    );
   }
 
   @Patch(':id')

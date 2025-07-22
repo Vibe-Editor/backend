@@ -249,6 +249,68 @@ Each feature module should have:
 - `GET /projects/:id` - Get specific project with statistics
   - **Requires**: JWT Authentication
   - **Returns**: Single project with content counts
+  - **Response Format**:
+
+  ```json
+  {
+    "id": "project_id",
+    "name": "Project Name",
+    "description": "Project description",
+    "userId": "user_id",
+    "createdAt": "2025-01-01T00:00:00.000Z",
+    "updatedAt": "2025-01-01T00:00:00.000Z",
+    "_count": {
+      "conversations": 15,
+      "videoConcepts": 8,
+      "webResearchQueries": 5,
+      "contentSummaries": 12,
+      "videoSegmentations": 3,
+      "generatedImages": 25,
+      "generatedVideos": 10,
+      "generatedVoiceovers": 7
+    }
+  }
+  ```
+
+- `GET /projects/:id/conversations` - Get paginated conversations for a project
+  - **Requires**: JWT Authentication
+  - **Query Parameters**:
+    - `page` (optional): Page number, defaults to 1
+    - `limit` (optional): Items per page, defaults to 10
+  - **Example Request**: `GET /projects/clxyz123abc/conversations?page=1&limit=10`
+  - **Response Format**:
+
+  ```json
+  {
+    "success": true,
+    "data": [
+      {
+        "id": "conv-123",
+        "type": "CONCEPT_GENERATION",
+        "userInput": {"prompt": "Create a video concept"},
+        "response": {"concepts": [...]},
+        "metadata": null,
+        "projectId": "clxyz123abc",
+        "userId": "user123",
+        "createdAt": "2025-01-16T10:30:00Z"
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "limit": 10,
+      "total": 25,
+      "totalPages": 3,
+      "hasNext": true,
+      "hasPrev": false
+    }
+  }
+  ```
+
+  - **Features**:
+    - Automatically parses JSON strings in `userInput` and `response` fields
+    - Ordered by most recent first (newest first)
+    - Validates project ownership before returning data
+    - Comprehensive pagination metadata
 
 - `GET /projects/:id/full` - Get complete project data with all content
   - **Requires**: JWT Authentication
@@ -947,14 +1009,14 @@ Each feature module should have:
 - `PATCH /video-gen/:id` - Update the animation prompt, art style, and/or input image S3 key of a specific generated video
   - **Requires**: JWT Authentication
   - **URL Parameter**: `id` - The video ID to update
-  - **Body**: `{animation_prompt: string, art_style: string, imageS3Key?: string}` - The new animation prompt, art style, and optionally input image S3 key to update
+  - **Body**: `{animation_prompt: string, art_style: string, s3_key?: string}` - The new animation prompt, art style, and optionally input image S3 key to update
   - **Example Request**:
 
   ```json
   {
     "animation_prompt": "Camera slowly zooms in on the water bottle while a hand reaches for it, emphasizing the health benefits with smooth professional movement and soft lighting",
     "art_style": "cinematic realistic with dramatic lighting",
-    "imageS3Key": "images/updated-segment-001-image.jpg"
+    "s3_key": "images/updated-segment-001-image.jpg"
   }
   ```
 
@@ -968,7 +1030,7 @@ Each feature module should have:
       "id": "clxyz123abc",
       "animationPrompt": "Camera slowly zooms in on the water bottle while a hand reaches for it, emphasizing the health benefits with smooth professional movement and soft lighting",
       "artStyle": "cinematic realistic with dramatic lighting",
-      "imageS3Key": "images/updated-segment-001-image.jpg",
+      "s3Key": "images/updated-segment-001-image.jpg",
       "uuid": "segment-001-video",
       "success": true,
       "model": "runwayml-gen3",
