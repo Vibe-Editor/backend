@@ -11,6 +11,9 @@ export interface ProjectWithStats extends ProjectResponse {
   _count: {
     conversations: number;
     videoConcepts: number;
+    webResearchQueries: number;
+    contentSummaries: number;
+    videoSegmentations: number;
     generatedImages: number;
     generatedVideos: number;
     generatedVoiceovers: number;

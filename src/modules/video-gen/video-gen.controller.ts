@@ -50,7 +50,7 @@ export class VideoGenController {
       updateVideoGenDto.animation_prompt,
       updateVideoGenDto.art_style,
       userId,
-      updateVideoGenDto.imageS3Key,
+      updateVideoGenDto.s3_key,
     );
   }
 }

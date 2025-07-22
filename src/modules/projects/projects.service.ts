@@ -63,6 +63,9 @@ export class ProjectsService {
             select: {
               conversations: true,
               videoConcepts: true,
+              webResearchQueries: true,
+              contentSummaries: true,
+              videoSegmentations: true,
               generatedImages: true,
               generatedVideos: true,
               generatedVoiceovers: true,
@@ -91,6 +94,9 @@ export class ProjectsService {
             select: {
               conversations: true,
               videoConcepts: true,
+              webResearchQueries: true,
+              contentSummaries: true,
+              videoSegmentations: true,
               generatedImages: true,
               generatedVideos: true,
               generatedVoiceovers: true,
@@ -196,6 +202,71 @@ export class ProjectsService {
     } catch (error) {
       this.logger.error(
         `Failed to fetch project with content: ${error.message}`,
+      );
+      throw error;
+    }
+  }
+
+  async findProjectConversations(
+    id: string,
+    userId: string,
+    page: number = 1,
+    limit: number = 10,
+  ) {
+    this.logger.log(
+      `Fetching conversations for project: ${id}, user: ${userId}, page: ${page}, limit: ${limit}`,
+    );
+
+    try {
+      // First verify the project exists and belongs to the user
+      const project = await this.prisma.project.findFirst({
+        where: { id, userId },
+      });
+
+      if (!project) {
+        throw new NotFoundException('Project not found');
+      }
+
+      const skip = (page - 1) * limit;
+
+      const [conversations, total] = await Promise.all([
+        this.prisma.conversationHistory.findMany({
+          where: { projectId: id, userId },
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limit,
+        }),
+        this.prisma.conversationHistory.count({
+          where: { projectId: id, userId },
+        }),
+      ]);
+
+      // Parse JSON strings in conversations
+      const parsedConversations = conversations.map((conversation) => ({
+        ...conversation,
+        userInput: this.safeJsonParse(conversation.userInput),
+        response: this.safeJsonParse(conversation.response),
+      }));
+
+      this.logger.log(
+        `Found ${conversations.length} conversations for project: ${id}`,
+      );
+
+      return {
+        success: true,
+        data: parsedConversations,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+          hasNext: page * limit < total,
+          hasPrev: page > 1,
+        },
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to fetch project conversations: ${error.message}`,
       );
       throw error;
     }
