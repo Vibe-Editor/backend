@@ -399,7 +399,7 @@ export class VideoGenService {
   }
 
   /**
-   * Update the animation prompt, art style, and imageS3Key of a specific generated video
+   * Update the animation prompt, art style, input imageS3Key, and output video S3 keys of a specific generated video
    */
   async updateVideoPrompt(
     videoId: string,
@@ -407,6 +407,7 @@ export class VideoGenService {
     newArtStyle: string,
     userId: string,
     newImageS3Key?: string,
+    newVideoS3Keys?: string[],
   ) {
     try {
       // First, verify the video exists and belongs to the user
@@ -432,37 +433,133 @@ export class VideoGenService {
         );
       }
 
-      // Update the animation prompt, art style, and optionally the imageS3Key
-      const updateData: any = {
-        animationPrompt: newPrompt,
-        artStyle: newArtStyle,
-      };
-
-      if (newImageS3Key) {
-        updateData.imageS3Key = newImageS3Key;
-      }
-
-      const updatedVideo = await this.prisma.generatedVideo.update({
-        where: {
-          id: videoId,
-        },
-        data: updateData,
-        include: {
-          project: {
-            select: {
-              id: true,
-              name: true,
-            },
+      // Begin database transaction
+      const result = await this.prisma.$transaction(async (tx) => {
+        // Update the video gen record
+        const updatedVideo = await tx.generatedVideo.update({
+          where: { id: videoId },
+          data: {
+            animationPrompt: newPrompt,
+            artStyle: newArtStyle,
+            ...(newImageS3Key && { imageS3Key: newImageS3Key }),
           },
-          videoFiles: true,
-        },
+          include: {
+            project: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+            videoFiles: true,
+          },
+        });
+
+        // Handle video file updates if new S3 keys provided
+        if (newVideoS3Keys && newVideoS3Keys.length > 0) {
+          // Delete existing video files
+          await tx.generatedVideoFile.deleteMany({
+            where: { generatedVideoId: videoId },
+          });
+
+          // Create new video files
+          await tx.generatedVideoFile.createMany({
+            data: newVideoS3Keys.map((s3Key) => ({
+              generatedVideoId: videoId,
+              s3Key,
+            })),
+          });
+
+          // Fetch updated video with new files
+          const finalVideo = await tx.generatedVideo.findUnique({
+            where: { id: videoId },
+            include: {
+              project: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+              videoFiles: true,
+            },
+          });
+
+          return finalVideo;
+        }
+
+        return updatedVideo;
       });
 
-      // Log the update in conversation history
+      const finalUpdatedVideo = result;
+
+        // Log the update in conversation history
+        if (existingVideo.projectId) {
+          const userInputData: any = {
+            action:
+              newImageS3Key || newVideoS3Keys.length > 0
+                ? 'update_prompt_style_and_s3_keys'
+                : 'update_prompt_and_style',
+            videoId: videoId,
+            newPrompt: newPrompt,
+            oldPrompt: existingVideo.animationPrompt,
+            newArtStyle: newArtStyle,
+            oldArtStyle: existingVideo.artStyle,
+          };
+
+          if (newImageS3Key) {
+            userInputData.newInputS3Key = newImageS3Key;
+            userInputData.oldInputS3Key = existingVideo.imageS3Key;
+          }
+
+          if (newVideoS3Keys && newVideoS3Keys.length > 0) {
+            userInputData.newOutputS3Keys = newVideoS3Keys;
+            userInputData.oldOutputS3Keys = existingVideo.videoFiles.map(
+              (vf) => vf.s3Key,
+            );
+          }
+
+          await this.prisma.conversationHistory.create({
+            data: {
+              type: 'VIDEO_GENERATION',
+              userInput: JSON.stringify(userInputData),
+              response: JSON.stringify({
+                success: true,
+                message:
+                  newImageS3Key || newVideoS3Keys.length > 0
+                    ? 'Video prompt, art style, and S3 keys updated successfully'
+                    : 'Video prompt and art style updated successfully',
+                videoId: videoId,
+                updatedFields: {
+                  animationPrompt: newPrompt,
+                  artStyle: newArtStyle,
+                  ...(newImageS3Key && { inputS3Key: newImageS3Key }),
+                  ...(newVideoS3Keys && { outputS3Keys: newVideoS3Keys }),
+                },
+              }),
+              projectId: existingVideo.projectId,
+              userId: userId,
+            },
+          });
+        }
+
+        this.logger.log(
+          `Updated animation prompt, art style${newImageS3Key ? ', input S3 key' : ''}${newVideoS3Keys.length > 0 ? ', and output S3 keys' : ''} for video ${videoId} for user ${userId}`,
+        );
+
+        return {
+          success: true,
+          message:
+            newImageS3Key || newVideoS3Keys.length > 0
+              ? 'Video prompt, art style, and S3 keys updated successfully'
+              : 'Video prompt and art style updated successfully',
+          video: finalUpdatedVideo,
+        };
+      }
+
+      // Log the update in conversation history (when no output S3 keys updated)
       if (existingVideo.projectId) {
         const userInputData: any = {
           action: newImageS3Key
-            ? 'update_prompt_style_and_imageS3Key'
+            ? 'update_prompt_style_and_input_s3_key'
             : 'update_prompt_and_style',
           videoId: videoId,
           newPrompt: newPrompt,
@@ -472,8 +569,8 @@ export class VideoGenService {
         };
 
         if (newImageS3Key) {
-          userInputData.newImageS3Key = newImageS3Key;
-          userInputData.oldImageS3Key = existingVideo.imageS3Key;
+          userInputData.newInputS3Key = newImageS3Key;
+          userInputData.oldInputS3Key = existingVideo.imageS3Key;
         }
 
         await this.prisma.conversationHistory.create({
@@ -483,8 +580,14 @@ export class VideoGenService {
             response: JSON.stringify({
               success: true,
               message: newImageS3Key
-                ? 'Video prompt, art style, and image S3 key updated successfully'
+                ? 'Video prompt, art style, and input S3 key updated successfully'
                 : 'Video prompt and art style updated successfully',
+              videoId: videoId,
+              updatedFields: {
+                animationPrompt: newPrompt,
+                artStyle: newArtStyle,
+                ...(newImageS3Key && { inputS3Key: newImageS3Key }),
+              },
             }),
             projectId: existingVideo.projectId,
             userId: userId,
@@ -493,25 +596,25 @@ export class VideoGenService {
       }
 
       this.logger.log(
-        `Updated animation prompt, art style${newImageS3Key ? ', and image S3 key' : ''} for video ${videoId} for user ${userId}`,
+        `Updated animation prompt, art style${newImageS3Key ? ', and input S3 key' : ''} for video ${videoId} for user ${userId}`,
       );
 
       return {
         success: true,
         message: newImageS3Key
-          ? 'Video prompt, art style, and image S3 key updated successfully'
+          ? 'Video prompt, art style, and input S3 key updated successfully'
           : 'Video prompt and art style updated successfully',
         video: updatedVideo,
       };
     } catch (error) {
       this.logger.error(
-        `Failed to update video prompt, art style${newImageS3Key ? ', and image S3 key' : ''} ${videoId}: ${(error as Error).message}`,
+        `Failed to update video prompt, art style${newImageS3Key ? ', and input S3 key' : ''}${newVideoS3Keys ? ', and output S3 keys' : ''} ${videoId}: ${(error as Error).message}`,
       );
       if (error instanceof NotFoundException) {
         throw error;
       }
       throw new InternalServerErrorException(
-        `Failed to update video prompt, art style${newImageS3Key ? ', and image S3 key' : ''}: ${(error as Error).message}`,
+        `Failed to update video prompt, art style${newImageS3Key ? ', and input S3 key' : ''}${newVideoS3Keys ? ', and output S3 keys' : ''}: ${(error as Error).message}`,
       );
     }
   }

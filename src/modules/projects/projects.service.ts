@@ -272,6 +272,114 @@ export class ProjectsService {
     }
   }
 
+  async findProjectConcepts(
+    id: string,
+    userId: string,
+    page: number = 1,
+    limit: number = 10,
+  ) {
+    this.logger.log(
+      `Fetching concepts for project: ${id}, user: ${userId}, page: ${page}, limit: ${limit}`,
+    );
+
+    try {
+      // First verify the project exists and belongs to the user
+      const project = await this.prisma.project.findFirst({
+        where: { id, userId },
+      });
+
+      if (!project) {
+        throw new NotFoundException('Project not found');
+      }
+
+      const skip = (page - 1) * limit;
+
+      const [concepts, total] = await Promise.all([
+        this.prisma.videoConcept.findMany({
+          where: { projectId: id, userId },
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limit,
+        }),
+        this.prisma.videoConcept.count({
+          where: { projectId: id, userId },
+        }),
+      ]);
+
+      this.logger.log(`Found ${concepts.length} concepts for project: ${id}`);
+
+      return {
+        success: true,
+        data: concepts,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+          hasNext: page * limit < total,
+          hasPrev: page > 1,
+        },
+      };
+    } catch (error) {
+      this.logger.error(`Failed to fetch project concepts: ${error.message}`);
+      throw error;
+    }
+  }
+
+  async findProjectImages(
+    id: string,
+    userId: string,
+    page: number = 1,
+    limit: number = 10,
+  ) {
+    this.logger.log(
+      `Fetching images for project: ${id}, user: ${userId}, page: ${page}, limit: ${limit}`,
+    );
+
+    try {
+      // First verify the project exists and belongs to the user
+      const project = await this.prisma.project.findFirst({
+        where: { id, userId },
+      });
+
+      if (!project) {
+        throw new NotFoundException('Project not found');
+      }
+
+      const skip = (page - 1) * limit;
+
+      const [images, total] = await Promise.all([
+        this.prisma.generatedImage.findMany({
+          where: { projectId: id, userId },
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limit,
+        }),
+        this.prisma.generatedImage.count({
+          where: { projectId: id, userId },
+        }),
+      ]);
+
+      this.logger.log(`Found ${images.length} images for project: ${id}`);
+
+      return {
+        success: true,
+        data: images,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+          hasNext: page * limit < total,
+          hasPrev: page > 1,
+        },
+      };
+    } catch (error) {
+      this.logger.error(`Failed to fetch project images: ${error.message}`);
+      throw error;
+    }
+  }
+
   async update(
     id: string,
     updateProjectDto: UpdateProjectDto,

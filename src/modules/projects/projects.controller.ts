@@ -64,6 +64,40 @@ export class ProjectsController {
     );
   }
 
+  @Get(':id/concepts')
+  findProjectConcepts(
+    @Param('id') id: string,
+    @CurrentUser('id') userId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? parseInt(limit, 10) : 10;
+    return this.projectsService.findProjectConcepts(
+      id,
+      userId,
+      pageNum,
+      limitNum,
+    );
+  }
+
+  @Get(':id/images')
+  findProjectImages(
+    @Param('id') id: string,
+    @CurrentUser('id') userId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? parseInt(limit, 10) : 10;
+    return this.projectsService.findProjectImages(
+      id,
+      userId,
+      pageNum,
+      limitNum,
+    );
+  }
+
   @Patch(':id')
   update(
     @Param('id') id: string,
