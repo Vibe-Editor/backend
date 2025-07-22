@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsArray } from 'class-validator';
 
 export class UpdateVideoGenDto {
   @IsString()
@@ -11,5 +11,10 @@ export class UpdateVideoGenDto {
 
   @IsString()
   @IsOptional()
-  s3_key?: string;
+  image_s3_key?: string;
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  video_s3_keys?: string[];
 }

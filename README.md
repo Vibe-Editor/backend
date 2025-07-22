@@ -1006,17 +1006,21 @@ Each feature module should have:
     - `projectId` (optional): Filter videos by project
   - **Returns**: Array of all user's generated videos
 
-- `PATCH /video-gen/:id` - Update the animation prompt, art style, and/or input image S3 key of a specific generated video
+- `PATCH /video-gen/:id` - Update the animation prompt, art style, input image S3 key, and/or output video S3 keys of a specific generated video
   - **Requires**: JWT Authentication
   - **URL Parameter**: `id` - The video ID to update
-  - **Body**: `{animation_prompt: string, art_style: string, s3_key?: string}` - The new animation prompt, art style, and optionally input image S3 key to update
+  - **Body**: `{animation_prompt: string, art_style: string, image_s3_key?: string, video_s3_keys?: string[]}` - The new animation prompt, art style, and optionally input image S3 key and/or output video S3 keys to update
   - **Example Request**:
 
   ```json
   {
     "animation_prompt": "Camera slowly zooms in on the water bottle while a hand reaches for it, emphasizing the health benefits with smooth professional movement and soft lighting",
     "art_style": "cinematic realistic with dramatic lighting",
-    "s3_key": "images/updated-segment-001-image.jpg"
+    "image_s3_key": "images/updated-segment-001-image.jpg",
+    "video_s3_keys": [
+      "videos/updated-segment-001-video-1.mp4",
+      "videos/updated-segment-001-video-2.mp4"
+    ]
   }
   ```
 
@@ -1025,12 +1029,12 @@ Each feature module should have:
   ```json
   {
     "success": true,
-    "message": "Video prompt, art style, and image S3 key updated successfully",
+    "message": "Video prompt, art style, and S3 keys updated successfully",
     "video": {
       "id": "clxyz123abc",
       "animationPrompt": "Camera slowly zooms in on the water bottle while a hand reaches for it, emphasizing the health benefits with smooth professional movement and soft lighting",
       "artStyle": "cinematic realistic with dramatic lighting",
-      "s3Key": "images/updated-segment-001-image.jpg",
+      "imageS3Key": "images/updated-segment-001-image.jpg",
       "uuid": "segment-001-video",
       "success": true,
       "model": "runwayml-gen3",
@@ -1045,13 +1049,13 @@ Each feature module should have:
       "videoFiles": [
         {
           "id": "file1",
-          "s3Key": "videos/segment-001-video-1.mp4",
+          "s3Key": "videos/updated-segment-001-video-1.mp4",
           "generatedVideoId": "clxyz123abc",
           "createdAt": "2025-01-16T10:30:00Z"
         },
         {
           "id": "file2",
-          "s3Key": "videos/segment-001-video-2.mp4",
+          "s3Key": "videos/updated-segment-001-video-2.mp4",
           "generatedVideoId": "clxyz123abc",
           "createdAt": "2025-01-16T10:30:00Z"
         }
@@ -1061,12 +1065,13 @@ Each feature module should have:
   ```
 
   - **Features**:
-    - Updates the animation prompt, art style, and optionally the input image S3 key fields of the video
-    - Input image S3 key parameter is optional - if not provided, only the prompt and art style are updated
+    - Updates the animation prompt, art style, input image S3 key, and/or output video S3 keys
+    - Input image S3 key parameter (`image_s3_key`) is optional - if not provided, only the prompt and art style are updated
+    - Output video S3 keys parameter (`video_s3_keys`) is optional - if provided, replaces all existing video files with new ones
     - Validates that the video belongs to the authenticated user
     - Logs the update in conversation history for tracking
     - Returns the updated video with project information and video files
-    - Maintains all other video data (output video S3 keys, model, etc.) unchanged
+    - Maintains all other video data (model, etc.) unchanged
 
 - `POST /voiceover` - Generate voiceovers
   - **Example Request**:
