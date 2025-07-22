@@ -70,7 +70,7 @@ async function generateVeo2Video(
       },
       config: {
         aspectRatio: '16:9',
-        numberOfVideos: 2,
+        numberOfVideos: 1,
       },
     });
 
