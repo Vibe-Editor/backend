@@ -98,6 +98,91 @@ export class ProjectsController {
     );
   }
 
+  @Get(':id/videos')
+  findProjectVideos(
+    @Param('id') id: string,
+    @CurrentUser('id') userId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? parseInt(limit, 10) : 10;
+    return this.projectsService.findProjectVideos(
+      id,
+      userId,
+      pageNum,
+      limitNum,
+    );
+  }
+
+  @Get(':id/voiceovers')
+  findProjectVoiceovers(
+    @Param('id') id: string,
+    @CurrentUser('id') userId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? parseInt(limit, 10) : 10;
+    return this.projectsService.findProjectVoiceovers(
+      id,
+      userId,
+      pageNum,
+      limitNum,
+    );
+  }
+
+  @Get(':id/segmentations')
+  findProjectSegmentations(
+    @Param('id') id: string,
+    @CurrentUser('id') userId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? parseInt(limit, 10) : 10;
+    return this.projectsService.findProjectSegmentations(
+      id,
+      userId,
+      pageNum,
+      limitNum,
+    );
+  }
+
+  @Get(':id/summaries')
+  findProjectSummaries(
+    @Param('id') id: string,
+    @CurrentUser('id') userId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? parseInt(limit, 10) : 10;
+    return this.projectsService.findProjectSummaries(
+      id,
+      userId,
+      pageNum,
+      limitNum,
+    );
+  }
+
+  @Get(':id/research')
+  findProjectResearch(
+    @Param('id') id: string,
+    @CurrentUser('id') userId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? parseInt(limit, 10) : 10;
+    return this.projectsService.findProjectResearch(
+      id,
+      userId,
+      pageNum,
+      limitNum,
+    );
+  }
+
   @Patch(':id')
   update(
     @Param('id') id: string,
