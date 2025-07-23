@@ -139,7 +139,7 @@ export class CharacterGenService {
 
       const characterGenAgent = Agent.create({
         name: 'Character Generation Orchestrator',
-        model: 'gpt-4o-mini',
+        model: 'gpt-3.5-turbo',
         instructions: `
         You are a character generation orchestrator that manages the entire character creation process.
         

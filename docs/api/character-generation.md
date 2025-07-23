@@ -1,7 +1,7 @@
 # Character Generation API
 
 ## Overview
-Generates character sprite sheets and final characters from 6 reference images using OpenAI GPT-4 Vision and Recraft image-to-image models.
+Generates character sprite sheets and final characters from 6 reference images using OpenAI GPT-4o Vision and Recraft image-to-image models.
 
 ## Endpoints
 
@@ -48,8 +48,8 @@ Get specific character by ID.
 
 ## Process Flow
 1. Upload 6 reference images to S3
-2. Generate sprite sheet using OpenAI GPT-4 Vision + Image Edit
-3. Generate final character using Recraft image-to-image
+2. Generate sprite sheet using OpenAI GPT-4o Vision (200 tokens) + DALL-E 2 (256x256)
+3. Generate final character using Recraft image-to-image (256x256)
 4. Store results in database and S3
 5. Return S3 keys for both outputs
 

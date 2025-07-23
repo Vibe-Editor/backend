@@ -100,7 +100,7 @@ async function generateFinalCharacter(
           image: spriteSheetBase64,
           strength: 0.7, // Control how much to change from the original
           style: 'realistic_image',
-          size: '1024x1024',
+          size: '256x256',
           n: 1,
         },
         {

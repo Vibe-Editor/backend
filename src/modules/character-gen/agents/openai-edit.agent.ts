@@ -5,6 +5,7 @@ import axios from 'axios';
 import { randomUUID } from 'crypto';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { SpriteSheetGenerationResult } from '../interfaces/character.interface';
+import { getS3ImageUrl } from './s3.service';
 
 const logger = new Logger('OpenAI Edit Agent');
 
@@ -25,12 +26,12 @@ export const createOpenAIEditAgent = () =>
   }>({
     name: 'OpenAI Edit Agent',
     instructions: `
-    You are a character sprite sheet generation specialist using OpenAI's GPT-4 Vision and Image Edit APIs.
+    You are a character sprite sheet generation specialist using OpenAI's GPT-4 Vision and Image Generation APIs.
     
     Process:
     1. Analyze 6 reference images using GPT-4 Vision
     2. Generate a comprehensive character description and sprite sheet prompt
-    3. Create a sprite sheet using OpenAI's Image Edit API
+    3. Create a sprite sheet using OpenAI's DALL-E 3 Image Generation API
     4. Upload the sprite sheet to S3
     
     Always ensure high-quality sprite sheet generation with proper character formatting.
@@ -81,13 +82,18 @@ async function generateSpriteSheet(
   logger.log(`Starting OpenAI sprite sheet generation for user: ${uuid}`);
 
   try {
-    // Step 1: Analyze reference images with GPT-4 Vision
+    // Step 1: Convert S3 keys to accessible URLs for GPT-4 Vision
+    logger.log('Converting S3 keys to accessible URLs');
+    const imageUrls = reference_images.map((s3Key) => getS3ImageUrl(s3Key));
+    logger.log(`Converted ${imageUrls.length} S3 keys to URLs`);
+
+    // Step 2: Analyze reference images with GPT-4 Vision
     logger.log('Analyzing reference images with GPT-4 Vision');
 
     const visionResponse = await axios.post(
       'https://api.openai.com/v1/chat/completions',
       {
-        model: 'gpt-4-vision-preview',
+        model: 'gpt-4o',
         messages: [
           {
             role: 'user',
@@ -111,7 +117,7 @@ async function generateSpriteSheet(
                 - sprite_sheet_prompt: Specific prompt for sprite sheet generation
                 - layout_instructions: How to arrange the character in sprite sheet format`,
               },
-              ...reference_images.map((imageUrl, index) => ({
+              ...imageUrls.map((imageUrl) => ({
                 type: 'image_url',
                 image_url: {
                   url: imageUrl,
@@ -120,7 +126,7 @@ async function generateSpriteSheet(
             ],
           },
         ],
-        max_tokens: 1000,
+        max_tokens: 200,
       },
       {
         headers: {
@@ -135,20 +141,16 @@ async function generateSpriteSheet(
     );
     logger.log('GPT-4 Vision analysis completed');
 
-    // Step 2: Generate sprite sheet using OpenAI Image Edit API
-    logger.log('Generating sprite sheet with OpenAI Image Edit API');
+    // Step 2: Generate sprite sheet using OpenAI Image Generation API (DALL-E)
+    logger.log('Generating sprite sheet with OpenAI Image Generation API');
 
-    // For now, we'll use a placeholder image as the base for editing
-    // In a real implementation, you might want to create a base sprite sheet template
-    const baseImageUrl = 'https://example.com/base-sprite-sheet.png'; // Placeholder
-
-    const editResponse = await axios.post(
-      'https://api.openai.com/v1/images/edits',
+    const generationResponse = await axios.post(
+      'https://api.openai.com/v1/images/generations',
       {
-        image: baseImageUrl,
         prompt: visionResult.sprite_sheet_prompt,
         n: 1,
-        size: '1024x1024',
+        size: '256x256',
+        model: 'dall-e-2',
       },
       {
         headers: {
@@ -158,8 +160,8 @@ async function generateSpriteSheet(
       },
     );
 
-    const spriteSheetUrl = editResponse.data.data[0].url;
-    logger.log('OpenAI Image Edit completed');
+    const spriteSheetUrl = generationResponse.data.data[0].url;
+    logger.log('OpenAI Image Generation completed');
 
     // Step 3: Download and upload to S3
     logger.log('Downloading generated sprite sheet');
