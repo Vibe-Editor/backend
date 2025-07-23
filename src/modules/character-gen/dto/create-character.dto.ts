@@ -5,6 +5,7 @@ import {
   IsArray,
   ArrayMinSize,
   ArrayMaxSize,
+  IsUrl,
 } from 'class-validator';
 
 export class CreateCharacterDto {
@@ -27,11 +28,11 @@ export class CreateCharacterDto {
   @IsOptional()
   @IsString()
   description?: string;
-}
 
-export class CharacterFileUploadDto {
+  // Array of exactly 6 CloudFront URLs to reference images
   @IsArray()
   @ArrayMinSize(6, { message: 'Exactly 6 reference images are required' })
   @ArrayMaxSize(6, { message: 'Exactly 6 reference images are required' })
-  reference_images: Express.Multer.File[];
+  @IsUrl({}, { each: true })
+  reference_images: string[];
 }

@@ -6,10 +6,7 @@ import {
   Get,
   Query,
   Param,
-  UseInterceptors,
-  UploadedFiles,
 } from '@nestjs/common';
-import { FilesInterceptor } from '@nestjs/platform-express';
 import { CreateCharacterDto } from './dto/create-character.dto';
 import { CharacterGenService } from './character-gen.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -21,15 +18,12 @@ export class CharacterGenController {
   constructor(private readonly characterGenService: CharacterGenService) {}
 
   @Post()
-  @UseInterceptors(FilesInterceptor('reference_images', 6))
   async generateCharacter(
     @Body() createCharacterDto: CreateCharacterDto,
-    @UploadedFiles() referenceImages: Express.Multer.File[],
     @CurrentUser('id') userId: string,
   ) {
     return this.characterGenService.generateCharacter(
       createCharacterDto,
-      referenceImages,
       userId,
     );
   }

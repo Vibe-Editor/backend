@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
 import {
   Injectable,
   Logger,
@@ -10,12 +13,7 @@ import { ProjectHelperService } from '../../common/services/project-helper.servi
 import { PrismaClient } from '../../../generated/prisma';
 import { createOpenAIEditAgent } from './agents/openai-edit.agent';
 import { createRecraftImg2ImgAgent } from './agents/recraft-img2img.agent';
-import { uploadCharacterImageToS3 } from './agents/s3.service';
 import { CreateCharacterDto } from './dto/create-character.dto';
-import {
-  CharacterGenerationResult,
-  CharacterGenerationData,
-} from './interfaces/character.interface';
 
 @Injectable()
 export class CharacterGenService {
@@ -44,15 +42,14 @@ export class CharacterGenService {
     } catch (error) {
       this.logger.error(
         'Failed to initialize CharacterGenService',
-        error.stack,
+        (error as Error).stack,
       );
       throw error;
     }
   }
 
   async generateCharacter(
-    createCharacterDto: CreateCharacterDto,
-    referenceImages: Express.Multer.File[],
+    createCharacterDto: CreateCharacterDto & { reference_images: string[] },
     userId: string,
   ) {
     // Ensure user has a project (create default if none exists)
@@ -89,9 +86,12 @@ export class CharacterGenService {
       );
     }
 
-    if (!referenceImages || referenceImages.length !== 6) {
+    if (
+      !createCharacterDto.reference_images ||
+      createCharacterDto.reference_images.length !== 6
+    ) {
       this.logger.error(
-        `Invalid number of reference images: ${referenceImages?.length || 0} [${operationId}]`,
+        `Invalid number of reference images: ${createCharacterDto.reference_images?.length || 0} [${operationId}]`,
       );
       throw new BadRequestException('Exactly 6 reference images are required');
     }
@@ -99,23 +99,9 @@ export class CharacterGenService {
     let characterGeneration: any = null;
 
     try {
-      // Step 1: Upload reference images to S3
-      this.logger.log('Uploading reference images to S3');
-      const referenceImageS3Keys: string[] = [];
-
-      for (let i = 0; i < referenceImages.length; i++) {
-        const image = referenceImages[i];
-        const s3Key = await uploadCharacterImageToS3(
-          image.buffer,
-          createCharacterDto.uuid,
-          image.originalname,
-        );
-        referenceImageS3Keys.push(s3Key);
-      }
-
-      this.logger.log(
-        `Successfully uploaded ${referenceImageS3Keys.length} reference images to S3`,
-      );
+      // Reference images are already uploaded by the client; use provided S3 keys
+      const referenceImageS3Keys: string[] =
+        createCharacterDto.reference_images;
 
       // Step 2: Create character generation record in database
       characterGeneration = await this.prisma.characterGeneration.create({

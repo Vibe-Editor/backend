@@ -14,6 +14,7 @@ import { GetWebInfoModule } from './modules/get-web-info/get-web-info.module';
 import { ConceptWriterModule } from './modules/concept-writer/concept-writer.module';
 import { UserInputSummarizerModule } from './modules/user-input-summarizer/user-input-summarizer.module';
 import { CharacterGenModule } from './modules/character-gen/character-gen.module';
+import { UploadsModule } from './modules/uploads/uploads.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { CharacterGenModule } from './modules/character-gen/character-gen.module
     ConceptWriterModule,
     UserInputSummarizerModule,
     CharacterGenModule,
+    UploadsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
