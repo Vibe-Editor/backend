@@ -380,6 +380,292 @@ export class ProjectsService {
     }
   }
 
+  async findProjectVideos(
+    id: string,
+    userId: string,
+    page: number = 1,
+    limit: number = 10,
+  ) {
+    this.logger.log(
+      `Fetching videos for project: ${id}, user: ${userId}, page: ${page}, limit: ${limit}`,
+    );
+
+    try {
+      // First verify the project exists and belongs to the user
+      const project = await this.prisma.project.findFirst({
+        where: { id, userId },
+      });
+
+      if (!project) {
+        throw new NotFoundException('Project not found');
+      }
+
+      const skip = (page - 1) * limit;
+
+      const [videos, total] = await Promise.all([
+        this.prisma.generatedVideo.findMany({
+          where: { projectId: id, userId },
+          include: {
+            videoFiles: true,
+          },
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limit,
+        }),
+        this.prisma.generatedVideo.count({
+          where: { projectId: id, userId },
+        }),
+      ]);
+
+      this.logger.log(`Found ${videos.length} videos for project: ${id}`);
+
+      return {
+        success: true,
+        data: videos,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+          hasNext: page * limit < total,
+          hasPrev: page > 1,
+        },
+      };
+    } catch (error) {
+      this.logger.error(`Failed to fetch project videos: ${error.message}`);
+      throw error;
+    }
+  }
+
+  async findProjectVoiceovers(
+    id: string,
+    userId: string,
+    page: number = 1,
+    limit: number = 10,
+  ) {
+    this.logger.log(
+      `Fetching voiceovers for project: ${id}, user: ${userId}, page: ${page}, limit: ${limit}`,
+    );
+
+    try {
+      // First verify the project exists and belongs to the user
+      const project = await this.prisma.project.findFirst({
+        where: { id, userId },
+      });
+
+      if (!project) {
+        throw new NotFoundException('Project not found');
+      }
+
+      const skip = (page - 1) * limit;
+
+      const [voiceovers, total] = await Promise.all([
+        this.prisma.generatedVoiceover.findMany({
+          where: { projectId: id, userId },
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limit,
+        }),
+        this.prisma.generatedVoiceover.count({
+          where: { projectId: id, userId },
+        }),
+      ]);
+
+      this.logger.log(
+        `Found ${voiceovers.length} voiceovers for project: ${id}`,
+      );
+
+      return {
+        success: true,
+        data: voiceovers,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+          hasNext: page * limit < total,
+          hasPrev: page > 1,
+        },
+      };
+    } catch (error) {
+      this.logger.error(`Failed to fetch project voiceovers: ${error.message}`);
+      throw error;
+    }
+  }
+
+  async findProjectSegmentations(
+    id: string,
+    userId: string,
+    page: number = 1,
+    limit: number = 10,
+  ) {
+    this.logger.log(
+      `Fetching segmentations for project: ${id}, user: ${userId}, page: ${page}, limit: ${limit}`,
+    );
+
+    try {
+      // First verify the project exists and belongs to the user
+      const project = await this.prisma.project.findFirst({
+        where: { id, userId },
+      });
+
+      if (!project) {
+        throw new NotFoundException('Project not found');
+      }
+
+      const skip = (page - 1) * limit;
+
+      const [segmentations, total] = await Promise.all([
+        this.prisma.videoSegmentation.findMany({
+          where: { projectId: id, userId },
+          include: {
+            segments: {
+              orderBy: { segmentId: 'asc' },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limit,
+        }),
+        this.prisma.videoSegmentation.count({
+          where: { projectId: id, userId },
+        }),
+      ]);
+
+      this.logger.log(
+        `Found ${segmentations.length} segmentations for project: ${id}`,
+      );
+
+      return {
+        success: true,
+        data: segmentations,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+          hasNext: page * limit < total,
+          hasPrev: page > 1,
+        },
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to fetch project segmentations: ${error.message}`,
+      );
+      throw error;
+    }
+  }
+
+  async findProjectSummaries(
+    id: string,
+    userId: string,
+    page: number = 1,
+    limit: number = 10,
+  ) {
+    this.logger.log(
+      `Fetching summaries for project: ${id}, user: ${userId}, page: ${page}, limit: ${limit}`,
+    );
+
+    try {
+      // First verify the project exists and belongs to the user
+      const project = await this.prisma.project.findFirst({
+        where: { id, userId },
+      });
+
+      if (!project) {
+        throw new NotFoundException('Project not found');
+      }
+
+      const skip = (page - 1) * limit;
+
+      const [summaries, total] = await Promise.all([
+        this.prisma.contentSummary.findMany({
+          where: { projectId: id, userId },
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limit,
+        }),
+        this.prisma.contentSummary.count({
+          where: { projectId: id, userId },
+        }),
+      ]);
+
+      this.logger.log(`Found ${summaries.length} summaries for project: ${id}`);
+
+      return {
+        success: true,
+        data: summaries,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+          hasNext: page * limit < total,
+          hasPrev: page > 1,
+        },
+      };
+    } catch (error) {
+      this.logger.error(`Failed to fetch project summaries: ${error.message}`);
+      throw error;
+    }
+  }
+
+  async findProjectResearch(
+    id: string,
+    userId: string,
+    page: number = 1,
+    limit: number = 10,
+  ) {
+    this.logger.log(
+      `Fetching research for project: ${id}, user: ${userId}, page: ${page}, limit: ${limit}`,
+    );
+
+    try {
+      // First verify the project exists and belongs to the user
+      const project = await this.prisma.project.findFirst({
+        where: { id, userId },
+      });
+
+      if (!project) {
+        throw new NotFoundException('Project not found');
+      }
+
+      const skip = (page - 1) * limit;
+
+      const [research, total] = await Promise.all([
+        this.prisma.webResearchQuery.findMany({
+          where: { projectId: id, userId },
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limit,
+        }),
+        this.prisma.webResearchQuery.count({
+          where: { projectId: id, userId },
+        }),
+      ]);
+
+      this.logger.log(
+        `Found ${research.length} research queries for project: ${id}`,
+      );
+
+      return {
+        success: true,
+        data: research,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+          hasNext: page * limit < total,
+          hasPrev: page > 1,
+        },
+      };
+    } catch (error) {
+      this.logger.error(`Failed to fetch project research: ${error.message}`);
+      throw error;
+    }
+  }
+
   async update(
     id: string,
     updateProjectDto: UpdateProjectDto,
