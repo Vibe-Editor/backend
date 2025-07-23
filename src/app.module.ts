@@ -13,6 +13,7 @@ import { VoiceoverModule } from './modules/voiceover/voiceover.module';
 import { GetWebInfoModule } from './modules/get-web-info/get-web-info.module';
 import { ConceptWriterModule } from './modules/concept-writer/concept-writer.module';
 import { UserInputSummarizerModule } from './modules/user-input-summarizer/user-input-summarizer.module';
+import { CharacterGenModule } from './modules/character-gen/character-gen.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { UserInputSummarizerModule } from './modules/user-input-summarizer/user-
     GetWebInfoModule,
     ConceptWriterModule,
     UserInputSummarizerModule,
+    CharacterGenModule,
   ],
   controllers: [AppController],
   providers: [AppService],
