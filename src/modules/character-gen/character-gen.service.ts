@@ -133,6 +133,10 @@ export class CharacterGenService {
         1. Generate sprite sheet from reference images using OpenAI
         2. Generate final character using Recraft image-to-image
         
+        You MUST call both tools in sequence:
+        1. First call generate_sprite_sheet with the reference images, visual prompt, art style, and uuid
+        2. Then call generate_final_character with the sprite sheet S3 key from step 1, visual prompt, art style, and uuid
+        
         Always ensure high-quality character generation with proper error handling.
         `,
         handoffs: [
@@ -157,7 +161,11 @@ export class CharacterGenService {
             - Reference images: ${referenceImageS3Keys.join(', ')}
             - Visual prompt: "${createCharacterDto.visual_prompt}"
             - Art style: "${createCharacterDto.art_style}"
-            - User: "${createCharacterDto.uuid}"`,
+            - User: "${createCharacterDto.uuid}"
+            
+            You must:
+            1. First call generate_sprite_sheet with the reference images, visual prompt, art style, and uuid
+            2. Then call generate_final_character with the sprite sheet S3 key from step 1, visual prompt, art style, and uuid`,
         },
       ]);
 
@@ -165,8 +173,17 @@ export class CharacterGenService {
         'Character generation agent execution completed, parsing result',
       );
 
+      this.logger.debug(
+        'Agent result structure:',
+        JSON.stringify(result, null, 2),
+      );
+
       // Validate agent result
       if (!result || !result.output || !Array.isArray(result.output)) {
+        this.logger.error(
+          'Invalid agent result structure:',
+          JSON.stringify(result, null, 2),
+        );
         throw new InternalServerErrorException(
           'Agent orchestration failed - invalid result structure',
         );
@@ -280,14 +297,26 @@ export class CharacterGenService {
         final_character_s3_key: null,
       };
 
+      this.logger.debug(
+        'Parsing agent result output:',
+        JSON.stringify(output, null, 2),
+      );
+
       // More robust parsing logic
       for (const msg of output) {
+        this.logger.debug('Processing message:', JSON.stringify(msg, null, 2));
+
         if (msg.type === 'function_call_result' && msg.status === 'completed') {
           const outputData = msg.output;
+          this.logger.debug(
+            'Function call result output:',
+            JSON.stringify(outputData, null, 2),
+          );
 
           if (outputData?.s3_key) {
             // Check model name to determine which agent produced the result
             const model = outputData.model?.toLowerCase() || '';
+            this.logger.debug(`Processing result with model: ${model}`);
 
             if (
               model.includes('gpt-image-1') ||
@@ -300,6 +329,7 @@ export class CharacterGenService {
               );
             } else if (
               model.includes('recraft') ||
+              model.includes('image-to-image') ||
               model.includes('final') ||
               model.includes('character')
             ) {
@@ -320,6 +350,10 @@ export class CharacterGenService {
         this.logger.error('No final character S3 key found in agent result');
       }
 
+      this.logger.debug(
+        'Final parsed result:',
+        JSON.stringify(result, null, 2),
+      );
       return result;
     } catch (error) {
       this.logger.error('Failed to parse agent result:', error);
