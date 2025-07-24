@@ -112,19 +112,40 @@ async function generateSpriteSheet(
       apiKey: process.env.OPENAI_API_KEY,
     });
 
-    // Convert buffers to file-like objects for the API
+    // Convert buffers to File objects for the API
     const imageFiles = imageBuffers.map((buffer, index) => {
       const uint8Array = new Uint8Array(buffer);
       const blob = new Blob([uint8Array], { type: 'image/png' });
-      return blob as any; // Cast to any to match the API expectation
+      return new File([blob], `reference-${index}.png`, { type: 'image/png' });
     });
 
-    // Use the images.edit API - the image parameter should be a single file, not an array
-    const result = await openai.images.edit({
-      model: 'gpt-image-1',
-      image: imageFiles[0], // Use the first image as the main reference
-      prompt: spriteSheetPrompt,
+    logger.debug(`Prepared ${imageFiles.length} image files for API call`);
+
+    // Use the images.edit API with multiple images
+    // The API expects 'image[]' parameter for multiple images in multipart form data
+    const formData = new FormData();
+    formData.append('model', 'gpt-image-1');
+    formData.append('prompt', spriteSheetPrompt);
+    
+    // Add all images with the 'image[]' parameter name
+    imageFiles.forEach((file, index) => {
+      formData.append('image[]', file);
     });
+
+    // Make the request using axios since the OpenAI SDK doesn't support the 'image[]' parameter
+    const response = await axios.post(
+      'https://api.openai.com/v1/images/edits',
+      formData,
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          'Content-Type': 'multipart/form-data',
+        },
+        responseType: 'json',
+      },
+    );
+
+    const result = response.data;
 
     if (!result.data || result.data.length === 0) {
       logger.error('No image data received from GPT-Image-1');
