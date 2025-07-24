@@ -54,6 +54,14 @@ async function generateRunwayMLVideo(
   const startTime = Date.now();
   logger.log(`Starting RunwayML video generation for user: ${uuid}`);
 
+  const words = animation_prompt.trim().split(/\s+/);
+  if (words.length > 1000) {
+    logger.warn(
+      `animation_prompt exceeded 1000 words (${words.length}), trimming to 1000 words.`,
+    );
+    animation_prompt = words.slice(0, 1000).join(' ');
+  }
+
   try {
     const imageBase64 = await getImageFromS3AsBase64(imageS3Key);
 
