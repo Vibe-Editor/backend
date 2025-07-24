@@ -8,7 +8,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { Agent, handoff, run } from '@openai/agents';
+import { run } from '@openai/agents';
 import { ProjectHelperService } from '../../common/services/project-helper.service';
 import { PrismaClient } from '../../../generated/prisma';
 import { createOpenAIEditAgent } from './agents/openai-edit.agent';
@@ -119,55 +119,94 @@ export class CharacterGenService {
         },
       });
 
-      // Step 3: Run character generation agents
+      // Step 3: Run character generation agents sequentially
+      this.logger.log('Starting sequential character generation process');
+
+      // Step 3a: Generate sprite sheet using OpenAI
+      this.logger.log('Step 1: Generating sprite sheet with OpenAI');
       const OpenAIEditAgent = createOpenAIEditAgent();
-      const RecraftImg2ImgAgent = createRecraftImg2ImgAgent();
-
-      const characterGenAgent = Agent.create({
-        name: 'Character Generation Orchestrator',
-        model: 'gpt-3.5-turbo',
-        instructions: `
-        You are a character generation orchestrator that manages the entire character creation process.
-        
-        Process:
-        1. Generate sprite sheet from reference images using OpenAI
-        2. Generate final character using Recraft image-to-image
-        
-        You MUST call both tools in sequence:
-        1. First call generate_sprite_sheet with the reference images, visual prompt, art style, and uuid
-        2. Then call generate_final_character with the sprite sheet S3 key from step 1, visual prompt, art style, and uuid
-        
-        Always ensure high-quality character generation with proper error handling.
-        `,
-        handoffs: [
-          handoff(OpenAIEditAgent, {
-            toolNameOverride: 'generate_sprite_sheet',
-            toolDescriptionOverride:
-              'Generate sprite sheet from reference images using OpenAI.',
-          }),
-          handoff(RecraftImg2ImgAgent, {
-            toolNameOverride: 'generate_final_character',
-            toolDescriptionOverride:
-              'Generate final character using Recraft image-to-image.',
-          }),
-        ],
-      });
-
-      this.logger.log('Running character generation orchestrator');
-      const result = await run(characterGenAgent, [
+      const spriteSheetResult = await run(OpenAIEditAgent, [
         {
           role: 'user',
-          content: `Generate a character with:
+          content: `Generate a sprite sheet with:
             - Reference images: ${referenceImageS3Keys.join(', ')}
             - Visual prompt: "${createCharacterDto.visual_prompt}"
             - Art style: "${createCharacterDto.art_style}"
-            - User: "${createCharacterDto.uuid}"
-            
-            You must:
-            1. First call generate_sprite_sheet with the reference images, visual prompt, art style, and uuid
-            2. Then call generate_final_character with the sprite sheet S3 key from step 1, visual prompt, art style, and uuid`,
+            - User: "${createCharacterDto.uuid}"`,
         },
       ]);
+
+      this.logger.debug(
+        'Sprite sheet generation result:',
+        JSON.stringify(spriteSheetResult, null, 2),
+      );
+
+      // Parse sprite sheet result
+      const spriteSheetS3Key = this.parseSpriteSheetResult(spriteSheetResult);
+      if (!spriteSheetS3Key) {
+        throw new InternalServerErrorException(
+          'Failed to generate sprite sheet',
+        );
+      }
+
+      this.logger.log(
+        `Sprite sheet generated successfully: ${spriteSheetS3Key}`,
+      );
+
+      // Step 3b: Generate final character using Recraft
+      this.logger.log('Step 2: Generating final character with Recraft');
+      const RecraftImg2ImgAgent = createRecraftImg2ImgAgent();
+      const finalCharacterResult = await run(RecraftImg2ImgAgent, [
+        {
+          role: 'user',
+          content: `Generate a final character with:
+            - Sprite sheet S3 key: "${spriteSheetS3Key}"
+            - Visual prompt: "${createCharacterDto.visual_prompt}"
+            - Art style: "${createCharacterDto.art_style}"
+            - User: "${createCharacterDto.uuid}"`,
+        },
+      ]);
+
+      this.logger.debug(
+        'Final character generation result:',
+        JSON.stringify(finalCharacterResult, null, 2),
+      );
+
+      // Parse final character result
+      const finalCharacterS3Key = this.parseFinalCharacterResult(
+        finalCharacterResult,
+      );
+      if (!finalCharacterS3Key) {
+        throw new InternalServerErrorException(
+          'Failed to generate final character',
+        );
+      }
+
+      this.logger.log(
+        `Final character generated successfully: ${finalCharacterS3Key}`,
+      );
+
+      // Combine results
+      const result = {
+        output: [
+          {
+            type: 'function_call_result',
+            status: 'completed',
+            output: {
+              s3_key: spriteSheetS3Key,
+              model: 'gpt-image-1-sprite-sheet',
+            },
+          },
+          {
+            type: 'function_call_result',
+            status: 'completed',
+            output: {
+              s3_key: finalCharacterS3Key,
+              model: 'recraft-image-to-image',
+            },
+          },
+        ],
+      };
 
       this.logger.debug(
         'Character generation agent execution completed, parsing result',
@@ -287,6 +326,60 @@ export class CharacterGenService {
       throw new InternalServerErrorException(
         error.message || 'Failed to generate character.',
       );
+    }
+  }
+
+  private parseSpriteSheetResult(result: any): string | null {
+    try {
+      this.logger.debug('Parsing sprite sheet result:', JSON.stringify(result, null, 2));
+
+      if (!result || !result.output || !Array.isArray(result.output)) {
+        this.logger.error('Invalid sprite sheet result structure');
+        return null;
+      }
+
+      for (const msg of result.output) {
+        if (msg.type === 'function_call_result' && msg.status === 'completed') {
+          const outputData = msg.output;
+          if (outputData?.s3_key) {
+            this.logger.debug(`Found sprite sheet S3 key: ${outputData.s3_key}`);
+            return outputData.s3_key;
+          }
+        }
+      }
+
+      this.logger.error('No sprite sheet S3 key found in result');
+      return null;
+    } catch (error) {
+      this.logger.error('Failed to parse sprite sheet result:', error);
+      return null;
+    }
+  }
+
+  private parseFinalCharacterResult(result: any): string | null {
+    try {
+      this.logger.debug('Parsing final character result:', JSON.stringify(result, null, 2));
+
+      if (!result || !result.output || !Array.isArray(result.output)) {
+        this.logger.error('Invalid final character result structure');
+        return null;
+      }
+
+      for (const msg of result.output) {
+        if (msg.type === 'function_call_result' && msg.status === 'completed') {
+          const outputData = msg.output;
+          if (outputData?.s3_key) {
+            this.logger.debug(`Found final character S3 key: ${outputData.s3_key}`);
+            return outputData.s3_key;
+          }
+        }
+      }
+
+      this.logger.error('No final character S3 key found in result');
+      return null;
+    } catch (error) {
+      this.logger.error('Failed to parse final character result:', error);
+      return null;
     }
   }
 
