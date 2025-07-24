@@ -13,6 +13,7 @@ import { ProjectHelperService } from '../../common/services/project-helper.servi
 import { PrismaClient } from '../../../generated/prisma';
 import { createOpenAIEditAgent } from './agents/openai-edit.agent';
 import { createRecraftImg2ImgAgent } from './agents/recraft-img2img.agent';
+import { getS3ImageUrl } from './agents/s3.service';
 import { CreateCharacterDto } from './dto/create-character.dto';
 
 @Injectable()
@@ -299,6 +300,10 @@ export class CharacterGenService {
           character_id: updatedCharacter.id,
           sprite_sheet_s3_key: agentResult.sprite_sheet_s3_key,
           final_character_s3_key: agentResult.final_character_s3_key,
+          sprite_sheet_url: getS3ImageUrl(agentResult.sprite_sheet_s3_key),
+          final_character_url: getS3ImageUrl(
+            agentResult.final_character_s3_key,
+          ),
           model: 'gpt-image-1-recraft-character-gen',
           message: 'Character generated successfully',
         };
@@ -337,17 +342,48 @@ export class CharacterGenService {
     }
   }
 
+  private findS3KeyRecursive(obj: any): string | null {
+    if (!obj || typeof obj !== 'object') {
+      return null;
+    }
+
+    // Direct hit
+    if (typeof obj.s3_key === 'string' && obj.s3_key.length > 0) {
+      return obj.s3_key as string;
+    }
+
+    // If the object is an array, iterate its items
+    if (Array.isArray(obj)) {
+      for (const item of obj) {
+        const key = this.findS3KeyRecursive(item);
+        if (key) {
+          return key;
+        }
+      }
+      return null;
+    }
+
+    // Otherwise, iterate object properties
+    for (const value of Object.values(obj)) {
+      const key = this.findS3KeyRecursive(value);
+      if (key) {
+        return key;
+      }
+    }
+
+    return null;
+  }
+
   private parseSpriteSheetResult(result: any): string | null {
     try {
       this.logger.debug('Parsing sprite sheet result:', JSON.stringify(result, null, 2));
 
-      // Handle direct result format (from agent)
+      // 1. Attempt previously-supported shapes first
       if (result?.s3_key) {
         this.logger.debug(`Found sprite sheet S3 key: ${result.s3_key}`);
         return result.s3_key;
       }
 
-      // Handle wrapped result format (from run function)
       if (result?.output && Array.isArray(result.output)) {
         for (const msg of result.output) {
           if (msg.type === 'function_call_result' && msg.status === 'completed') {
@@ -358,6 +394,16 @@ export class CharacterGenService {
             }
           }
         }
+      }
+
+      // 2. Fallback: deep recursive search for any s3_key
+      const recursiveKey = this.findS3KeyRecursive(result);
+      if (recursiveKey) {
+        this.logger.debug(
+          'Found sprite sheet S3 key via recursive search:',
+          recursiveKey,
+        );
+        return recursiveKey;
       }
 
       this.logger.error('No sprite sheet S3 key found in result');
@@ -372,13 +418,11 @@ export class CharacterGenService {
     try {
       this.logger.debug('Parsing final character result:', JSON.stringify(result, null, 2));
 
-      // Handle direct result format (from agent)
       if (result?.s3_key) {
         this.logger.debug(`Found final character S3 key: ${result.s3_key}`);
         return result.s3_key;
       }
 
-      // Handle wrapped result format (from run function)
       if (result?.output && Array.isArray(result.output)) {
         for (const msg of result.output) {
           if (msg.type === 'function_call_result' && msg.status === 'completed') {
@@ -389,6 +433,16 @@ export class CharacterGenService {
             }
           }
         }
+      }
+
+      // Fallback: deep recursive search
+      const recursiveKey = this.findS3KeyRecursive(result);
+      if (recursiveKey) {
+        this.logger.debug(
+          'Found final character S3 key via recursive search:',
+          recursiveKey,
+        );
+        return recursiveKey;
       }
 
       this.logger.error('No final character S3 key found in result');
