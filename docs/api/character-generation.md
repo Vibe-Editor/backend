@@ -119,4 +119,4 @@ Returns a single character-generation record.
 |------|---------|
 | 400 | Invalid input (missing fields, not exactly 6 S3 keys) |
 | 401 | Authentication required |
-| 500 | Internal server error | 
+| 500 | Internal server error |
