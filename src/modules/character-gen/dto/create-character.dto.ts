@@ -5,7 +5,7 @@ import {
   IsArray,
   ArrayMinSize,
   ArrayMaxSize,
-  IsUrl,
+  Matches,
 } from 'class-validator';
 
 export class CreateCharacterDto {
@@ -29,10 +29,13 @@ export class CreateCharacterDto {
   @IsString()
   description?: string;
 
-  // Array of exactly 6 CloudFront URLs to reference images
+  // Array of exactly 6 S3 keys for reference images
   @IsArray()
   @ArrayMinSize(6, { message: 'Exactly 6 reference images are required' })
   @ArrayMaxSize(6, { message: 'Exactly 6 reference images are required' })
-  @IsUrl({}, { each: true })
+  @Matches(/^[a-zA-Z0-9\-_\/\.]+$/, {
+    each: true,
+    message: 'Each reference image must be a valid S3 key',
+  })
   reference_images: string[];
 }

@@ -165,8 +165,21 @@ export class CharacterGenService {
         'Character generation agent execution completed, parsing result',
       );
 
+      // Validate agent result
+      if (!result || !result.output || !Array.isArray(result.output)) {
+        throw new InternalServerErrorException(
+          'Agent orchestration failed - invalid result structure',
+        );
+      }
+
       // Parse agent result
       const agentResult = this.parseAgentResult(result.output);
+
+      if (!agentResult) {
+        throw new InternalServerErrorException(
+          'Failed to parse agent result - invalid response format',
+        );
+      }
 
       if (
         agentResult?.sprite_sheet_s3_key &&
@@ -179,7 +192,7 @@ export class CharacterGenService {
             spriteSheetS3Key: agentResult.sprite_sheet_s3_key,
             finalCharacterS3Key: agentResult.final_character_s3_key,
             success: true,
-            model: 'openai-recraft-character-gen',
+            model: 'gpt-image-1-recraft-character-gen',
             message: 'Character generated successfully',
           },
         });
@@ -193,7 +206,7 @@ export class CharacterGenService {
               success: true,
               sprite_sheet_s3_key: agentResult.sprite_sheet_s3_key,
               final_character_s3_key: agentResult.final_character_s3_key,
-              model: 'openai-recraft-character-gen',
+              model: 'gpt-image-1-recraft-character-gen',
               message: 'Character generated successfully',
             }),
             metadata: {
@@ -222,7 +235,7 @@ export class CharacterGenService {
           character_id: updatedCharacter.id,
           sprite_sheet_s3_key: agentResult.sprite_sheet_s3_key,
           final_character_s3_key: agentResult.final_character_s3_key,
-          model: 'openai-recraft-character-gen',
+          model: 'gpt-image-1-recraft-character-gen',
           message: 'Character generated successfully',
         };
       } else {
@@ -261,23 +274,50 @@ export class CharacterGenService {
   }
 
   private parseAgentResult(output: any[]): any {
-    // Simple parsing logic - in a real implementation, you might want more sophisticated parsing
     try {
       const result = {
         sprite_sheet_s3_key: null,
         final_character_s3_key: null,
       };
 
+      // More robust parsing logic
       for (const msg of output) {
         if (msg.type === 'function_call_result' && msg.status === 'completed') {
-          if (msg.output?.s3_key) {
-            if (msg.output.model?.includes('openai')) {
-              result.sprite_sheet_s3_key = msg.output.s3_key;
-            } else if (msg.output.model?.includes('recraft')) {
-              result.final_character_s3_key = msg.output.s3_key;
+          const outputData = msg.output;
+
+          if (outputData?.s3_key) {
+            // Check model name to determine which agent produced the result
+            const model = outputData.model?.toLowerCase() || '';
+
+            if (
+              model.includes('gpt-image-1') ||
+              model.includes('openai') ||
+              model.includes('sprite')
+            ) {
+              result.sprite_sheet_s3_key = outputData.s3_key;
+              this.logger.debug(
+                `Found sprite sheet S3 key: ${outputData.s3_key}`,
+              );
+            } else if (
+              model.includes('recraft') ||
+              model.includes('final') ||
+              model.includes('character')
+            ) {
+              result.final_character_s3_key = outputData.s3_key;
+              this.logger.debug(
+                `Found final character S3 key: ${outputData.s3_key}`,
+              );
             }
           }
         }
+      }
+
+      // Validate that we have both results
+      if (!result.sprite_sheet_s3_key) {
+        this.logger.error('No sprite sheet S3 key found in agent result');
+      }
+      if (!result.final_character_s3_key) {
+        this.logger.error('No final character S3 key found in agent result');
       }
 
       return result;

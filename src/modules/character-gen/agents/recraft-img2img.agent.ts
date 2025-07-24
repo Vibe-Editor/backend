@@ -164,6 +164,12 @@ async function generateFinalCharacter(
       );
     }
 
+    // Validate image URL format
+    if (!imageUrl.startsWith('http')) {
+      logger.error(`Invalid image URL format: ${imageUrl}`);
+      throw new Error('Invalid image URL format returned from Recraft');
+    }
+
     logger.log('Downloading generated final character from Recraft');
 
     // Download the image

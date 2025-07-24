@@ -140,7 +140,6 @@ export async function uploadFinalCharacterToS3(
 export function getS3ImageUrl(s3Key: string): string {
   // Use CloudFront URL for better performance and caching
   const cloudfrontUrl = `https://ds0fghatf06yb.cloudfront.net/${s3Key}`;
-  
   return cloudfrontUrl;
 }
 

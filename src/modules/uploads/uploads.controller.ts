@@ -21,4 +21,4 @@ export class UploadsController {
   ) {
     return this.service.getPresignedUrls(uuid, count ?? 6);
   }
-} 
+}
