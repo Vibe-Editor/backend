@@ -98,7 +98,6 @@ async function generateSpriteSheet(
     logger.log('Generating sprite sheet with GPT-Image-1 edit API');
 
     const spriteSheetPrompt = `Create a character rotation sheet based on these reference images.
-    Character details: ${visual_prompt}.
     Art style: ${art_style}.
 
     The character rotation sheet should include:
