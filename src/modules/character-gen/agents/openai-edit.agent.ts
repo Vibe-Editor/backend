@@ -8,6 +8,7 @@ import axios from 'axios';
 import { randomUUID } from 'crypto';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { SpriteSheetGenerationResult } from '../interfaces/character.interface';
+import OpenAI from 'openai';
 
 const logger = new Logger('OpenAI Edit Agent');
 
@@ -93,62 +94,50 @@ async function generateSpriteSheet(
     }
     logger.log(`Downloaded ${imageBuffers.length} reference images`);
 
-    // Step 2: Generate sprite sheet using GPT-Image-1
-    logger.log('Generating sprite sheet with GPT-Image-1');
+    // Step 2: Generate sprite sheet using GPT-Image-1 edit API
+    logger.log('Generating sprite sheet with GPT-Image-1 edit API');
 
-    const spriteSheetPrompt = `Create a character sprite sheet based on these 6 reference images. 
-    Character details: ${visual_prompt}. 
-    Art style: ${art_style}. 
-    
+    const spriteSheetPrompt = `Create a character sprite sheet based on these reference images.
+    Character details: ${visual_prompt}.
+    Art style: ${art_style}.
+
     The sprite sheet should include:
     1. Character appearance and features based on the reference images
     2. Different poses and expressions
     3. Consistent art style matching the references
     4. Proper sprite sheet layout (256x256 pixels)`;
 
-    // Use GPT-Image-1 for image generation with multiple reference images
-    const formData = new FormData();
-    formData.append('model', 'gpt-image-1');
-    formData.append('prompt', spriteSheetPrompt);
-    formData.append('n', '1');
-    formData.append('size', '256x256');
-    formData.append('response_format', 'b64_json');
-
-    // Add all 6 images to the form data
-    imageBuffers.forEach((buffer, index) => {
-      const blob = new Blob([buffer as BlobPart], { type: 'image/png' });
-      formData.append(`image[]`, blob, `reference-${index}.png`);
+    // Initialize OpenAI client
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
     });
 
-    const response = await axios.post(
-      'https://api.openai.com/v1/images/generations',
-      formData,
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-          'Content-Type': 'multipart/form-data',
-        },
-        responseType: 'json',
-      },
-    );
+    // Convert buffers to file-like objects for the API
+    const imageFiles = imageBuffers.map((buffer, index) => {
+      const uint8Array = new Uint8Array(buffer);
+      const blob = new Blob([uint8Array], { type: 'image/png' });
+      return blob as any; // Cast to any to match the API expectation
+    });
 
-    if (
-      !response.data ||
-      !response.data.data ||
-      response.data.data.length === 0
-    ) {
+    // Use the images.edit API
+    const result = await openai.images.edit({
+      model: 'gpt-image-1',
+      image: imageFiles,
+      prompt: spriteSheetPrompt,
+    });
+
+    if (!result.data || result.data.length === 0) {
       logger.error('No image data received from GPT-Image-1');
       throw new Error('GPT-Image-1 did not generate an image');
     }
 
-    // Extract the base64 image data
-    const base64Data = response.data.data[0].b64_json;
-    if (!base64Data) {
+    const imageBase64 = result.data[0].b64_json;
+    if (!imageBase64) {
       logger.error('No base64 data in GPT-Image-1 response');
       throw new Error('GPT-Image-1 response missing base64 data');
     }
 
-    const imageBuffer = Buffer.from(base64Data, 'base64');
+    const imageBuffer = Buffer.from(imageBase64, 'base64');
 
     if (!imageBuffer || imageBuffer.length === 0) {
       logger.error('Empty image buffer received from GPT-Image-1');
@@ -191,7 +180,9 @@ async function generateSpriteSheet(
       {
         error: error.message,
         uuid,
-        stack: error.stack,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        responseData: error.response?.data,
       },
     );
     throw error;
