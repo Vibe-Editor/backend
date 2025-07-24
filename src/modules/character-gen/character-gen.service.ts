@@ -333,17 +333,21 @@ export class CharacterGenService {
     try {
       this.logger.debug('Parsing sprite sheet result:', JSON.stringify(result, null, 2));
 
-      if (!result || !result.output || !Array.isArray(result.output)) {
-        this.logger.error('Invalid sprite sheet result structure');
-        return null;
+      // Handle direct result format (from agent)
+      if (result?.s3_key) {
+        this.logger.debug(`Found sprite sheet S3 key: ${result.s3_key}`);
+        return result.s3_key;
       }
 
-      for (const msg of result.output) {
-        if (msg.type === 'function_call_result' && msg.status === 'completed') {
-          const outputData = msg.output;
-          if (outputData?.s3_key) {
-            this.logger.debug(`Found sprite sheet S3 key: ${outputData.s3_key}`);
-            return outputData.s3_key;
+      // Handle wrapped result format (from run function)
+      if (result?.output && Array.isArray(result.output)) {
+        for (const msg of result.output) {
+          if (msg.type === 'function_call_result' && msg.status === 'completed') {
+            const outputData = msg.output;
+            if (outputData?.s3_key) {
+              this.logger.debug(`Found sprite sheet S3 key: ${outputData.s3_key}`);
+              return outputData.s3_key;
+            }
           }
         }
       }
@@ -360,17 +364,21 @@ export class CharacterGenService {
     try {
       this.logger.debug('Parsing final character result:', JSON.stringify(result, null, 2));
 
-      if (!result || !result.output || !Array.isArray(result.output)) {
-        this.logger.error('Invalid final character result structure');
-        return null;
+      // Handle direct result format (from agent)
+      if (result?.s3_key) {
+        this.logger.debug(`Found final character S3 key: ${result.s3_key}`);
+        return result.s3_key;
       }
 
-      for (const msg of result.output) {
-        if (msg.type === 'function_call_result' && msg.status === 'completed') {
-          const outputData = msg.output;
-          if (outputData?.s3_key) {
-            this.logger.debug(`Found final character S3 key: ${outputData.s3_key}`);
-            return outputData.s3_key;
+      // Handle wrapped result format (from run function)
+      if (result?.output && Array.isArray(result.output)) {
+        for (const msg of result.output) {
+          if (msg.type === 'function_call_result' && msg.status === 'completed') {
+            const outputData = msg.output;
+            if (outputData?.s3_key) {
+              this.logger.debug(`Found final character S3 key: ${outputData.s3_key}`);
+              return outputData.s3_key;
+            }
           }
         }
       }

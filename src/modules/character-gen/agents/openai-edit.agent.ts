@@ -97,15 +97,18 @@ async function generateSpriteSheet(
     // Step 2: Generate sprite sheet using GPT-Image-1 edit API
     logger.log('Generating sprite sheet with GPT-Image-1 edit API');
 
-    const spriteSheetPrompt = `Create a character sprite sheet based on these reference images.
+    const spriteSheetPrompt = `Create a character rotation sheet based on these reference images.
     Character details: ${visual_prompt}.
     Art style: ${art_style}.
 
-    The sprite sheet should include:
-    1. Character appearance and features based on the reference images
-    2. Different poses and expressions
-    3. Consistent art style matching the references
-    4. Proper sprite sheet layout (256x256 pixels)`;
+    The character rotation sheet should include:
+    1. Closeup of face from front view
+    2. Closeup of face from side view (profile)
+    3. Closeup of face from 3/4 angle view
+    4. Full body shot from front view
+    5. Full body shot from side view (profile)
+    6. Consistent art style matching the references
+    7. Proper character rotation sheet layout (256x256 pixels)`;
 
     // Initialize OpenAI client
     const openai = new OpenAI({
