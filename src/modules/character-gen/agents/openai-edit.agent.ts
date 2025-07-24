@@ -119,10 +119,10 @@ async function generateSpriteSheet(
       return blob as any; // Cast to any to match the API expectation
     });
 
-    // Use the images.edit API
+    // Use the images.edit API - the image parameter should be a single file, not an array
     const result = await openai.images.edit({
       model: 'gpt-image-1',
-      image: imageFiles,
+      image: imageFiles[0], // Use the first image as the main reference
       prompt: spriteSheetPrompt,
     });
 
