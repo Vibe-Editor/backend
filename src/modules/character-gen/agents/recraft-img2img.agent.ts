@@ -1,7 +1,11 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
 import { Agent, tool } from '@openai/agents';
 import z from 'zod';
 import { Logger } from '@nestjs/common';
 import axios from 'axios';
+// Node 18+ provides global FormData, File, Blob. If the runtime lacks File, consider polyfill but assume available as used elsewhere.
 import { randomUUID } from 'crypto';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { CharacterGenerationResult } from '../interfaces/character.interface';
@@ -83,31 +87,42 @@ async function generateFinalCharacter(
   logger.log(`Starting Recraft image-to-image generation for user: ${uuid}`);
 
   try {
-    // Step 1: Get sprite sheet from S3 as base64
+    // Step 1: Download sprite sheet from S3 as Buffer
     logger.log('Downloading sprite sheet from S3');
-    const spriteSheetBase64 = await getImageFromS3AsBase64(sprite_sheet_s3_key);
+    const spriteSheetBuffer = await getImageFromS3Buffer(sprite_sheet_s3_key);
 
-    // Step 2: Prepare the prompt for Recraft image-to-image
+    // Convert buffer to File for multipart upload
+    const uint8Array = new Uint8Array(spriteSheetBuffer);
+    const blob = new Blob([uint8Array], { type: 'image/png' });
+    const spriteSheetFile = new File([blob], 'sprite-sheet.png', {
+      type: 'image/png',
+    });
+
+    // Prepare prompt
     const recraftPrompt = `${visual_prompt}. Art style: ${art_style}. Create a final character based on the sprite sheet with consistent styling and high quality.`;
 
+    // Build form data according to Recraft docs
+    const formData = new FormData();
+    formData.append('image', spriteSheetFile);
+    formData.append('prompt', recraftPrompt);
+    formData.append('strength', '0.7');
+    formData.append('style', 'realistic_image');
+    formData.append('n', '1');
+
     logger.log('Starting Recraft image-to-image generation');
+
     let response;
     try {
       response = await axios.post(
-        'https://external.api.recraft.ai/v1/images/img2img',
-        {
-          prompt: recraftPrompt,
-          image: spriteSheetBase64,
-          strength: 0.7, // Control how much to change from the original
-          style: 'realistic_image',
-          size: '256x256',
-          n: 1,
-        },
+        'https://external.api.recraft.ai/v1/images/imageToImage',
+        formData,
         {
           headers: {
             Authorization: `Bearer ${process.env.RECRAFT_API_KEY}`,
-            'Content-Type': 'application/json',
+            'Content-Type': 'multipart/form-data',
           },
+          // Increase timeout for image generation if necessary
+          timeout: 60000,
         },
       );
     } catch (axiosError) {
@@ -228,7 +243,7 @@ async function generateFinalCharacter(
   }
 }
 
-async function getImageFromS3AsBase64(s3Key: string): Promise<string> {
+async function getImageFromS3Buffer(s3Key: string): Promise<Buffer> {
   const startTime = Date.now();
   try {
     logger.debug(
@@ -249,14 +264,12 @@ async function getImageFromS3AsBase64(s3Key: string): Promise<string> {
     }
 
     const buffer = Buffer.concat(chunks);
-    const base64 = buffer.toString('base64');
-
     const downloadTime = Date.now() - startTime;
     logger.debug(
-      `Successfully downloaded and converted image to base64 in ${downloadTime}ms (size: ${buffer.length} bytes)`,
+      `Successfully downloaded image to buffer in ${downloadTime}ms (size: ${buffer.length} bytes)`,
     );
 
-    return base64;
+    return buffer;
   } catch (error) {
     const downloadTime = Date.now() - startTime;
     logger.error(`Failed to fetch image from S3 after ${downloadTime}ms`, {
