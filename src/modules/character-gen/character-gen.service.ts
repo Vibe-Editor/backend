@@ -140,6 +140,14 @@ export class CharacterGenService {
         'Sprite sheet generation result:',
         JSON.stringify(spriteSheetResult, null, 2),
       );
+      
+      // Add more detailed debugging
+      this.logger.debug('Result type:', typeof spriteSheetResult);
+      this.logger.debug('Result keys:', Object.keys(spriteSheetResult || {}));
+      if (spriteSheetResult?.output) {
+        this.logger.debug('Output array length:', spriteSheetResult.output.length);
+        this.logger.debug('Output array:', JSON.stringify(spriteSheetResult.output, null, 2));
+      }
 
       // Parse sprite sheet result
       const spriteSheetS3Key = this.parseSpriteSheetResult(spriteSheetResult);
