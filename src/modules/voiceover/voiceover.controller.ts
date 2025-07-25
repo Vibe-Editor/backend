@@ -47,9 +47,8 @@ export class VoiceoverController {
   ) {
     return this.voiceoverService.updateVoiceoverPrompt(
       voiceoverId,
-      updateVoiceoverDto.narration_prompt,
+      updateVoiceoverDto,
       userId,
-      updateVoiceoverDto.s3_key,
     );
   }
 }

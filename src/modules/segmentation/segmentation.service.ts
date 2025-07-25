@@ -305,9 +305,10 @@ export class SegmentationService {
     artStyle: string;
     model: string;
   }> {
-    // Ensure user has a project (create default if none exists)
-    const projectId =
-      await this.projectHelperService.ensureUserHasProject(userId);
+    // Use projectId from body if provided, otherwise ensure user has a project (create default if none exists)
+    const projectId = segmentationDto.projectId
+      ? segmentationDto.projectId
+      : await this.projectHelperService.ensureUserHasProject(userId);
     console.log(`Using project ${projectId} for segmentation`);
 
     const createGeminiAgent = () =>
@@ -645,7 +646,11 @@ export class SegmentationService {
    * Select a segmentation (supports multiple selections per project)
    * This allows users to select multiple segmentations throughout their iterative workflow
    */
-  async selectSegmentation(segmentationId: string, userId: string) {
+  async selectSegmentation(
+    segmentationId: string,
+    userId: string,
+    projectId?: string,
+  ) {
     try {
       const segmentation = await this.prisma.videoSegmentation.findFirst({
         where: {
@@ -749,6 +754,9 @@ export class SegmentationService {
       }
       if (updateData.negative_prompt !== undefined) {
         updateFields.negativePrompt = updateData.negative_prompt;
+      }
+      if (updateData.projectId !== undefined) {
+        updateFields.projectId = updateData.projectId;
       }
 
       // Update the segmentation

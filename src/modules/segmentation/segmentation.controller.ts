@@ -45,9 +45,14 @@ export class SegmentationController {
   @Patch(':id/select')
   async selectSegmentation(
     @Param('id') segmentationId: string,
+    @Body() body: { projectId?: string },
     @CurrentUser('id') userId: string,
   ) {
-    return this.segmentationService.selectSegmentation(segmentationId, userId);
+    return this.segmentationService.selectSegmentation(
+      segmentationId,
+      userId,
+      body.projectId,
+    );
   }
 
   @Patch(':id')

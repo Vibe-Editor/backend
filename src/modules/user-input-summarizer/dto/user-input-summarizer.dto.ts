@@ -8,4 +8,8 @@ export class UserInputSummarizerDto {
   @IsString()
   @IsNotEmpty()
   user_input: string;
+
+  @IsString()
+  @IsNotEmpty()
+  projectId: string;
 }

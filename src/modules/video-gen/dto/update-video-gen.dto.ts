@@ -17,4 +17,8 @@ export class UpdateVideoGenDto {
   @IsString({ each: true })
   @IsOptional()
   video_s3_keys?: string[];
+
+  @IsString()
+  @IsOptional()
+  projectId?: string;
 }

@@ -12,4 +12,8 @@ export class ImageGenDto {
   @IsString()
   @IsNotEmpty()
   uuid: string;
+
+  @IsString()
+  @IsNotEmpty()
+  projectId: string;
 }

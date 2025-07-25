@@ -1,6 +1,13 @@
 # Concept Generation
 
+**Important**: All concept-writer endpoints now require a valid `projectId` in the request body. These endpoints will not work without providing a correct project ID.
+
 - `POST /concept-writer` - Generate creative video concepts
+  - **Requires**: JWT Authentication
+  - **Body Parameters**:
+    - `prompt` (required): Description of the video concept to generate
+    - `web_info` (required): Latest information or context about the topic
+    - `projectId` (required): ID of the project to save the concepts to
   - **Example Request**:
 
   ```json
@@ -50,15 +57,18 @@
   ]
   ```
 
-- `PATCH /concept-writer/:id` - Update the prompt of a specific video concept
+- `PATCH /concept-writer/:id` - Update a specific video concept
   - **Requires**: JWT Authentication
   - **URL Parameter**: `id` - The concept ID to update
-  - **Body**: `{prompt: string}` - The new prompt to update
+  - **Body Parameters**:
+    - `prompt` (required): Updated description of the video concept
+    - `projectId` (optional): Move concept to a different project
   - **Example Request**:
 
   ```json
   {
-    "prompt": "Create a promotional video for an eco-friendly water bottle focusing on health benefits for athletes"
+    "prompt": "Create a promotional video for an eco-friendly water bottle focusing on health benefits for athletes",
+    "projectId": "clxyz123abc"
   }
   ```
 

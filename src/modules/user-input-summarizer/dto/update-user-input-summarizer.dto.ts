@@ -10,4 +10,8 @@ export class UpdateUserInputSummarizerDto {
   @IsNotEmpty()
   @IsOptional()
   user_input?: string;
+
+  @IsString()
+  @IsOptional()
+  projectId?: string;
 }

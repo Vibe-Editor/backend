@@ -8,4 +8,8 @@ export class ConceptWriterDto {
   @IsString()
   @IsNotEmpty()
   web_info: string;
+
+  @IsString()
+  @IsNotEmpty()
+  projectId: string;
 }

@@ -48,7 +48,7 @@ export class ConceptWriterController {
   ) {
     return this.conceptWriterService.updateConceptPrompt(
       conceptId,
-      updateConceptDto.prompt,
+      updateConceptDto,
       userId,
     );
   }

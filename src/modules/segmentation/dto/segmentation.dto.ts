@@ -12,4 +12,8 @@ export class SegmentationDto {
   @IsString()
   @IsOptional()
   negative_prompt: string;
+
+  @IsString()
+  @IsOptional()
+  projectId?: string;
 }

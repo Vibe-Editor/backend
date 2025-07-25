@@ -47,7 +47,7 @@ export class GetWebInfoController {
   ) {
     return this.getWebInfoService.updateWebInfoPrompt(
       webInfoId,
-      updateWebInfoDto.prompt,
+      updateWebInfoDto,
       userId,
     );
   }

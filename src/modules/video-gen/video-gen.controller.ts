@@ -47,11 +47,8 @@ export class VideoGenController {
   ) {
     return this.videoGenService.updateVideoPrompt(
       videoId,
-      updateVideoGenDto.animation_prompt,
-      updateVideoGenDto.art_style,
+      updateVideoGenDto,
       userId,
-      updateVideoGenDto.image_s3_key,
-      updateVideoGenDto.video_s3_keys,
     );
   }
 }
