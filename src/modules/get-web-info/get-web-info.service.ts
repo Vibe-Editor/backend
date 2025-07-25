@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { GetWebInfoDto } from './dto/get-web-info.dto';
+import { UpdateWebInfoDto } from './dto/update-web-info.dto';
 import { ProjectHelperService } from '../../common/services/project-helper.service';
 import { PrismaClient } from '../../../generated/prisma';
 
@@ -10,12 +11,9 @@ export class GetWebInfoService {
   constructor(private readonly projectHelperService: ProjectHelperService) {}
 
   async getWebInfo(getWebInfoDto: GetWebInfoDto, userId: string) {
-    // Ensure user has a project (create default if none exists)
-    const projectId =
-      await this.projectHelperService.ensureUserHasProject(userId);
+    // Use projectId from body - no fallback project creation logic
+    const { prompt, projectId } = getWebInfoDto;
     console.log(`Using project ${projectId} for web research`);
-
-    const { prompt } = getWebInfoDto;
 
     try {
       const response = await fetch(
@@ -165,11 +163,11 @@ export class GetWebInfoService {
   }
 
   /**
-   * Update the prompt of a specific web info query by ID for a user
+   * Update the prompt and/or project of a specific web info query by ID for a user
    */
   async updateWebInfoPrompt(
     webInfoId: string,
-    newPrompt: string,
+    updateData: UpdateWebInfoDto,
     userId: string,
   ) {
     try {
@@ -187,14 +185,21 @@ export class GetWebInfoService {
         );
       }
 
-      // Update the web info query prompt
+      // Prepare update data - only include fields that are provided
+      const updateFields: any = {
+        prompt: updateData.prompt,
+      };
+
+      if (updateData.projectId !== undefined) {
+        updateFields.projectId = updateData.projectId;
+      }
+
+      // Update the web info query
       const updatedWebInfo = await this.prisma.webResearchQuery.update({
         where: {
           id: webInfoId,
         },
-        data: {
-          prompt: newPrompt,
-        },
+        data: updateFields,
         include: {
           project: {
             select: {
@@ -206,29 +211,36 @@ export class GetWebInfoService {
       });
 
       console.log(
-        `Updated web info query ${webInfoId} prompt for user ${userId}`,
+        `Updated web info query ${webInfoId} for user ${userId}: ${Object.keys(updateFields).join(', ')}`,
       );
 
       // Log the update in conversation history
-      await this.prisma.conversationHistory.create({
-        data: {
-          type: 'WEB_RESEARCH',
-          userInput: `Updated prompt for web info query ${webInfoId}`,
-          response: JSON.stringify({
-            action: 'update_prompt',
-            webInfoId,
-            oldPrompt: existingWebInfo.prompt,
-            newPrompt,
-          }),
-          metadata: {
-            action: 'update',
-            webInfoId,
-            oldPrompt: existingWebInfo.prompt,
+      if (existingWebInfo.projectId) {
+        await this.prisma.conversationHistory.create({
+          data: {
+            type: 'WEB_RESEARCH',
+            userInput: JSON.stringify({
+              action: 'update_web_info',
+              webInfoId,
+              newPrompt: updateData.prompt,
+              oldPrompt: existingWebInfo.prompt,
+              updatedFields: updateFields,
+            }),
+            response: JSON.stringify({
+              success: true,
+              message: 'Web info query updated successfully',
+              updatedFields: Object.keys(updateFields),
+            }),
+            metadata: {
+              action: 'update',
+              webInfoId,
+              updatedFields: Object.keys(updateFields),
+            },
+            projectId: updatedWebInfo.projectId,
+            userId,
           },
-          projectId: updatedWebInfo.projectId,
-          userId,
-        },
-      });
+        });
+      }
 
       // Parse the response JSON if it's stored as string
       let parsedResponse;
@@ -240,7 +252,7 @@ export class GetWebInfoService {
 
       return {
         success: true,
-        message: 'Web info query prompt updated successfully',
+        message: 'Web info query updated successfully',
         webInfoQuery: {
           ...updatedWebInfo,
           response: parsedResponse,

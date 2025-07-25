@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import { VoiceoverDto } from './dto/voiceover.dto';
+import { UpdateVoiceoverDto } from './dto/update-voiceover.dto';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { randomUUID } from 'crypto';
 import { ProjectHelperService } from '../../common/services/project-helper.service';
@@ -64,8 +65,8 @@ export class VoiceoverService {
   }
 
   async generateVoiceover(voiceoverDto: VoiceoverDto, userId: string) {
-    const projectId =
-      await this.projectHelperService.ensureUserHasProject(userId);
+    // Use projectId from body - no fallback project creation logic
+    const { narration_prompt, projectId } = voiceoverDto;
     this.logger.log(`Using project ${projectId} for voiceover generation`);
 
     const operationId = randomUUID();
@@ -73,19 +74,16 @@ export class VoiceoverService {
     try {
       this.logger.log(`Starting voiceover generation [${operationId}]`);
 
-      if (
-        !voiceoverDto.narration_prompt ||
-        voiceoverDto.narration_prompt.trim().length === 0
-      ) {
+      if (!narration_prompt || narration_prompt.trim().length === 0) {
         this.logger.error(`Missing or empty narration_prompt [${operationId}]`);
         throw new BadRequestException(
           'narration_prompt is required and cannot be empty',
         );
       }
 
-      if (voiceoverDto.narration_prompt.length > 5000) {
+      if (narration_prompt.length > 5000) {
         this.logger.error(
-          `Narration prompt too long: ${voiceoverDto.narration_prompt.length} characters [${operationId}]`,
+          `Narration prompt too long: ${narration_prompt.length} characters [${operationId}]`,
         );
         throw new BadRequestException(
           'narration_prompt must be less than 5000 characters',
@@ -97,7 +95,7 @@ export class VoiceoverService {
       const stream = await this.elevenLabs.textToSpeech.convert(
         'JBFqnCBsd6RMkjVDRZzb',
         {
-          text: voiceoverDto.narration_prompt,
+          text: narration_prompt,
           modelId: 'eleven_multilingual_v2',
           outputFormat: 'mp3_44100_128',
         },
@@ -130,7 +128,7 @@ export class VoiceoverService {
 
       const savedVoiceover = await this.prisma.generatedVoiceover.create({
         data: {
-          narrationPrompt: voiceoverDto.narration_prompt,
+          narrationPrompt: narration_prompt,
           s3Key: s3Key,
           projectId,
           userId,
@@ -140,7 +138,7 @@ export class VoiceoverService {
       await this.prisma.conversationHistory.create({
         data: {
           type: 'VOICEOVER_GENERATION',
-          userInput: voiceoverDto.narration_prompt,
+          userInput: narration_prompt,
           response: JSON.stringify({
             success: true,
             s3_key: s3Key,
@@ -175,7 +173,7 @@ export class VoiceoverService {
       this.logger.error(`Voiceover generation failed [${operationId}]`, {
         error: error.message,
         stack: error.stack,
-        promptLength: voiceoverDto.narration_prompt?.length || 0,
+        promptLength: narration_prompt?.length || 0,
       });
 
       if (error instanceof BadRequestException) {
@@ -341,13 +339,12 @@ export class VoiceoverService {
   }
 
   /**
-   * Update the narration prompt of a specific generated voiceover
+   * Update the narration prompt, S3 key, and/or project of a specific generated voiceover
    */
   async updateVoiceoverPrompt(
     voiceoverId: string,
-    newPrompt: string,
+    updateData: UpdateVoiceoverDto,
     userId: string,
-    newS3Key?: string,
   ) {
     try {
       // First, verify the voiceover exists and belongs to the user
@@ -372,20 +369,23 @@ export class VoiceoverService {
         );
       }
 
-      // Update the narration prompt and optionally the S3 key
-      const updateData: any = {
-        narrationPrompt: newPrompt,
+      // Prepare update data - only include fields that are provided
+      const updateFields: any = {
+        narrationPrompt: updateData.narration_prompt,
       };
 
-      if (newS3Key !== undefined) {
-        updateData.s3Key = newS3Key;
+      if (updateData.s3_key !== undefined) {
+        updateFields.s3Key = updateData.s3_key;
+      }
+      if (updateData.projectId !== undefined) {
+        updateFields.projectId = updateData.projectId;
       }
 
       const updatedVoiceover = await this.prisma.generatedVoiceover.update({
         where: {
           id: voiceoverId,
         },
-        data: updateData,
+        data: updateFields,
         include: {
           project: {
             select: {
@@ -399,15 +399,20 @@ export class VoiceoverService {
       // Log the update in conversation history
       if (existingVoiceover.projectId) {
         const userInputData: any = {
-          action: 'update_prompt',
+          action: 'update_voiceover',
           voiceoverId: voiceoverId,
-          newPrompt: newPrompt,
+          newPrompt: updateData.narration_prompt,
           oldPrompt: existingVoiceover.narrationPrompt,
+          updatedFields: updateFields,
         };
 
-        if (newS3Key !== undefined) {
-          userInputData.newS3Key = newS3Key;
+        if (updateData.s3_key !== undefined) {
+          userInputData.newS3Key = updateData.s3_key;
           userInputData.oldS3Key = existingVoiceover.s3Key;
+        }
+        if (updateData.projectId !== undefined) {
+          userInputData.newProjectId = updateData.projectId;
+          userInputData.oldProjectId = existingVoiceover.projectId;
         }
 
         await this.prisma.conversationHistory.create({
@@ -416,36 +421,38 @@ export class VoiceoverService {
             userInput: JSON.stringify(userInputData),
             response: JSON.stringify({
               success: true,
-              message: newS3Key
-                ? 'Voiceover prompt and S3 key updated successfully'
-                : 'Voiceover prompt updated successfully',
+              message: 'Voiceover updated successfully',
+              updatedFields: Object.keys(updateFields),
             }),
-            projectId: existingVoiceover.projectId,
+            metadata: {
+              action: 'update',
+              voiceoverId,
+              updatedFields: Object.keys(updateFields),
+            },
+            projectId: updatedVoiceover.projectId,
             userId: userId,
           },
         });
       }
 
       this.logger.log(
-        `Updated narration prompt${newS3Key ? ' and S3 key' : ''} for voiceover ${voiceoverId} for user ${userId}`,
+        `Updated voiceover ${voiceoverId} for user ${userId}: ${Object.keys(updateFields).join(', ')}`,
       );
 
       return {
         success: true,
-        message: newS3Key
-          ? 'Voiceover prompt and S3 key updated successfully'
-          : 'Voiceover prompt updated successfully',
+        message: 'Voiceover updated successfully',
         voiceover: updatedVoiceover,
       };
     } catch (error) {
       this.logger.error(
-        `Failed to update voiceover prompt${newS3Key ? ' and S3 key' : ''} ${voiceoverId}: ${(error as Error).message}`,
+        `Failed to update voiceover ${voiceoverId}: ${(error as Error).message}`,
       );
       if (error instanceof NotFoundException) {
         throw error;
       }
       throw new InternalServerErrorException(
-        `Failed to update voiceover prompt${newS3Key ? ' and S3 key' : ''}: ${(error as Error).message}`,
+        `Failed to update voiceover: ${(error as Error).message}`,
       );
     }
   }

@@ -22,12 +22,9 @@ export class ConceptWriterService {
     conceptWriterDto: ConceptWriterDto,
     userId: string,
   ): Promise<GeneratedResponse> {
-    // Ensure user has a project (create default if none exists)
-    const projectId =
-      await this.projectHelperService.ensureUserHasProject(userId);
+    // Use projectId from body - no fallback project creation logic
+    const { prompt, web_info, projectId } = conceptWriterDto;
     this.logger.log(`Using project ${projectId} for concept generation`);
-
-    const { prompt, web_info } = conceptWriterDto;
 
     const systemPrompt = `Generate 3-4 creative video concept ideas based on this prompt: "${prompt}"
 
@@ -253,7 +250,7 @@ export class ConceptWriterService {
    */
   async updateConceptPrompt(
     conceptId: string,
-    newPrompt: string,
+    updateData: { prompt: string; projectId?: string },
     userId: string,
   ) {
     try {
@@ -271,14 +268,20 @@ export class ConceptWriterService {
         );
       }
 
-      // Update the concept prompt
+      // Prepare update data - only include fields that are provided
+      const updateFields: any = {
+        prompt: updateData.prompt,
+      };
+      if (updateData.projectId !== undefined) {
+        updateFields.projectId = updateData.projectId;
+      }
+
+      // Update the concept
       const updatedConcept = await this.prisma.videoConcept.update({
         where: {
           id: conceptId,
         },
-        data: {
-          prompt: newPrompt,
-        },
+        data: updateFields,
         include: {
           project: {
             select: {
@@ -297,15 +300,17 @@ export class ConceptWriterService {
           type: 'CONCEPT_GENERATION',
           userInput: `Updated prompt for concept ${conceptId}`,
           response: JSON.stringify({
-            action: 'update_prompt',
+            action: 'update_concept',
             conceptId,
             oldPrompt: existingConcept.prompt,
-            newPrompt,
+            newPrompt: updateData.prompt,
+            updatedFields: updateFields,
           }),
           metadata: {
             action: 'update',
             conceptId,
             oldPrompt: existingConcept.prompt,
+            updatedFields: Object.keys(updateFields),
           },
           projectId: updatedConcept.projectId,
           userId,

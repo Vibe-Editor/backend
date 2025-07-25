@@ -14,4 +14,8 @@ export class UpdateSegmentationDto {
   @IsString()
   @IsOptional()
   negative_prompt?: string;
+
+  @IsString()
+  @IsOptional()
+  projectId?: string;
 }

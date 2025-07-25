@@ -47,10 +47,8 @@ export class ImageGenController {
   ) {
     return this.imageGenService.updateImagePrompt(
       imageId,
-      updateImageGenDto.visual_prompt,
-      updateImageGenDto.art_style,
+      updateImageGenDto,
       userId,
-      updateImageGenDto.s3_key,
     );
   }
 }

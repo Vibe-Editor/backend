@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ImageGenDto } from './dto/image-gen.dto';
+import { UpdateImageGenDto } from './dto/update-image-gen.dto';
 import { GoogleGenAI } from '@google/genai';
 import { Agent, handoff, run } from '@openai/agents';
 import { ProjectHelperService } from '../../common/services/project-helper.service';
@@ -55,17 +56,16 @@ export class ImageGenService {
   }
 
   async generateImage(imageGenDto: ImageGenDto, userId: string) {
-    // Ensure user has a project (create default if none exists)
-    const projectId =
-      await this.projectHelperService.ensureUserHasProject(userId);
+    // Use projectId from body - no fallback project creation logic
+    const { visual_prompt, art_style, uuid, projectId } = imageGenDto;
     this.logger.log(`Using project ${projectId} for image generation`);
 
     const startTime = Date.now();
-    const operationId = imageGenDto.uuid;
+    const operationId = uuid;
 
     this.logger.log(`Starting image generation [${operationId}]`);
     this.logger.log(
-      `Image generation with prompt: ${imageGenDto.visual_prompt?.substring(0, 100)}... [${operationId}]`,
+      `Image generation with prompt: ${visual_prompt?.substring(0, 100)}... [${operationId}]`,
     );
 
     const RecraftAgent = createRecraftAgent();
@@ -109,26 +109,23 @@ export class ImageGenService {
 
     try {
       // Validate input
-      if (
-        !imageGenDto.visual_prompt ||
-        imageGenDto.visual_prompt.trim().length === 0
-      ) {
+      if (!visual_prompt || visual_prompt.trim().length === 0) {
         this.logger.error(`Missing or empty visual_prompt [${operationId}]`);
         throw new BadRequestException(
           'visual_prompt is required and cannot be empty',
         );
       }
 
-      if (!imageGenDto.art_style || imageGenDto.art_style.trim().length === 0) {
+      if (!art_style || art_style.trim().length === 0) {
         this.logger.error(`Missing or empty art_style [${operationId}]`);
         throw new BadRequestException(
           'art_style is required and cannot be empty',
         );
       }
 
-      if (imageGenDto.visual_prompt.length > 2000) {
+      if (visual_prompt.length > 2000) {
         this.logger.error(
-          `Visual prompt too long: ${imageGenDto.visual_prompt.length} characters [${operationId}]`,
+          `Visual prompt too long: ${visual_prompt.length} characters [${operationId}]`,
         );
         throw new BadRequestException(
           'visual_prompt must be less than 2000 characters',
@@ -139,7 +136,7 @@ export class ImageGenService {
       const result = await run(triageAgent, [
         {
           role: 'user',
-          content: `Generate an image with prompt: "${imageGenDto.visual_prompt}"\n art style: "${imageGenDto.art_style}"\n for user: "${imageGenDto.uuid}"`,
+          content: `Generate an image with prompt: "${visual_prompt}"\n art style: "${art_style}"\n for user: "${uuid}"`,
         },
       ]);
 
@@ -211,7 +208,7 @@ export class ImageGenService {
               model: agentResult.model,
               s3_key: agentResult.s3_key,
               image_size_bytes: agentResult.image_size_bytes,
-              uuid: imageGenDto.uuid,
+              uuid: uuid,
             },
           );
 
@@ -219,9 +216,9 @@ export class ImageGenService {
           this.logger.log(`Saving image generation to database`);
           const savedImage = await this.prisma.generatedImage.create({
             data: {
-              visualPrompt: imageGenDto.visual_prompt,
-              artStyle: imageGenDto.art_style,
-              uuid: imageGenDto.uuid,
+              visualPrompt: visual_prompt,
+              artStyle: art_style,
+              uuid: uuid,
               success: true,
               s3Key: agentResult.s3_key,
               model: agentResult.model,
@@ -236,7 +233,7 @@ export class ImageGenService {
           await this.prisma.conversationHistory.create({
             data: {
               type: 'IMAGE_GENERATION',
-              userInput: imageGenDto.visual_prompt,
+              userInput: visual_prompt,
               response: JSON.stringify({
                 success: true,
                 s3_key: agentResult.s3_key,
@@ -245,8 +242,8 @@ export class ImageGenService {
                 image_size_bytes: agentResult.image_size_bytes,
               }),
               metadata: {
-                artStyle: imageGenDto.art_style,
-                uuid: imageGenDto.uuid,
+                artStyle: art_style,
+                uuid: uuid,
                 savedImageId: savedImage.id,
               },
               projectId,
@@ -292,7 +289,7 @@ export class ImageGenService {
       const totalTime = Date.now() - startTime;
       this.logger.error(`Image generation failed after ${totalTime}ms`, {
         error: error.message,
-        uuid: imageGenDto.uuid,
+        uuid: uuid,
         stack: error.stack,
       });
 
@@ -403,14 +400,12 @@ export class ImageGenService {
   }
 
   /**
-   * Update the visual prompt, art style, and S3 key of a specific generated image
+   * Update the visual prompt, art style, S3 key, and/or project of a specific generated image
    */
   async updateImagePrompt(
     imageId: string,
-    newPrompt: string,
-    newArtStyle: string,
+    updateData: UpdateImageGenDto,
     userId: string,
-    newS3Key?: string,
   ) {
     try {
       // First, verify the image exists and belongs to the user
@@ -435,21 +430,24 @@ export class ImageGenService {
         );
       }
 
-      // Update the visual prompt, art style, and optionally the S3 key
-      const updateData: any = {
-        visualPrompt: newPrompt,
-        artStyle: newArtStyle,
+      // Prepare update data - only include fields that are provided
+      const updateFields: any = {
+        visualPrompt: updateData.visual_prompt,
+        artStyle: updateData.art_style,
       };
 
-      if (newS3Key) {
-        updateData.s3Key = newS3Key;
+      if (updateData.s3_key !== undefined) {
+        updateFields.s3Key = updateData.s3_key;
+      }
+      if (updateData.projectId !== undefined) {
+        updateFields.projectId = updateData.projectId;
       }
 
       const updatedImage = await this.prisma.generatedImage.update({
         where: {
           id: imageId,
         },
-        data: updateData,
+        data: updateFields,
         include: {
           project: {
             select: {
@@ -463,19 +461,22 @@ export class ImageGenService {
       // Log the update in conversation history
       if (existingImage.projectId) {
         const userInputData: any = {
-          action: newS3Key
-            ? 'update_prompt_style_and_s3key'
-            : 'update_prompt_and_style',
+          action: 'update_image',
           imageId: imageId,
-          newPrompt: newPrompt,
+          newPrompt: updateData.visual_prompt,
           oldPrompt: existingImage.visualPrompt,
-          newArtStyle: newArtStyle,
+          newArtStyle: updateData.art_style,
           oldArtStyle: existingImage.artStyle,
+          updatedFields: updateFields,
         };
 
-        if (newS3Key) {
-          userInputData.newS3Key = newS3Key;
+        if (updateData.s3_key !== undefined) {
+          userInputData.newS3Key = updateData.s3_key;
           userInputData.oldS3Key = existingImage.s3Key;
+        }
+        if (updateData.projectId !== undefined) {
+          userInputData.newProjectId = updateData.projectId;
+          userInputData.oldProjectId = existingImage.projectId;
         }
 
         await this.prisma.conversationHistory.create({
@@ -484,36 +485,36 @@ export class ImageGenService {
             userInput: JSON.stringify(userInputData),
             response: JSON.stringify({
               success: true,
-              message: newS3Key
-                ? 'Image prompt, art style, and S3 key updated successfully'
-                : 'Image prompt and art style updated successfully',
+              message: 'Image updated successfully',
+              updatedFields: Object.keys(updateFields),
             }),
-            projectId: existingImage.projectId,
+            metadata: {
+              action: 'update',
+              imageId,
+              updatedFields: Object.keys(updateFields),
+            },
+            projectId: updatedImage.projectId,
             userId: userId,
           },
         });
       }
 
       this.logger.log(
-        `Updated visual prompt, art style${newS3Key ? ', and S3 key' : ''} for image ${imageId} for user ${userId}`,
+        `Updated image ${imageId} for user ${userId}: ${Object.keys(updateFields).join(', ')}`,
       );
 
       return {
         success: true,
-        message: newS3Key
-          ? 'Image prompt, art style, and S3 key updated successfully'
-          : 'Image prompt and art style updated successfully',
+        message: 'Image updated successfully',
         image: updatedImage,
       };
     } catch (error) {
-      this.logger.error(
-        `Failed to update image prompt, art style${newS3Key ? ', and S3 key' : ''} ${imageId}: ${error.message}`,
-      );
+      this.logger.error(`Failed to update image ${imageId}: ${error.message}`);
       if (error instanceof NotFoundException) {
         throw error;
       }
       throw new InternalServerErrorException(
-        `Failed to update image prompt: ${error.message}`,
+        `Failed to update image: ${error.message}`,
       );
     }
   }

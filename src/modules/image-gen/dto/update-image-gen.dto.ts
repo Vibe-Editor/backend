@@ -12,4 +12,8 @@ export class UpdateImageGenDto {
   @IsString()
   @IsOptional()
   s3_key?: string;
+
+  @IsString()
+  @IsOptional()
+  projectId?: string;
 }

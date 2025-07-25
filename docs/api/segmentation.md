@@ -12,6 +12,12 @@
   }
   ```
 
+  - **Body Parameters**:
+    - `prompt` (required): Description of the video to create
+    - `concept` (required): Core concept or focus for the video
+    - `negative_prompt` (optional): Things to avoid in the video
+    - `projectId` (optional): ID of the project to save the segmentation to. If not provided, creates or uses a default project.
+
   - **Example Response**:
 
   ```json
@@ -45,12 +51,22 @@
 - `PATCH /segmentation/:id/select` - Select a segmentation for production
   - **Requires**: JWT Authentication
   - **Purpose**: Mark a specific segmentation as selected (supports multiple selections per project)
+  - **Body Parameters**:
+    - `projectId` (optional): ID of the project context for selection
   - **Features**:
     - Allows multiple segmentations to be selected throughout project lifecycle
     - Each generation round can have its own selected segmentation
     - Does NOT deselect previous selections
     - Updates `isSelected` field to true for chosen segmentation
   - **Workflow**: Generate 2 parallel requests → User selects 1 → Process repeats with new prompts
+  - **Example Request**:
+
+  ```json
+  {
+    "projectId": "clxyz123abc"
+  }
+  ```
+
   - **Example Response**:
 
   ```json
@@ -68,14 +84,19 @@
 - `PATCH /segmentation/:id` - Update a specific video segmentation
   - **Requires**: JWT Authentication
   - **URL Parameter**: `id` - The segmentation ID to update
-  - **Body**: `{prompt?: string, concept?: string, negative_prompt?: string}` - Fields to update (all optional)
+  - **Body Parameters**:
+    - `prompt` (optional): Updated description of the video
+    - `concept` (optional): Updated core concept or focus for the video
+    - `negative_prompt` (optional): Updated things to avoid in the video
+    - `projectId` (optional): Move segmentation to a different project
   - **Example Request**:
 
   ```json
   {
     "prompt": "Create a 45-second promotional video showcasing our eco-friendly water bottle with lifestyle focus",
     "concept": "Focus on sustainability, health benefits, modern lifestyle, and athletic performance",
-    "negative_prompt": "Avoid plastic waste imagery, don't show competing brands, no medical claims"
+    "negative_prompt": "Avoid plastic waste imagery, don't show competing brands, no medical claims",
+    "projectId": "clxyz123abc"
   }
   ```
 

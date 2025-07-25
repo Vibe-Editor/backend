@@ -8,4 +8,8 @@ export class UpdateVoiceoverDto {
   @IsString()
   @IsOptional()
   s3_key?: string;
+
+  @IsString()
+  @IsOptional()
+  projectId?: string;
 }

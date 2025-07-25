@@ -4,4 +4,8 @@ export class GetWebInfoDto {
   @IsString()
   @IsNotEmpty()
   prompt: string;
+
+  @IsString()
+  @IsNotEmpty()
+  projectId: string;
 }
