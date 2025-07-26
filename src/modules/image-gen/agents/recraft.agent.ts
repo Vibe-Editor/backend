@@ -63,19 +63,39 @@ async function generateRecraftImage(
   logger.log(`Starting Recraft image generation for user: ${uuid}`);
 
   try {
-    // Trim visual_prompt to ensure total prompt length stays under 999 characters
+    // Trim visual_prompt to ensure total prompt length stays well under 1000 characters (using 950 for safety buffer)
     const additionalText = `. Art style: ${art_style}. Create a realistic, photographic image with no text elements.`;
-    const maxVisualPromptLength = 999 - additionalText.length;
+    const maxVisualPromptLength = 950 - additionalText.length;
+
+    logger.debug(`Initial visual_prompt length: ${visual_prompt.length}`);
+    logger.debug(`Additional text length: ${additionalText.length}`);
+    logger.debug(`Max allowed visual_prompt length: ${maxVisualPromptLength}`);
+    logger.debug(`Art style: "${art_style}" (${art_style.length} chars)`);
 
     if (visual_prompt.length > maxVisualPromptLength) {
       logger.warn(
         `visual_prompt exceeded ${maxVisualPromptLength} characters (${visual_prompt.length}), trimming to ${maxVisualPromptLength} characters.`,
       );
       visual_prompt = visual_prompt.substring(0, maxVisualPromptLength).trim();
+      logger.debug(`Trimmed visual_prompt length: ${visual_prompt.length}`);
     }
 
     // Prepare the prompt for Recraft
-    const recraftPrompt = `${visual_prompt}. Art style: ${art_style}. Create a realistic, photographic image with no text elements.`;
+    let recraftPrompt = `${visual_prompt}. Art style: ${art_style}. Create a realistic, photographic image with no text elements.`;
+
+    // Debug logging to verify prompt length
+    logger.debug(`Final prompt length: ${recraftPrompt.length} characters`);
+
+    // Additional safety check - ensure final prompt doesn't exceed 950 characters (with safety buffer)
+    if (recraftPrompt.length > 950) {
+      logger.error(
+        `Final prompt still exceeds 950 characters (${recraftPrompt.length}). Applying emergency trim.`,
+      );
+      recraftPrompt = recraftPrompt.substring(0, 950).trim();
+      logger.warn(
+        `Emergency trimmed prompt to ${recraftPrompt.length} characters`,
+      );
+    }
 
     // Determine substyle based on art_style
     let substyle = 'natural';
