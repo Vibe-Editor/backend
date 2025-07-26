@@ -166,7 +166,17 @@ export class ImageGenService {
         this.logger.log('Using Gemini to parse agent result');
         const geminiParseRes = await this.genAI.models.generateContent({
           model: 'gemini-2.0-flash-exp',
-          contents: `Parse this entire agent conversation output and extract the image generation result. Return a JSON object with "s3_key" (string), "model" (string), and "image_size_bytes" (number).
+          contents: `Parse this entire agent conversation output and extract the image generation result ONLY if the agent execution was successful.
+
+          IMPORTANT INSTRUCTIONS:
+          - Only return values if they are real, valid data from successful agent execution
+          - Do NOT create fake, placeholder, or example values like "fake-bucket", "fake-key", etc.
+          - If no valid S3 key exists in the output, set s3_key to null
+          - If no valid model name exists, set model to null  
+          - If no valid image size exists, set image_size_bytes to null
+          - Look for actual S3 keys in the format like "uuid/images/some-uuid.png" or similar valid paths
+          - Look for actual model names like "recraft-realistic-image", "imagen-3.0-generate-002", "dall-e", etc.
+          - Look for actual file sizes in bytes (should be > 10000 for real images)
 
           Full agent output:
           ${JSON.stringify(result.output, null, 2)}`,
@@ -175,11 +185,11 @@ export class ImageGenService {
             responseSchema: {
               type: 'object',
               properties: {
-                s3_key: { type: 'string' },
-                model: { type: 'string' },
-                image_size_bytes: { type: 'number' },
+                s3_key: { type: ['string', 'null'] },
+                model: { type: ['string', 'null'] },
+                image_size_bytes: { type: ['number', 'null'] },
               },
-              required: ['s3_key', 'model', 'image_size_bytes'],
+              required: [],
             },
           },
         } as any);
@@ -187,20 +197,55 @@ export class ImageGenService {
         const agentResult = JSON.parse(geminiParseRes.text);
         this.logger.debug('Parsed agent result:', agentResult);
 
+        // Validate for fake or invalid data
+        if (agentResult?.s3_key) {
+          // Check for fake S3 keys
+          if (
+            agentResult.s3_key.includes('fake') ||
+            agentResult.s3_key.includes('placeholder') ||
+            agentResult.s3_key.includes('example') ||
+            agentResult.s3_key === 's3://fake-bucket/fake-key'
+          ) {
+            this.logger.error(
+              'Detected fake S3 key from agent result:',
+              agentResult.s3_key,
+            );
+            throw new InternalServerErrorException(
+              'Image generation failed - agent did not produce a valid S3 key',
+            );
+          }
+        }
+
         if (
           agentResult?.image_size_bytes &&
-          agentResult.image_size_bytes < 1000
+          agentResult.image_size_bytes < 10000
         ) {
           this.logger.error(
-            'Detected fake/invalid image size from agent result:',
-            agentResult,
+            'Detected invalid/fake image size from agent result:',
+            agentResult.image_size_bytes,
           );
           throw new InternalServerErrorException(
             'Image generation failed - invalid image size in response',
           );
         }
 
-        if (agentResult?.s3_key && agentResult?.model) {
+        // Check if we have valid data from the agent
+        if (!agentResult?.s3_key || !agentResult?.model) {
+          this.logger.error(
+            'Agent execution did not produce valid image generation results',
+            {
+              hasS3Key: !!agentResult?.s3_key,
+              hasModel: !!agentResult?.model,
+              hasImageSize: !!agentResult?.image_size_bytes,
+              agentResult,
+            },
+          );
+          throw new InternalServerErrorException(
+            'Image generation failed - agent did not produce a valid result. Please try again.',
+          );
+        }
+
+        if (agentResult.s3_key && agentResult.model) {
           const totalTime = Date.now() - startTime;
           this.logger.log(
             `Image generation completed successfully in ${totalTime}ms`,
@@ -262,29 +307,16 @@ export class ImageGenService {
             message: 'Image generated and uploaded successfully',
             image_size_bytes: agentResult.image_size_bytes,
           };
-        } else {
-          this.logger.error(
-            'Agent produced result but no image was successfully uploaded',
-            {
-              agentResult,
-              hasS3Key: !!agentResult?.s3_key,
-              hasModel: !!agentResult?.model,
-            },
-          );
-          throw new InternalServerErrorException(
-            'Image generation completed but no image was successfully uploaded to S3.',
-          );
         }
       } catch (parseError) {
         this.logger.error(
           'Failed to parse agent result with Gemini:',
           parseError,
         );
+        throw new InternalServerErrorException(
+          'Failed to parse image generation result. Please try again.',
+        );
       }
-
-      throw new InternalServerErrorException(
-        'Agent did not produce a valid image generation result.',
-      );
     } catch (error) {
       const totalTime = Date.now() - startTime;
       this.logger.error(`Image generation failed after ${totalTime}ms`, {
