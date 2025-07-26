@@ -63,6 +63,17 @@ async function generateRecraftImage(
   logger.log(`Starting Recraft image generation for user: ${uuid}`);
 
   try {
+    // Trim visual_prompt to ensure total prompt length stays under 999 characters
+    const additionalText = `. Art style: ${art_style}. Create a realistic, photographic image with no text elements.`;
+    const maxVisualPromptLength = 999 - additionalText.length;
+
+    if (visual_prompt.length > maxVisualPromptLength) {
+      logger.warn(
+        `visual_prompt exceeded ${maxVisualPromptLength} characters (${visual_prompt.length}), trimming to ${maxVisualPromptLength} characters.`,
+      );
+      visual_prompt = visual_prompt.substring(0, maxVisualPromptLength).trim();
+    }
+
     // Prepare the prompt for Recraft
     const recraftPrompt = `${visual_prompt}. Art style: ${art_style}. Create a realistic, photographic image with no text elements.`;
 
