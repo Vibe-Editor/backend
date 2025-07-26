@@ -62,6 +62,18 @@ async function generateImagenImage(
   logger.log(`Starting Imagen image generation for user: ${uuid}`);
 
   try {
+    // Trim visual_prompt to ensure total prompt length stays reasonable (under 2000 characters)
+    const additionalText = `. ART STYLE: ${art_style}. Follow the art style but make the image according to the visual prompt. The image should not be a storyboard image. It should be a single image.`;
+    const maxVisualPromptLength =
+      2000 - additionalText.length - 'VISUAL PROMPT: '.length;
+
+    if (visual_prompt.length > maxVisualPromptLength) {
+      logger.warn(
+        `visual_prompt exceeded ${maxVisualPromptLength} characters (${visual_prompt.length}), trimming to ${maxVisualPromptLength} characters.`,
+      );
+      visual_prompt = visual_prompt.substring(0, maxVisualPromptLength).trim();
+    }
+
     logger.log('Generating image with Google Imagen');
     const response = await googleGenAI.models.generateImages({
       model: 'imagen-3.0-generate-002',
