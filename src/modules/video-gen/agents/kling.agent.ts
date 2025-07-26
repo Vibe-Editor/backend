@@ -51,6 +51,19 @@ async function generateKlingVideo(
   const startTime = Date.now();
   logger.log(`Starting Kling video generation for user: ${uuid}`);
 
+  // Trim animation_prompt to ensure total prompt length stays reasonable (under 1500 characters for Kling)
+  const additionalText = `. Art style: ${art_style}`;
+  const maxAnimationPromptLength = 1500 - additionalText.length;
+
+  if (animation_prompt.length > maxAnimationPromptLength) {
+    logger.warn(
+      `animation_prompt exceeded ${maxAnimationPromptLength} characters (${animation_prompt.length}), trimming to ${maxAnimationPromptLength} characters.`,
+    );
+    animation_prompt = animation_prompt
+      .substring(0, maxAnimationPromptLength)
+      .trim();
+  }
+
   try {
     // Get image from S3 as base64 and convert to data URI
     const imageBase64 = await getImageFromS3AsBase64(imageS3Key);

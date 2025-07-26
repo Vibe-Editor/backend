@@ -51,6 +51,20 @@ async function generateVeo2Video(
   const startTime = Date.now();
   logger.log(`Starting Veo2 video generation for user: ${uuid}`);
 
+  // Trim animation_prompt to ensure total prompt length stays reasonable (under 2000 characters for Veo2)
+  const additionalText = ` \n ART_STYLE: ${art_style}`;
+  const maxAnimationPromptLength =
+    2000 - additionalText.length - 'ANIMATION_PROMPT: '.length;
+
+  if (animation_prompt.length > maxAnimationPromptLength) {
+    logger.warn(
+      `animation_prompt exceeded ${maxAnimationPromptLength} characters (${animation_prompt.length}), trimming to ${maxAnimationPromptLength} characters.`,
+    );
+    animation_prompt = animation_prompt
+      .substring(0, maxAnimationPromptLength)
+      .trim();
+  }
+
   try {
     // Fetch image from S3 and convert to base64
     logger.log(`Fetching image from S3: ${imageS3Key}`);
