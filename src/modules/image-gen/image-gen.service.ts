@@ -193,13 +193,13 @@ export class ImageGenService {
         result.output?.filter(
           (msg) =>
             msg.type === 'function_call_result' &&
-            msg.output?.type === 'text' &&
-            msg.output?.text?.includes('An error occurred'),
+            (msg as any).output?.type === 'text' &&
+            (msg as any).output?.text?.includes('An error occurred'),
         ) || [];
 
       this.logger.log(`Number of error calls: ${errorCalls.length}`);
       errorCalls.forEach((error, index) => {
-        this.logger.error(`Error ${index + 1}: ${error.output?.text}`);
+        this.logger.error(`Error ${index + 1}: ${(error as any).output?.text}`);
       });
 
       this.logger.log('=== AGENT EXECUTION ANALYSIS END ===');
@@ -212,8 +212,8 @@ export class ImageGenService {
         (msg) =>
           msg.type === 'function_call_result' &&
           msg.status === 'completed' &&
-          msg.output?.type === 'text' &&
-          msg.output?.text?.includes(
+          (msg as any).output?.type === 'text' &&
+          (msg as any).output?.text?.includes(
             'An error occurred while running the tool',
           ),
       );
