@@ -7,4 +7,4 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
   providers: [UploadsService, JwtAuthGuard],
   controllers: [UploadsController],
 })
-export class UploadsModule {} 
+export class UploadsModule {}

@@ -141,13 +141,19 @@ export class CharacterGenService {
         'Sprite sheet generation result:',
         JSON.stringify(spriteSheetResult, null, 2),
       );
-      
+
       // Add more detailed debugging
       this.logger.debug('Result type:', typeof spriteSheetResult);
       this.logger.debug('Result keys:', Object.keys(spriteSheetResult || {}));
       if (spriteSheetResult?.output) {
-        this.logger.debug('Output array length:', spriteSheetResult.output.length);
-        this.logger.debug('Output array:', JSON.stringify(spriteSheetResult.output, null, 2));
+        this.logger.debug(
+          'Output array length:',
+          spriteSheetResult.output.length,
+        );
+        this.logger.debug(
+          'Output array:',
+          JSON.stringify(spriteSheetResult.output, null, 2),
+        );
       }
 
       // Parse sprite sheet result
@@ -182,9 +188,8 @@ export class CharacterGenService {
       );
 
       // Parse final character result
-      const finalCharacterS3Key = this.parseFinalCharacterResult(
-        finalCharacterResult,
-      );
+      const finalCharacterS3Key =
+        this.parseFinalCharacterResult(finalCharacterResult);
       if (!finalCharacterS3Key) {
         throw new InternalServerErrorException(
           'Failed to generate final character',
@@ -376,7 +381,10 @@ export class CharacterGenService {
 
   private parseSpriteSheetResult(result: any): string | null {
     try {
-      this.logger.debug('Parsing sprite sheet result:', JSON.stringify(result, null, 2));
+      this.logger.debug(
+        'Parsing sprite sheet result:',
+        JSON.stringify(result, null, 2),
+      );
 
       // 1. Attempt previously-supported shapes first
       if (result?.s3_key) {
@@ -386,10 +394,15 @@ export class CharacterGenService {
 
       if (result?.output && Array.isArray(result.output)) {
         for (const msg of result.output) {
-          if (msg.type === 'function_call_result' && msg.status === 'completed') {
+          if (
+            msg.type === 'function_call_result' &&
+            msg.status === 'completed'
+          ) {
             const outputData = msg.output;
             if (outputData?.s3_key) {
-              this.logger.debug(`Found sprite sheet S3 key: ${outputData.s3_key}`);
+              this.logger.debug(
+                `Found sprite sheet S3 key: ${outputData.s3_key}`,
+              );
               return outputData.s3_key;
             }
           }
@@ -416,7 +429,10 @@ export class CharacterGenService {
 
   private parseFinalCharacterResult(result: any): string | null {
     try {
-      this.logger.debug('Parsing final character result:', JSON.stringify(result, null, 2));
+      this.logger.debug(
+        'Parsing final character result:',
+        JSON.stringify(result, null, 2),
+      );
 
       if (result?.s3_key) {
         this.logger.debug(`Found final character S3 key: ${result.s3_key}`);
@@ -425,10 +441,15 @@ export class CharacterGenService {
 
       if (result?.output && Array.isArray(result.output)) {
         for (const msg of result.output) {
-          if (msg.type === 'function_call_result' && msg.status === 'completed') {
+          if (
+            msg.type === 'function_call_result' &&
+            msg.status === 'completed'
+          ) {
             const outputData = msg.output;
             if (outputData?.s3_key) {
-              this.logger.debug(`Found final character S3 key: ${outputData.s3_key}`);
+              this.logger.debug(
+                `Found final character S3 key: ${outputData.s3_key}`,
+              );
               return outputData.s3_key;
             }
           }

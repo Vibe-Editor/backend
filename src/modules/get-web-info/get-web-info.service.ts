@@ -1,19 +1,53 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { GetWebInfoDto } from './dto/get-web-info.dto';
 import { UpdateWebInfoDto } from './dto/update-web-info.dto';
 import { ProjectHelperService } from '../../common/services/project-helper.service';
 import { PrismaClient } from '../../../generated/prisma';
+import { Decimal } from '@prisma/client/runtime/library';
+import { CreditService } from '../credits/credit.service';
 
 @Injectable()
 export class GetWebInfoService {
   private readonly prisma = new PrismaClient();
 
-  constructor(private readonly projectHelperService: ProjectHelperService) {}
+  constructor(
+    private readonly projectHelperService: ProjectHelperService,
+    private readonly creditService: CreditService,
+  ) {}
 
   async getWebInfo(getWebInfoDto: GetWebInfoDto, userId: string) {
     // Use projectId from body - no fallback project creation logic
     const { prompt, projectId } = getWebInfoDto;
     console.log(`Using project ${projectId} for web research`);
+
+    // ===== CREDIT SYSTEM INTEGRATION =====
+    console.log(`Checking user credits before web research`);
+
+    // Check credits for perplexity web research
+    const creditCheck = await this.creditService.checkUserCredits(
+      userId,
+      'TEXT_OPERATIONS',
+      'perplexity',
+      false, // no edit calls for web research currently
+    );
+
+    if (!creditCheck.hasEnoughCredits) {
+      console.error(
+        `Insufficient credits for user ${userId}. Required: ${creditCheck.requiredCredits}, Available: ${creditCheck.currentBalance}`,
+      );
+      throw new BadRequestException(
+        `Insufficient credits. Required: ${creditCheck.requiredCredits}, Available: ${creditCheck.currentBalance}`,
+      );
+    }
+
+    console.log(
+      `Credit validation passed. User ${userId} has ${creditCheck.currentBalance} credits available`,
+    );
+    // ===== END CREDIT VALIDATION =====
 
     try {
       const response = await fetch(
@@ -37,6 +71,41 @@ export class GetWebInfoService {
 
       const data = await response.json();
 
+      // ===== CREDIT DEDUCTION =====
+      console.log(`Deducting credits for successful web research`);
+
+      let creditTransactionId: string;
+      let actualCreditsUsed: number;
+
+      try {
+        // Perplexity uses fixed pricing for web research
+        actualCreditsUsed = 1;
+
+        // Deduct credits for web research
+        creditTransactionId = await this.creditService.deductCredits(
+          userId,
+          'TEXT_OPERATIONS',
+          'perplexity',
+          `web-research-${Date.now()}`, // operationId
+          false, // isEditCall - no edit calls for web research currently
+          `Web research using Perplexity API`,
+        );
+
+        console.log(
+          `Successfully deducted ${actualCreditsUsed} credits for web research. Transaction ID: ${creditTransactionId}`,
+        );
+      } catch (creditError) {
+        console.error(
+          `Failed to deduct credits after successful web research:`,
+          creditError,
+        );
+        // Note: We still continue and save the research since API call was successful
+        // The credit transaction can be handled manually if needed
+        creditTransactionId = null;
+        actualCreditsUsed = 0;
+      }
+      // ===== END CREDIT DEDUCTION =====
+
       // Save to database
       console.log(`Saving web research to database`);
       const savedWebResearch = await this.prisma.webResearchQuery.create({
@@ -45,6 +114,10 @@ export class GetWebInfoService {
           response: JSON.stringify(data),
           projectId,
           userId,
+          // Add credit tracking
+          creditTransactionId: creditTransactionId,
+          creditsUsed:
+            actualCreditsUsed > 0 ? new Decimal(actualCreditsUsed) : null, // Store the actual credits used
         },
       });
 

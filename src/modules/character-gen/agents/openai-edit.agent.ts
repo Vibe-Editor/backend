@@ -87,7 +87,7 @@ async function generateSpriteSheet(
     // Step 1: Download all 6 reference images from S3
     logger.log('Downloading reference images from S3');
     const imageBuffers: Buffer[] = [];
-    
+
     for (const s3Key of reference_images) {
       const imageBuffer = await downloadImageFromS3(s3Key);
       imageBuffers.push(imageBuffer);
@@ -128,7 +128,7 @@ async function generateSpriteSheet(
     const formData = new FormData();
     formData.append('model', 'gpt-image-1');
     formData.append('prompt', spriteSheetPrompt);
-    
+
     // Add all images with the 'image[]' parameter name
     imageFiles.forEach((file, index) => {
       formData.append('image[]', file);

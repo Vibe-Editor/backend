@@ -3,6 +3,7 @@ import {
   HttpException,
   HttpStatus,
   NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { GoogleGenAI } from '@google/genai';
 import { SegmentationDto } from './dto/segmentation.dto';
@@ -12,6 +13,8 @@ import { z } from 'zod';
 import OpenAI from 'openai';
 import { ProjectHelperService } from '../../common/services/project-helper.service';
 import { PrismaClient } from '../../../generated/prisma';
+import { Decimal } from '@prisma/client/runtime/library';
+import { CreditService } from '../credits/credit.service';
 
 @Injectable()
 export class SegmentationService {
@@ -19,7 +22,10 @@ export class SegmentationService {
   private readonly openai: OpenAI;
   private readonly prisma = new PrismaClient();
 
-  constructor(private readonly projectHelperService: ProjectHelperService) {
+  constructor(
+    private readonly projectHelperService: ProjectHelperService,
+    private readonly creditService: CreditService,
+  ) {
     if (!process.env.GEMINI_API_KEY) {
       throw new Error('GEMINI_API_KEY environment variable not set.');
     }
@@ -311,6 +317,31 @@ export class SegmentationService {
       : await this.projectHelperService.ensureUserHasProject(userId);
     console.log(`Using project ${projectId} for segmentation`);
 
+    // ===== CREDIT SYSTEM INTEGRATION =====
+    console.log(`Checking user credits before script segmentation`);
+
+    // Check credits for segmentation (note: this is the more expensive operation)
+    const creditCheck = await this.creditService.checkUserCredits(
+      userId,
+      'TEXT_OPERATIONS',
+      'segmentation',
+      false, // we'll handle edit calls separately if needed
+    );
+
+    if (!creditCheck.hasEnoughCredits) {
+      console.error(
+        `Insufficient credits for user ${userId}. Required: ${creditCheck.requiredCredits}, Available: ${creditCheck.currentBalance}`,
+      );
+      throw new BadRequestException(
+        `Insufficient credits. Required: ${creditCheck.requiredCredits}, Available: ${creditCheck.currentBalance}`,
+      );
+    }
+
+    console.log(
+      `Credit validation passed. User ${userId} has ${creditCheck.currentBalance} credits available`,
+    );
+    // ===== END CREDIT VALIDATION =====
+
     const createGeminiAgent = () =>
       new Agent<{ prompt: string; negative_prompt: string }>({
         name: 'Gemini Script Generation Agent',
@@ -449,6 +480,41 @@ export class SegmentationService {
             negative_prompt: segmentationDto.negative_prompt,
           });
 
+          // ===== CREDIT DEDUCTION =====
+          console.log(`Deducting credits for successful script segmentation`);
+
+          let creditTransactionId: string;
+          let actualCreditsUsed: number;
+
+          try {
+            // Segmentation uses fixed pricing
+            actualCreditsUsed = 3; // regular segmentation cost
+
+            // Deduct credits for segmentation
+            creditTransactionId = await this.creditService.deductCredits(
+              userId,
+              'TEXT_OPERATIONS',
+              'segmentation',
+              `segmentation-${Date.now()}`, // operationId
+              false, // isEditCall - regular segmentation
+              `Script segmentation using ${agentResult.model}`,
+            );
+
+            console.log(
+              `Successfully deducted ${actualCreditsUsed} credits for segmentation. Transaction ID: ${creditTransactionId}`,
+            );
+          } catch (creditError) {
+            console.error(
+              `Failed to deduct credits after successful segmentation:`,
+              creditError,
+            );
+            // Note: We still continue and save the segmentation since generation was successful
+            // The credit transaction can be handled manually if needed
+            creditTransactionId = null;
+            actualCreditsUsed = 0;
+          }
+          // ===== END CREDIT DEDUCTION =====
+
           // Save to database
           console.log(`Saving segmentation to database`);
           const savedSegmentation = await this.prisma.videoSegmentation.create({
@@ -460,6 +526,10 @@ export class SegmentationService {
               model: agentResult.model,
               projectId,
               userId,
+              // Add credit tracking
+              creditTransactionId: creditTransactionId,
+              creditsUsed:
+                actualCreditsUsed > 0 ? new Decimal(actualCreditsUsed) : null,
             },
           });
 

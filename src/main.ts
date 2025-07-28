@@ -11,7 +11,7 @@ import { setDefaultOpenAIKey } from '@openai/agents';
 async function bootstrap() {
   // Configure secure logging
   const logger = new Logger('Bootstrap');
-  
+
   // Override console methods to prevent sensitive data logging
   const originalConsoleError = console.error;
   const originalConsoleLog = console.log;
@@ -21,8 +21,9 @@ async function bootstrap() {
   // Simple sanitization for console methods
   const sanitizeMessage = (message: any): any => {
     if (typeof message === 'string') {
-      return message.replace(/sk-[a-zA-Z0-9-]+/g, '[REDACTED]')
-                   .replace(/Bearer\s+[a-zA-Z0-9-._~+/]+=*/g, 'Bearer [REDACTED]');
+      return message
+        .replace(/sk-[a-zA-Z0-9-]+/g, '[REDACTED]')
+        .replace(/Bearer\s+[a-zA-Z0-9-._~+/]+=*/g, 'Bearer [REDACTED]');
     }
     return message;
   };

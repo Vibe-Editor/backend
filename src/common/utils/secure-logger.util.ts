@@ -30,16 +30,16 @@ export class SecureLogger extends Logger {
     }
 
     if (Array.isArray(obj)) {
-      return obj.map(item => SecureLogger.sanitizeObject(item));
+      return obj.map((item) => SecureLogger.sanitizeObject(item));
     }
 
     const sanitized: any = {};
     for (const [key, value] of Object.entries(obj)) {
       const lowerKey = key.toLowerCase();
-      
+
       // Check if key contains sensitive terms
-      const isSensitiveKey = SecureLogger.SENSITIVE_KEYS.some(
-        sensitiveKey => lowerKey.includes(sensitiveKey)
+      const isSensitiveKey = SecureLogger.SENSITIVE_KEYS.some((sensitiveKey) =>
+        lowerKey.includes(sensitiveKey),
       );
 
       if (isSensitiveKey) {
@@ -47,7 +47,7 @@ export class SecureLogger extends Logger {
       } else if (typeof value === 'string') {
         // Check if value contains sensitive patterns
         let sanitizedValue = value;
-        SecureLogger.SENSITIVE_PATTERNS.forEach(pattern => {
+        SecureLogger.SENSITIVE_PATTERNS.forEach((pattern) => {
           sanitizedValue = sanitizedValue.replace(pattern, '[REDACTED]');
         });
         sanitized[key] = sanitizedValue;
@@ -100,4 +100,4 @@ export class SecureLogger extends Logger {
     const sanitizedContext = SecureLogger.sanitizeObject(context);
     super.verbose(message, sanitizedContext);
   }
-} 
+}

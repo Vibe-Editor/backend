@@ -10,6 +10,8 @@ import { UserInputSummarizerDto } from './dto/user-input-summarizer.dto';
 import { z } from 'zod';
 import { ProjectHelperService } from '../../common/services/project-helper.service';
 import { PrismaClient } from '../../../generated/prisma';
+import { Decimal } from '@prisma/client/runtime/library';
+import { CreditService } from '../credits/credit.service';
 
 @Injectable()
 export class UserInputSummarizerService {
@@ -17,7 +19,10 @@ export class UserInputSummarizerService {
   private readonly genAI: GoogleGenAI;
   private readonly prisma = new PrismaClient();
 
-  constructor(private readonly projectHelperService: ProjectHelperService) {
+  constructor(
+    private readonly projectHelperService: ProjectHelperService,
+    private readonly creditService: CreditService,
+  ) {
     try {
       if (!process.env.GEMINI_API_KEY) {
         this.logger.error('GEMINI_API_KEY environment variable not set');
@@ -98,6 +103,31 @@ User Input: ${user_input}
 **TASK:**
 Create a comprehensive summary that prioritizes user input when conflicts exist and integrates non-conflicting information from both sources. Return only the summary text, nothing else.`;
 
+      // ===== CREDIT SYSTEM INTEGRATION =====
+      this.logger.log(`Checking user credits before content summarization`);
+
+      // Check credits for content summarization
+      const creditCheck = await this.creditService.checkUserCredits(
+        userId,
+        'TEXT_OPERATIONS',
+        'content-summarizer',
+        false, // no edit calls for content summarization currently
+      );
+
+      if (!creditCheck.hasEnoughCredits) {
+        this.logger.error(
+          `Insufficient credits for user ${userId}. Required: ${creditCheck.requiredCredits}, Available: ${creditCheck.currentBalance}`,
+        );
+        throw new BadRequestException(
+          `Insufficient credits. Required: ${creditCheck.requiredCredits}, Available: ${creditCheck.currentBalance}`,
+        );
+      }
+
+      this.logger.log(
+        `Credit validation passed. User ${userId} has ${creditCheck.currentBalance} credits available`,
+      );
+      // ===== END CREDIT VALIDATION =====
+
       this.logger.log('Generating summary with Gemini Flash model');
       const result = await this.genAI.models.generateContent({
         model: 'gemini-2.0-flash-exp',
@@ -114,6 +144,41 @@ Create a comprehensive summary that prioritizes user input when conflicts exist 
         );
       }
 
+      // ===== CREDIT DEDUCTION =====
+      this.logger.log(`Deducting credits for successful content summarization`);
+
+      let creditTransactionId: string;
+      let actualCreditsUsed: number;
+
+      try {
+        // Content summarization uses fixed pricing
+        actualCreditsUsed = 1;
+
+        // Deduct credits for content summarization
+        creditTransactionId = await this.creditService.deductCredits(
+          userId,
+          'TEXT_OPERATIONS',
+          'content-summarizer',
+          `content-summary-${Date.now()}`, // operationId
+          false, // isEditCall - no edit calls for content summarization currently
+          `Content summarization using Gemini API`,
+        );
+
+        this.logger.log(
+          `Successfully deducted ${actualCreditsUsed} credits for content summarization. Transaction ID: ${creditTransactionId}`,
+        );
+      } catch (creditError) {
+        this.logger.error(
+          `Failed to deduct credits after successful content summarization:`,
+          creditError,
+        );
+        // Note: We still continue and save the summary since generation was successful
+        // The credit transaction can be handled manually if needed
+        creditTransactionId = null;
+        actualCreditsUsed = 0;
+      }
+      // ===== END CREDIT DEDUCTION =====
+
       // Save to database
       this.logger.log(`Saving content summary to database`);
       const savedSummary = await this.prisma.contentSummary.create({
@@ -123,6 +188,10 @@ Create a comprehensive summary that prioritizes user input when conflicts exist 
           summary: summary,
           projectId,
           userId,
+          // Add credit tracking
+          creditTransactionId: creditTransactionId,
+          creditsUsed:
+            actualCreditsUsed > 0 ? new Decimal(actualCreditsUsed) : null,
         },
       });
 
