@@ -36,4 +36,4 @@ export class UploadsService {
 
     return { keys, putUrls, urls: getUrls };
   }
-} 
+}
