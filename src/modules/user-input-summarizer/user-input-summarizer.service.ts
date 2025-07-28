@@ -3,6 +3,7 @@ import {
   Logger,
   BadRequestException,
   InternalServerErrorException,
+  NotFoundException,
 } from '@nestjs/common';
 import { GoogleGenAI } from '@google/genai';
 import { UserInputSummarizerDto } from './dto/user-input-summarizer.dto';
@@ -38,9 +39,8 @@ export class UserInputSummarizerService {
     userInputSummarizerDto: UserInputSummarizerDto,
     userId: string,
   ): Promise<{ summary: string }> {
-    // Ensure user has a project (create default if none exists)
-    const projectId =
-      await this.projectHelperService.ensureUserHasProject(userId);
+    // Use projectId from body - no fallback project creation logic
+    const { original_content, user_input, projectId } = userInputSummarizerDto;
     this.logger.log(`Using project ${projectId} for content summarization`);
 
     const startTime = Date.now();
@@ -50,38 +50,32 @@ export class UserInputSummarizerService {
 
     try {
       // Validate input
-      if (
-        !userInputSummarizerDto.original_content ||
-        userInputSummarizerDto.original_content.trim().length === 0
-      ) {
+      if (!original_content || original_content.trim().length === 0) {
         this.logger.error('Missing or empty original_content');
         throw new BadRequestException(
           'original_content is required and cannot be empty',
         );
       }
 
-      if (
-        !userInputSummarizerDto.user_input ||
-        userInputSummarizerDto.user_input.trim().length === 0
-      ) {
+      if (!user_input || user_input.trim().length === 0) {
         this.logger.error('Missing or empty user_input');
         throw new BadRequestException(
           'user_input is required and cannot be empty',
         );
       }
 
-      if (userInputSummarizerDto.original_content.length > 10000) {
+      if (original_content.length > 10000) {
         this.logger.error(
-          `Original content too long: ${userInputSummarizerDto.original_content.length} characters`,
+          `Original content too long: ${original_content.length} characters`,
         );
         throw new BadRequestException(
           'original_content must be less than 10000 characters',
         );
       }
 
-      if (userInputSummarizerDto.user_input.length > 5000) {
+      if (user_input.length > 5000) {
         this.logger.error(
-          `User input too long: ${userInputSummarizerDto.user_input.length} characters`,
+          `User input too long: ${user_input.length} characters`,
         );
         throw new BadRequestException(
           'user_input must be less than 5000 characters',
@@ -97,9 +91,9 @@ export class UserInputSummarizerService {
 4. Create a cohesive summary that integrates both sources intelligently
 
 **INPUT:**
-Original Content: ${userInputSummarizerDto.original_content}
+Original Content: ${original_content}
 
-User Input: ${userInputSummarizerDto.user_input}
+User Input: ${user_input}
 
 **TASK:**
 Create a comprehensive summary that prioritizes user input when conflicts exist and integrates non-conflicting information from both sources. Return only the summary text, nothing else.`;
@@ -124,8 +118,8 @@ Create a comprehensive summary that prioritizes user input when conflicts exist 
       this.logger.log(`Saving content summary to database`);
       const savedSummary = await this.prisma.contentSummary.create({
         data: {
-          originalContent: userInputSummarizerDto.original_content,
-          userInput: userInputSummarizerDto.user_input || '',
+          originalContent: original_content,
+          userInput: user_input || '',
           summary: summary,
           projectId,
           userId,
@@ -136,13 +130,10 @@ Create a comprehensive summary that prioritizes user input when conflicts exist 
       await this.prisma.conversationHistory.create({
         data: {
           type: 'CONTENT_SUMMARY',
-          userInput:
-            userInputSummarizerDto.user_input ||
-            userInputSummarizerDto.original_content.substring(0, 100) + '...',
+          userInput: user_input || original_content.substring(0, 100) + '...',
           response: JSON.stringify({ summary: summary }),
           metadata: {
-            originalContentLength:
-              userInputSummarizerDto.original_content.length,
+            originalContentLength: original_content.length,
             summaryLength: summary.length,
             savedSummaryId: savedSummary.id,
           },
@@ -174,6 +165,190 @@ Create a comprehensive summary that prioritizes user input when conflicts exist 
 
       throw new InternalServerErrorException(
         `Failed to summarize content: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Get all content summaries for a user, optionally filtered by project
+   */
+  async getAllSummaries(userId: string, projectId?: string) {
+    try {
+      const where = {
+        userId,
+        ...(projectId && { projectId }),
+      };
+
+      const summaries = await this.prisma.contentSummary.findMany({
+        where,
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+
+      this.logger.log(
+        `Retrieved ${summaries.length} content summaries for user ${userId}${
+          projectId ? ` in project ${projectId}` : ''
+        }`,
+      );
+
+      return {
+        success: true,
+        count: summaries.length,
+        summaries,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to retrieve summaries: ${error.message}`);
+      throw new InternalServerErrorException(
+        `Failed to retrieve summaries: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Get a specific content summary by ID for a user
+   */
+  async getSummaryById(summaryId: string, userId: string) {
+    try {
+      const summary = await this.prisma.contentSummary.findFirst({
+        where: {
+          id: summaryId,
+          userId, // Ensure user can only access their own summaries
+        },
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      if (!summary) {
+        throw new NotFoundException(
+          `Content summary with ID ${summaryId} not found or you don't have access to it`,
+        );
+      }
+
+      this.logger.log(
+        `Retrieved content summary ${summaryId} for user ${userId}`,
+      );
+
+      return {
+        success: true,
+        summary,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to retrieve summary ${summaryId}: ${error.message}`,
+      );
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(
+        `Failed to retrieve summary: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Update a specific content summary by ID for a user
+   */
+  async updateSummary(summaryId: string, updateData: any, userId: string) {
+    try {
+      // First check if the summary exists and belongs to the user
+      const existingSummary = await this.prisma.contentSummary.findFirst({
+        where: {
+          id: summaryId,
+          userId, // Ensure user can only update their own summaries
+        },
+      });
+
+      if (!existingSummary) {
+        throw new NotFoundException(
+          `Content summary with ID ${summaryId} not found or you don't have access to it`,
+        );
+      }
+
+      // Prepare update data - only include fields that are provided
+      const updateFields: any = {};
+      if (updateData.original_content !== undefined) {
+        updateFields.originalContent = updateData.original_content;
+      }
+      if (updateData.user_input !== undefined) {
+        updateFields.userInput = updateData.user_input;
+      }
+      if (updateData.projectId !== undefined) {
+        updateFields.projectId = updateData.projectId;
+      }
+
+      // Update the content summary
+      const updatedSummary = await this.prisma.contentSummary.update({
+        where: {
+          id: summaryId,
+        },
+        data: updateFields,
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      this.logger.log(
+        `Updated content summary ${summaryId} for user ${userId}`,
+      );
+
+      // Log the update in conversation history
+      await this.prisma.conversationHistory.create({
+        data: {
+          type: 'CONTENT_SUMMARY',
+          userInput: `Updated content summary ${summaryId}`,
+          response: JSON.stringify({
+            action: 'update_summary',
+            summaryId,
+            updatedFields: updateFields,
+            oldValues: {
+              originalContent: existingSummary.originalContent,
+              userInput: existingSummary.userInput,
+            },
+          }),
+          metadata: {
+            action: 'update',
+            summaryId,
+            updatedFields: Object.keys(updateFields),
+          },
+          projectId: updatedSummary.projectId,
+          userId,
+        },
+      });
+
+      return {
+        success: true,
+        message: 'Content summary updated successfully',
+        summary: updatedSummary,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to update content summary ${summaryId}: ${error.message}`,
+      );
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(
+        `Failed to update content summary: ${error.message}`,
       );
     }
   }

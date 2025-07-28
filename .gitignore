@@ -394,9 +394,12 @@ Temporary Items
 
 =======
 # Local
+task.md
 .env
 dist
 .webpack
 .serverless/**/*.zip
 
 /generated/prisma
+migrations/
+logs.txt

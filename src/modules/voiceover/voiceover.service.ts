@@ -3,9 +3,11 @@ import {
   Logger,
   BadRequestException,
   InternalServerErrorException,
+  NotFoundException,
 } from '@nestjs/common';
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import { VoiceoverDto } from './dto/voiceover.dto';
+import { UpdateVoiceoverDto } from './dto/update-voiceover.dto';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { randomUUID } from 'crypto';
 import { ProjectHelperService } from '../../common/services/project-helper.service';
@@ -63,8 +65,8 @@ export class VoiceoverService {
   }
 
   async generateVoiceover(voiceoverDto: VoiceoverDto, userId: string) {
-    const projectId =
-      await this.projectHelperService.ensureUserHasProject(userId);
+    // Use projectId from body - no fallback project creation logic
+    const { narration_prompt, projectId } = voiceoverDto;
     this.logger.log(`Using project ${projectId} for voiceover generation`);
 
     const operationId = randomUUID();
@@ -72,19 +74,16 @@ export class VoiceoverService {
     try {
       this.logger.log(`Starting voiceover generation [${operationId}]`);
 
-      if (
-        !voiceoverDto.narration_prompt ||
-        voiceoverDto.narration_prompt.trim().length === 0
-      ) {
+      if (!narration_prompt || narration_prompt.trim().length === 0) {
         this.logger.error(`Missing or empty narration_prompt [${operationId}]`);
         throw new BadRequestException(
           'narration_prompt is required and cannot be empty',
         );
       }
 
-      if (voiceoverDto.narration_prompt.length > 5000) {
+      if (narration_prompt.length > 5000) {
         this.logger.error(
-          `Narration prompt too long: ${voiceoverDto.narration_prompt.length} characters [${operationId}]`,
+          `Narration prompt too long: ${narration_prompt.length} characters [${operationId}]`,
         );
         throw new BadRequestException(
           'narration_prompt must be less than 5000 characters',
@@ -96,7 +95,7 @@ export class VoiceoverService {
       const stream = await this.elevenLabs.textToSpeech.convert(
         'JBFqnCBsd6RMkjVDRZzb',
         {
-          text: voiceoverDto.narration_prompt,
+          text: narration_prompt,
           modelId: 'eleven_multilingual_v2',
           outputFormat: 'mp3_44100_128',
         },
@@ -129,7 +128,7 @@ export class VoiceoverService {
 
       const savedVoiceover = await this.prisma.generatedVoiceover.create({
         data: {
-          narrationPrompt: voiceoverDto.narration_prompt,
+          narrationPrompt: narration_prompt,
           s3Key: s3Key,
           projectId,
           userId,
@@ -139,7 +138,7 @@ export class VoiceoverService {
       await this.prisma.conversationHistory.create({
         data: {
           type: 'VOICEOVER_GENERATION',
-          userInput: voiceoverDto.narration_prompt,
+          userInput: narration_prompt,
           response: JSON.stringify({
             success: true,
             s3_key: s3Key,
@@ -174,7 +173,7 @@ export class VoiceoverService {
       this.logger.error(`Voiceover generation failed [${operationId}]`, {
         error: error.message,
         stack: error.stack,
-        promptLength: voiceoverDto.narration_prompt?.length || 0,
+        promptLength: narration_prompt?.length || 0,
       });
 
       if (error instanceof BadRequestException) {
@@ -245,6 +244,216 @@ export class VoiceoverService {
     } catch (error) {
       this.logger.error('Failed to convert stream to buffer', error.stack);
       throw new InternalServerErrorException('Failed to process audio stream');
+    }
+  }
+
+  /**
+   * Get all generated voiceovers for a user, optionally filtered by project
+   */
+  async getAllVoiceovers(userId: string, projectId?: string) {
+    try {
+      const where = {
+        userId,
+        ...(projectId && { projectId }),
+      };
+
+      const voiceovers = await this.prisma.generatedVoiceover.findMany({
+        where,
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+
+      this.logger.log(
+        `Retrieved ${voiceovers.length} generated voiceovers for user ${userId}${
+          projectId ? ` in project ${projectId}` : ''
+        }`,
+      );
+
+      return {
+        success: true,
+        count: voiceovers.length,
+        voiceovers,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to retrieve voiceovers: ${error.message}`);
+      throw new InternalServerErrorException(
+        `Failed to retrieve voiceovers: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Get a specific generated voiceover by ID for a user
+   */
+  async getVoiceoverById(voiceoverId: string, userId: string) {
+    try {
+      const voiceover = await this.prisma.generatedVoiceover.findFirst({
+        where: {
+          id: voiceoverId,
+          userId, // Ensure user can only access their own voiceovers
+        },
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      if (!voiceover) {
+        throw new NotFoundException(
+          `Generated voiceover with ID ${voiceoverId} not found or you don't have access to it`,
+        );
+      }
+
+      this.logger.log(
+        `Retrieved generated voiceover ${voiceoverId} for user ${userId}`,
+      );
+
+      return {
+        success: true,
+        voiceover,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to retrieve voiceover ${voiceoverId}: ${error.message}`,
+      );
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(
+        `Failed to retrieve voiceover: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Update the narration prompt, S3 key, and/or project of a specific generated voiceover
+   */
+  async updateVoiceoverPrompt(
+    voiceoverId: string,
+    updateData: UpdateVoiceoverDto,
+    userId: string,
+  ) {
+    try {
+      // First, verify the voiceover exists and belongs to the user
+      const existingVoiceover = await this.prisma.generatedVoiceover.findFirst({
+        where: {
+          id: voiceoverId,
+          userId,
+        },
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      if (!existingVoiceover) {
+        throw new NotFoundException(
+          `Generated voiceover with ID ${voiceoverId} not found or you don't have access to it`,
+        );
+      }
+
+      // Prepare update data - only include fields that are provided
+      const updateFields: any = {
+        narrationPrompt: updateData.narration_prompt,
+      };
+
+      if (updateData.s3_key !== undefined) {
+        updateFields.s3Key = updateData.s3_key;
+      }
+      if (updateData.projectId !== undefined) {
+        updateFields.projectId = updateData.projectId;
+      }
+
+      const updatedVoiceover = await this.prisma.generatedVoiceover.update({
+        where: {
+          id: voiceoverId,
+        },
+        data: updateFields,
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      // Log the update in conversation history
+      if (existingVoiceover.projectId) {
+        const userInputData: any = {
+          action: 'update_voiceover',
+          voiceoverId: voiceoverId,
+          newPrompt: updateData.narration_prompt,
+          oldPrompt: existingVoiceover.narrationPrompt,
+          updatedFields: updateFields,
+        };
+
+        if (updateData.s3_key !== undefined) {
+          userInputData.newS3Key = updateData.s3_key;
+          userInputData.oldS3Key = existingVoiceover.s3Key;
+        }
+        if (updateData.projectId !== undefined) {
+          userInputData.newProjectId = updateData.projectId;
+          userInputData.oldProjectId = existingVoiceover.projectId;
+        }
+
+        await this.prisma.conversationHistory.create({
+          data: {
+            type: 'VOICEOVER_GENERATION',
+            userInput: JSON.stringify(userInputData),
+            response: JSON.stringify({
+              success: true,
+              message: 'Voiceover updated successfully',
+              updatedFields: Object.keys(updateFields),
+            }),
+            metadata: {
+              action: 'update',
+              voiceoverId,
+              updatedFields: Object.keys(updateFields),
+            },
+            projectId: updatedVoiceover.projectId,
+            userId: userId,
+          },
+        });
+      }
+
+      this.logger.log(
+        `Updated voiceover ${voiceoverId} for user ${userId}: ${Object.keys(updateFields).join(', ')}`,
+      );
+
+      return {
+        success: true,
+        message: 'Voiceover updated successfully',
+        voiceover: updatedVoiceover,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to update voiceover ${voiceoverId}: ${(error as Error).message}`,
+      );
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(
+        `Failed to update voiceover: ${(error as Error).message}`,
+      );
     }
   }
 }

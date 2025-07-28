@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConceptWriterDto } from './dto/concept-writer.dto';
 import { GoogleGenAI } from '@google/genai';
 import { GeneratedResponse } from './concept-writer.interface';
@@ -22,12 +22,9 @@ export class ConceptWriterService {
     conceptWriterDto: ConceptWriterDto,
     userId: string,
   ): Promise<GeneratedResponse> {
-    // Ensure user has a project (create default if none exists)
-    const projectId =
-      await this.projectHelperService.ensureUserHasProject(userId);
+    // Use projectId from body - no fallback project creation logic
+    const { prompt, web_info, projectId } = conceptWriterDto;
     this.logger.log(`Using project ${projectId} for concept generation`);
-
-    const { prompt, web_info } = conceptWriterDto;
 
     const systemPrompt = `Generate 3-4 creative video concept ideas based on this prompt: "${prompt}"
 
@@ -160,6 +157,179 @@ export class ConceptWriterService {
     } catch (error) {
       this.logger.error(`Failed to generate concepts: ${error.message}`);
       throw new Error(`Failed to generate concepts: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get all concepts for a user, optionally filtered by project
+   */
+  async getAllConcepts(userId: string, projectId?: string) {
+    try {
+      const where = {
+        userId,
+        ...(projectId && { projectId }),
+      };
+
+      const concepts = await this.prisma.videoConcept.findMany({
+        where,
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+
+      this.logger.log(
+        `Retrieved ${concepts.length} concepts for user ${userId}${
+          projectId ? ` in project ${projectId}` : ''
+        }`,
+      );
+
+      return {
+        success: true,
+        count: concepts.length,
+        concepts,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to retrieve concepts: ${error.message}`);
+      throw new Error(`Failed to retrieve concepts: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get a specific concept by ID for a user
+   */
+  async getConceptById(conceptId: string, userId: string) {
+    try {
+      const concept = await this.prisma.videoConcept.findFirst({
+        where: {
+          id: conceptId,
+          userId, // Ensure user can only access their own concepts
+        },
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      if (!concept) {
+        throw new NotFoundException(
+          `Concept with ID ${conceptId} not found or you don't have access to it`,
+        );
+      }
+
+      this.logger.log(`Retrieved concept ${conceptId} for user ${userId}`);
+
+      return {
+        success: true,
+        concept,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to retrieve concept ${conceptId}: ${error.message}`,
+      );
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new Error(`Failed to retrieve concept: ${error.message}`);
+    }
+  }
+
+  /**
+   * Update the prompt of a specific concept by ID for a user
+   */
+  async updateConceptPrompt(
+    conceptId: string,
+    updateData: { prompt: string; projectId?: string },
+    userId: string,
+  ) {
+    try {
+      // First check if the concept exists and belongs to the user
+      const existingConcept = await this.prisma.videoConcept.findFirst({
+        where: {
+          id: conceptId,
+          userId, // Ensure user can only update their own concepts
+        },
+      });
+
+      if (!existingConcept) {
+        throw new NotFoundException(
+          `Concept with ID ${conceptId} not found or you don't have access to it`,
+        );
+      }
+
+      // Prepare update data - only include fields that are provided
+      const updateFields: any = {
+        prompt: updateData.prompt,
+      };
+      if (updateData.projectId !== undefined) {
+        updateFields.projectId = updateData.projectId;
+      }
+
+      // Update the concept
+      const updatedConcept = await this.prisma.videoConcept.update({
+        where: {
+          id: conceptId,
+        },
+        data: updateFields,
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      this.logger.log(`Updated concept ${conceptId} prompt for user ${userId}`);
+
+      // Log the update in conversation history
+      await this.prisma.conversationHistory.create({
+        data: {
+          type: 'CONCEPT_GENERATION',
+          userInput: `Updated prompt for concept ${conceptId}`,
+          response: JSON.stringify({
+            action: 'update_concept',
+            conceptId,
+            oldPrompt: existingConcept.prompt,
+            newPrompt: updateData.prompt,
+            updatedFields: updateFields,
+          }),
+          metadata: {
+            action: 'update',
+            conceptId,
+            oldPrompt: existingConcept.prompt,
+            updatedFields: Object.keys(updateFields),
+          },
+          projectId: updatedConcept.projectId,
+          userId,
+        },
+      });
+
+      return {
+        success: true,
+        message: 'Concept prompt updated successfully',
+        concept: updatedConcept,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to update concept ${conceptId}: ${error.message}`,
+      );
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new Error(`Failed to update concept: ${error.message}`);
     }
   }
 }

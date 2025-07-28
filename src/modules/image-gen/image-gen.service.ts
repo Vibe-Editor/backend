@@ -3,8 +3,10 @@ import {
   Logger,
   BadRequestException,
   InternalServerErrorException,
+  NotFoundException,
 } from '@nestjs/common';
 import { ImageGenDto } from './dto/image-gen.dto';
+import { UpdateImageGenDto } from './dto/update-image-gen.dto';
 import { GoogleGenAI } from '@google/genai';
 import { Agent, handoff, run } from '@openai/agents';
 import { ProjectHelperService } from '../../common/services/project-helper.service';
@@ -54,17 +56,28 @@ export class ImageGenService {
   }
 
   async generateImage(imageGenDto: ImageGenDto, userId: string) {
-    // Ensure user has a project (create default if none exists)
-    const projectId =
-      await this.projectHelperService.ensureUserHasProject(userId);
+    // Use projectId from body - no fallback project creation logic
+    const { visual_prompt, art_style, uuid, projectId } = imageGenDto;
     this.logger.log(`Using project ${projectId} for image generation`);
 
     const startTime = Date.now();
-    const operationId = imageGenDto.uuid;
+    const operationId = uuid;
+
+    // Enhanced logging for request tracking
+    this.logger.log('=== IMAGE GENERATION REQUEST START ===');
+    this.logger.log(`Operation ID: ${operationId}`);
+    this.logger.log(`User ID: ${userId}`);
+    this.logger.log(`Project ID: ${projectId}`);
+    this.logger.log(
+      `Visual prompt length: ${visual_prompt?.length || 0} characters`,
+    );
+    this.logger.log(`Art style: ${art_style}`);
+    this.logger.log(`Request timestamp: ${new Date().toISOString()}`);
+    this.logger.log('=== IMAGE GENERATION REQUEST START END ===');
 
     this.logger.log(`Starting image generation [${operationId}]`);
     this.logger.log(
-      `Image generation with prompt: ${imageGenDto.visual_prompt?.substring(0, 100)}... [${operationId}]`,
+      `Image generation with prompt: ${visual_prompt?.substring(0, 100)}... [${operationId}]`,
     );
 
     const RecraftAgent = createRecraftAgent();
@@ -82,12 +95,16 @@ export class ImageGenService {
       - Photorealistic scenes
       - Real-world scenarios without text elements
       - When the art style indicates realism/photography
+      - 3D rendered content
+      - Industrial or metallic themes
       
       Use Imagen for:
-      - Any content that includes text, words, letters, or signs
+      - Content that specifically includes readable text, words, letters, or signs
       - Artistic, stylized, or creative content
       - Abstract or non-realistic art styles
-      - Logos, posters, or graphics with text
+      - Logos, posters, or graphics with text overlays
+      - UI elements, menus, or interface designs
+      - Educational diagrams or infographics
       - Cartoon, anime, or illustrated styles
       - When the art style is not realistic/photographic
       
@@ -96,38 +113,35 @@ export class ImageGenService {
         handoff(RecraftAgent, {
           toolNameOverride: 'use_recraft_agent',
           toolDescriptionOverride:
-            'Send to Recraft agent for realistic images without text.',
+            'Send to Recraft agent for realistic, photographic, or 3D rendered images.',
         }),
         handoff(ImagenAgent, {
           toolNameOverride: 'use_imagen_agent',
           toolDescriptionOverride:
-            'Send to Imagen agent for text-based/artistic content.',
+            'Send to Imagen agent for artistic content, text-based images, or illustrated styles.',
         }),
       ],
     });
 
     try {
       // Validate input
-      if (
-        !imageGenDto.visual_prompt ||
-        imageGenDto.visual_prompt.trim().length === 0
-      ) {
+      if (!visual_prompt || visual_prompt.trim().length === 0) {
         this.logger.error(`Missing or empty visual_prompt [${operationId}]`);
         throw new BadRequestException(
           'visual_prompt is required and cannot be empty',
         );
       }
 
-      if (!imageGenDto.art_style || imageGenDto.art_style.trim().length === 0) {
+      if (!art_style || art_style.trim().length === 0) {
         this.logger.error(`Missing or empty art_style [${operationId}]`);
         throw new BadRequestException(
           'art_style is required and cannot be empty',
         );
       }
 
-      if (imageGenDto.visual_prompt.length > 2000) {
+      if (visual_prompt.length > 2000) {
         this.logger.error(
-          `Visual prompt too long: ${imageGenDto.visual_prompt.length} characters [${operationId}]`,
+          `Visual prompt too long: ${visual_prompt.length} characters [${operationId}]`,
         );
         throw new BadRequestException(
           'visual_prompt must be less than 2000 characters',
@@ -138,9 +152,61 @@ export class ImageGenService {
       const result = await run(triageAgent, [
         {
           role: 'user',
-          content: `Generate an image with prompt: "${imageGenDto.visual_prompt}"\n art style: "${imageGenDto.art_style}"\n for user: "${imageGenDto.uuid}"`,
+          content: `Generate an image with prompt: "${visual_prompt}"\n art style: "${art_style}"\n for user: "${uuid}"`,
         },
       ]);
+
+      // Enhanced logging for agent execution results
+      this.logger.log('=== AGENT EXECUTION ANALYSIS START ===');
+      this.logger.log(`Operation ID: ${operationId}`);
+      this.logger.log(`Agent execution completed`);
+      this.logger.log(
+        `Total agent execution time: ${Date.now() - startTime}ms`,
+      );
+      this.logger.log(
+        `Result output array length: ${result.output?.length || 0}`,
+      );
+
+      // Log the sequence of agent calls
+      const agentCalls =
+        result.output?.filter((msg) => msg.type === 'function_call') || [];
+      this.logger.log(`Number of function calls made: ${agentCalls.length}`);
+
+      agentCalls.forEach((call, index) => {
+        this.logger.log(`Call ${index + 1}: ${call.name} (${call.status})`);
+      });
+
+      // Identify which agent was selected
+      const triageCall = agentCalls.find(
+        (call) =>
+          call.name === 'use_recraft_agent' || call.name === 'use_imagen_agent',
+      );
+
+      if (triageCall) {
+        const selectedAgent =
+          triageCall.name === 'use_recraft_agent' ? 'RECRAFT' : 'IMAGEN';
+        this.logger.log(`=== TRIAGE DECISION: ${selectedAgent} SELECTED ===`);
+        this.logger.log(
+          `Decision based on prompt: "${visual_prompt?.substring(0, 100)}..."`,
+        );
+        this.logger.log(`Art style: "${art_style}"`);
+      }
+
+      // Check for any errors in the execution
+      const errorCalls =
+        result.output?.filter(
+          (msg) =>
+            msg.type === 'function_call_result' &&
+            (msg as any).output?.type === 'text' &&
+            (msg as any).output?.text?.includes('An error occurred'),
+        ) || [];
+
+      this.logger.log(`Number of error calls: ${errorCalls.length}`);
+      errorCalls.forEach((error, index) => {
+        this.logger.error(`Error ${index + 1}: ${(error as any).output?.text}`);
+      });
+
+      this.logger.log('=== AGENT EXECUTION ANALYSIS END ===');
 
       this.logger.debug('Agent execution completed, parsing result');
       console.log(result.output);
@@ -150,8 +216,8 @@ export class ImageGenService {
         (msg) =>
           msg.type === 'function_call_result' &&
           msg.status === 'completed' &&
-          msg.output?.type === 'text' &&
-          msg.output?.text?.includes(
+          (msg as any).output?.type === 'text' &&
+          (msg as any).output?.text?.includes(
             'An error occurred while running the tool',
           ),
       );
@@ -168,7 +234,17 @@ export class ImageGenService {
         this.logger.log('Using Gemini to parse agent result');
         const geminiParseRes = await this.genAI.models.generateContent({
           model: 'gemini-2.0-flash-exp',
-          contents: `Parse this entire agent conversation output and extract the image generation result. Return a JSON object with "s3_key" (string), "model" (string), and "image_size_bytes" (number).
+          contents: `Parse this entire agent conversation output and extract the image generation result ONLY if the agent execution was successful.
+
+          IMPORTANT INSTRUCTIONS:
+          - Only return values if they are real, valid data from successful agent execution
+          - Do NOT create fake, placeholder, or example values like "fake-bucket", "fake-key", etc.
+          - If no valid S3 key exists in the output, set s3_key to null
+          - If no valid model name exists, set model to null  
+          - If no valid image size exists, set image_size_bytes to null
+          - Look for actual S3 keys in the format like "uuid/images/some-uuid.png" or similar valid paths
+          - Look for actual model names like "recraft-realistic-image", "imagen-3.0-generate-002", "dall-e", etc.
+          - Look for actual file sizes in bytes (should be > 10000 for real images)
 
           Full agent output:
           ${JSON.stringify(result.output, null, 2)}`,
@@ -177,11 +253,11 @@ export class ImageGenService {
             responseSchema: {
               type: 'object',
               properties: {
-                s3_key: { type: 'string' },
-                model: { type: 'string' },
-                image_size_bytes: { type: 'number' },
+                s3_key: { type: ['string', 'null'] },
+                model: { type: ['string', 'null'] },
+                image_size_bytes: { type: ['number', 'null'] },
               },
-              required: ['s3_key', 'model', 'image_size_bytes'],
+              required: [],
             },
           },
         } as any);
@@ -189,20 +265,55 @@ export class ImageGenService {
         const agentResult = JSON.parse(geminiParseRes.text);
         this.logger.debug('Parsed agent result:', agentResult);
 
+        // Validate for fake or invalid data
+        if (agentResult?.s3_key) {
+          // Check for fake S3 keys
+          if (
+            agentResult.s3_key.includes('fake') ||
+            agentResult.s3_key.includes('placeholder') ||
+            agentResult.s3_key.includes('example') ||
+            agentResult.s3_key === 's3://fake-bucket/fake-key'
+          ) {
+            this.logger.error(
+              'Detected fake S3 key from agent result:',
+              agentResult.s3_key,
+            );
+            throw new InternalServerErrorException(
+              'Image generation failed - agent did not produce a valid S3 key',
+            );
+          }
+        }
+
         if (
           agentResult?.image_size_bytes &&
-          agentResult.image_size_bytes < 1000
+          agentResult.image_size_bytes < 10000
         ) {
           this.logger.error(
-            'Detected fake/invalid image size from agent result:',
-            agentResult,
+            'Detected invalid/fake image size from agent result:',
+            agentResult.image_size_bytes,
           );
           throw new InternalServerErrorException(
             'Image generation failed - invalid image size in response',
           );
         }
 
-        if (agentResult?.s3_key && agentResult?.model) {
+        // Check if we have valid data from the agent
+        if (!agentResult?.s3_key || !agentResult?.model) {
+          this.logger.error(
+            'Agent execution did not produce valid image generation results',
+            {
+              hasS3Key: !!agentResult?.s3_key,
+              hasModel: !!agentResult?.model,
+              hasImageSize: !!agentResult?.image_size_bytes,
+              agentResult,
+            },
+          );
+          throw new InternalServerErrorException(
+            'Image generation failed - agent did not produce a valid result. Please try again.',
+          );
+        }
+
+        if (agentResult.s3_key && agentResult.model) {
           const totalTime = Date.now() - startTime;
           this.logger.log(
             `Image generation completed successfully in ${totalTime}ms`,
@@ -210,7 +321,7 @@ export class ImageGenService {
               model: agentResult.model,
               s3_key: agentResult.s3_key,
               image_size_bytes: agentResult.image_size_bytes,
-              uuid: imageGenDto.uuid,
+              uuid: uuid,
             },
           );
 
@@ -218,9 +329,9 @@ export class ImageGenService {
           this.logger.log(`Saving image generation to database`);
           const savedImage = await this.prisma.generatedImage.create({
             data: {
-              visualPrompt: imageGenDto.visual_prompt,
-              artStyle: imageGenDto.art_style,
-              uuid: imageGenDto.uuid,
+              visualPrompt: visual_prompt,
+              artStyle: art_style,
+              uuid: uuid,
               success: true,
               s3Key: agentResult.s3_key,
               model: agentResult.model,
@@ -235,7 +346,7 @@ export class ImageGenService {
           await this.prisma.conversationHistory.create({
             data: {
               type: 'IMAGE_GENERATION',
-              userInput: imageGenDto.visual_prompt,
+              userInput: visual_prompt,
               response: JSON.stringify({
                 success: true,
                 s3_key: agentResult.s3_key,
@@ -244,8 +355,8 @@ export class ImageGenService {
                 image_size_bytes: agentResult.image_size_bytes,
               }),
               metadata: {
-                artStyle: imageGenDto.art_style,
-                uuid: imageGenDto.uuid,
+                artStyle: art_style,
+                uuid: uuid,
                 savedImageId: savedImage.id,
               },
               projectId,
@@ -264,34 +375,21 @@ export class ImageGenService {
             message: 'Image generated and uploaded successfully',
             image_size_bytes: agentResult.image_size_bytes,
           };
-        } else {
-          this.logger.error(
-            'Agent produced result but no image was successfully uploaded',
-            {
-              agentResult,
-              hasS3Key: !!agentResult?.s3_key,
-              hasModel: !!agentResult?.model,
-            },
-          );
-          throw new InternalServerErrorException(
-            'Image generation completed but no image was successfully uploaded to S3.',
-          );
         }
       } catch (parseError) {
         this.logger.error(
           'Failed to parse agent result with Gemini:',
           parseError,
         );
+        throw new InternalServerErrorException(
+          'Failed to parse image generation result. Please try again.',
+        );
       }
-
-      throw new InternalServerErrorException(
-        'Agent did not produce a valid image generation result.',
-      );
     } catch (error) {
       const totalTime = Date.now() - startTime;
       this.logger.error(`Image generation failed after ${totalTime}ms`, {
         error: error.message,
-        uuid: imageGenDto.uuid,
+        uuid: uuid,
         stack: error.stack,
       });
 
@@ -306,6 +404,217 @@ export class ImageGenService {
       // Otherwise, throw the original error message as an internal server error
       throw new InternalServerErrorException(
         error.message || 'Failed to generate image.',
+      );
+    }
+  }
+
+  /**
+   * Get all generated images for a user, optionally filtered by project
+   */
+  async getAllImages(userId: string, projectId?: string) {
+    try {
+      const where = {
+        userId,
+        ...(projectId && { projectId }),
+      };
+
+      const images = await this.prisma.generatedImage.findMany({
+        where,
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+
+      this.logger.log(
+        `Retrieved ${images.length} generated images for user ${userId}${
+          projectId ? ` in project ${projectId}` : ''
+        }`,
+      );
+
+      return {
+        success: true,
+        count: images.length,
+        images,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to retrieve images: ${error.message}`);
+      throw new InternalServerErrorException(
+        `Failed to retrieve images: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Get a specific generated image by ID for a user
+   */
+  async getImageById(imageId: string, userId: string) {
+    try {
+      const image = await this.prisma.generatedImage.findFirst({
+        where: {
+          id: imageId,
+          userId, // Ensure user can only access their own images
+        },
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      if (!image) {
+        throw new NotFoundException(
+          `Generated image with ID ${imageId} not found or you don't have access to it`,
+        );
+      }
+
+      this.logger.log(
+        `Retrieved generated image ${imageId} for user ${userId}`,
+      );
+
+      return {
+        success: true,
+        image,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to retrieve image ${imageId}: ${error.message}`,
+      );
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(
+        `Failed to retrieve image: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Update the visual prompt, art style, S3 key, and/or project of a specific generated image
+   */
+  async updateImagePrompt(
+    imageId: string,
+    updateData: UpdateImageGenDto,
+    userId: string,
+  ) {
+    try {
+      // First, verify the image exists and belongs to the user
+      const existingImage = await this.prisma.generatedImage.findFirst({
+        where: {
+          id: imageId,
+          userId,
+        },
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      if (!existingImage) {
+        throw new NotFoundException(
+          `Generated image with ID ${imageId} not found or you don't have access to it`,
+        );
+      }
+
+      // Prepare update data - only include fields that are provided
+      const updateFields: any = {
+        visualPrompt: updateData.visual_prompt,
+        artStyle: updateData.art_style,
+      };
+
+      if (updateData.s3_key !== undefined) {
+        updateFields.s3Key = updateData.s3_key;
+      }
+      if (updateData.projectId !== undefined) {
+        updateFields.projectId = updateData.projectId;
+      }
+
+      const updatedImage = await this.prisma.generatedImage.update({
+        where: {
+          id: imageId,
+        },
+        data: updateFields,
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      // Log the update in conversation history
+      if (existingImage.projectId) {
+        const userInputData: any = {
+          action: 'update_image',
+          imageId: imageId,
+          newPrompt: updateData.visual_prompt,
+          oldPrompt: existingImage.visualPrompt,
+          newArtStyle: updateData.art_style,
+          oldArtStyle: existingImage.artStyle,
+          updatedFields: updateFields,
+        };
+
+        if (updateData.s3_key !== undefined) {
+          userInputData.newS3Key = updateData.s3_key;
+          userInputData.oldS3Key = existingImage.s3Key;
+        }
+        if (updateData.projectId !== undefined) {
+          userInputData.newProjectId = updateData.projectId;
+          userInputData.oldProjectId = existingImage.projectId;
+        }
+
+        await this.prisma.conversationHistory.create({
+          data: {
+            type: 'IMAGE_GENERATION',
+            userInput: JSON.stringify(userInputData),
+            response: JSON.stringify({
+              success: true,
+              message: 'Image updated successfully',
+              updatedFields: Object.keys(updateFields),
+            }),
+            metadata: {
+              action: 'update',
+              imageId,
+              updatedFields: Object.keys(updateFields),
+            },
+            projectId: updatedImage.projectId,
+            userId: userId,
+          },
+        });
+      }
+
+      this.logger.log(
+        `Updated image ${imageId} for user ${userId}: ${Object.keys(updateFields).join(', ')}`,
+      );
+
+      return {
+        success: true,
+        message: 'Image updated successfully',
+        image: updatedImage,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to update image ${imageId}: ${error.message}`);
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(
+        `Failed to update image: ${error.message}`,
       );
     }
   }

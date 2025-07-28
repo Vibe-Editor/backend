@@ -25,6 +25,7 @@ model User {
   generatedImages     GeneratedImage[]
   generatedVideos     GeneratedVideo[]
   generatedVoiceovers GeneratedVoiceover[]
+  characterGenerations CharacterGeneration[]
 }
 
 model Project {
@@ -44,6 +45,7 @@ model Project {
   generatedImages     GeneratedImage[]
   generatedVideos     GeneratedVideo[]
   generatedVoiceovers GeneratedVoiceover[]
+  characterGenerations CharacterGeneration[]
 }
 
 model ConversationHistory {
@@ -68,6 +70,7 @@ enum ConversationTypeEnum {
   IMAGE_GENERATION
   VIDEO_GENERATION
   VOICEOVER_GENERATION
+  CHARACTER_GENERATION
   GENERAL_CHAT
 }
 
@@ -119,6 +122,7 @@ model VideoSegmentation {
   negativePrompt String?
   artStyle       String
   model          String
+  isSelected     Boolean  @default(false)
   projectId      String?
   userId         String
   createdAt      DateTime @default(now())
@@ -192,6 +196,28 @@ model GeneratedVoiceover {
   projectId       String?
   userId          String
   createdAt       DateTime @default(now())
+
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model CharacterGeneration {
+  id                String   @id @default(cuid())
+  name              String?
+  description       String?
+  referenceImages   String[] // Array of 6 image S3 keys
+  spriteSheetS3Key  String?
+  finalCharacterS3Key String?
+  visualPrompt      String
+  artStyle          String
+  uuid              String
+  success           Boolean  @default(false)
+  model             String?
+  message           String?
+  projectId         String?
+  userId            String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)

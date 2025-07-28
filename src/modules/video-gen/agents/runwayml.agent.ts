@@ -31,9 +31,9 @@ export const createRunwayMLAgent = () =>
           uuid: z.string(),
         }) as any,
         execute: async ({ animation_prompt, art_style, imageS3Key, uuid }) => {
-            logger.log(
-              'Agent selected RunwayML for realistic/high-quality content',
-            );
+          logger.log(
+            'Agent selected RunwayML for realistic/high-quality content',
+          );
           return await generateRunwayMLVideo(
             animation_prompt,
             art_style,
@@ -54,6 +54,27 @@ async function generateRunwayMLVideo(
   const startTime = Date.now();
   logger.log(`Starting RunwayML video generation for user: ${uuid}`);
 
+  // Trim animation_prompt to ensure total prompt length stays well under 1000 characters (using 950 for safety buffer)
+  const additionalText = `. Art style: ${art_style}`;
+  const maxAnimationPromptLength = 950 - additionalText.length;
+
+  logger.debug(`Initial animation_prompt length: ${animation_prompt.length}`);
+  logger.debug(`Additional text length: ${additionalText.length}`);
+  logger.debug(
+    `Max allowed animation_prompt length: ${maxAnimationPromptLength}`,
+  );
+  logger.debug(`Art style: "${art_style}" (${art_style.length} chars)`);
+
+  if (animation_prompt.length > maxAnimationPromptLength) {
+    logger.warn(
+      `animation_prompt exceeded ${maxAnimationPromptLength} characters (${animation_prompt.length}), trimming to ${maxAnimationPromptLength} characters.`,
+    );
+    animation_prompt = animation_prompt
+      .substring(0, maxAnimationPromptLength)
+      .trim();
+    logger.debug(`Trimmed animation_prompt length: ${animation_prompt.length}`);
+  }
+
   try {
     const imageBase64 = await getImageFromS3AsBase64(imageS3Key);
 
@@ -61,7 +82,21 @@ async function generateRunwayMLVideo(
     const dataUri = `data:image/png;base64,${imageBase64}`;
 
     // Combine animation prompt with art style
-    const combinedPrompt = `${animation_prompt}. Art style: ${art_style}`;
+    let combinedPrompt = `${animation_prompt}. Art style: ${art_style}`;
+
+    // Debug logging to verify prompt length
+    logger.debug(`Final prompt length: ${combinedPrompt.length} characters`);
+
+    // Additional safety check - ensure final prompt doesn't exceed 950 characters (with safety buffer)
+    if (combinedPrompt.length > 950) {
+      logger.error(
+        `Final prompt still exceeds 950 characters (${combinedPrompt.length}). Applying emergency trim.`,
+      );
+      combinedPrompt = combinedPrompt.substring(0, 950).trim();
+      logger.warn(
+        `Emergency trimmed prompt to ${combinedPrompt.length} characters`,
+      );
+    }
 
     const task = await runwayClient.imageToVideo
       .create({

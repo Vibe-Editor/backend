@@ -1,4 +1,9 @@
-import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
+import {
+  Injectable,
+  HttpException,
+  HttpStatus,
+  NotFoundException,
+} from '@nestjs/common';
 import { GoogleGenAI } from '@google/genai';
 import { SegmentationDto } from './dto/segmentation.dto';
 import { TypeSegment } from './segment.interface';
@@ -300,9 +305,10 @@ export class SegmentationService {
     artStyle: string;
     model: string;
   }> {
-    // Ensure user has a project (create default if none exists)
-    const projectId =
-      await this.projectHelperService.ensureUserHasProject(userId);
+    // Use projectId from body if provided, otherwise ensure user has a project (create default if none exists)
+    const projectId = segmentationDto.projectId
+      ? segmentationDto.projectId
+      : await this.projectHelperService.ensureUserHasProject(userId);
     console.log(`Using project ${projectId} for segmentation`);
 
     const createGeminiAgent = () =>
@@ -517,6 +523,304 @@ export class SegmentationService {
       if (error instanceof HttpException) throw error;
       throw new HttpException(
         'An unexpected error occurred.',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * Get all video segmentations for a user, optionally filtered by project
+   */
+  async getAllSegmentations(userId: string, projectId?: string) {
+    try {
+      const where = {
+        userId,
+        ...(projectId && { projectId }),
+      };
+
+      const segmentations = await this.prisma.videoSegmentation.findMany({
+        where,
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          segments: {
+            orderBy: {
+              segmentId: 'asc',
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+
+      console.log(
+        `Retrieved ${segmentations.length} video segmentations for user ${userId}${
+          projectId ? ` in project ${projectId}` : ''
+        }`,
+      );
+
+      return {
+        success: true,
+        count: segmentations.length,
+        segmentations,
+      };
+    } catch (error) {
+      console.error(`Failed to retrieve segmentations: ${error.message}`);
+      throw new HttpException(
+        `Failed to retrieve segmentations: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * Get a specific video segmentation by ID for a user
+   */
+  async getSegmentationById(segmentationId: string, userId: string) {
+    try {
+      const segmentation = await this.prisma.videoSegmentation.findFirst({
+        where: {
+          id: segmentationId,
+          userId, // Ensure user can only access their own segmentations
+        },
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          segments: {
+            orderBy: {
+              segmentId: 'asc',
+            },
+          },
+        },
+      });
+
+      if (!segmentation) {
+        throw new NotFoundException(
+          `Video segmentation with ID ${segmentationId} not found or you don't have access to it`,
+        );
+      }
+
+      console.log(
+        `Retrieved video segmentation ${segmentationId} for user ${userId}`,
+      );
+
+      // Transform segments to match the expected format
+      const transformedSegments = segmentation.segments.map((segment) => ({
+        id: segment.segmentId,
+        visual: segment.visual,
+        narration: segment.narration,
+        animation: segment.animation,
+      }));
+
+      return {
+        success: true,
+        segmentation: {
+          ...segmentation,
+          segments: transformedSegments,
+        },
+      };
+    } catch (error) {
+      console.error(
+        `Failed to retrieve segmentation ${segmentationId}: ${error.message}`,
+      );
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new HttpException(
+        `Failed to retrieve segmentation: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * Select a segmentation (supports multiple selections per project)
+   * This allows users to select multiple segmentations throughout their iterative workflow
+   */
+  async selectSegmentation(
+    segmentationId: string,
+    userId: string,
+    projectId?: string,
+  ) {
+    try {
+      const segmentation = await this.prisma.videoSegmentation.findFirst({
+        where: {
+          id: segmentationId,
+          userId,
+        },
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      if (!segmentation) {
+        throw new NotFoundException(
+          `Video segmentation with ID ${segmentationId} not found or you don't have access to it`,
+        );
+      }
+
+      // Select the current segmentation without deselecting others
+      // This supports the iterative workflow where multiple segmentations can be selected per project
+      const updatedSegmentation = await this.prisma.videoSegmentation.update({
+        where: {
+          id: segmentationId,
+        },
+        data: {
+          isSelected: true,
+        },
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          segments: {
+            orderBy: {
+              segmentId: 'asc',
+            },
+          },
+        },
+      });
+
+      console.log(
+        `Selected segmentation ${segmentationId} for user ${userId} - supports multiple selections per project`,
+      );
+
+      return {
+        success: true,
+        message: 'Segmentation selected successfully',
+        segmentation: updatedSegmentation,
+      };
+    } catch (error) {
+      console.error(
+        `Failed to select segmentation ${segmentationId}: ${error.message}`,
+      );
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new HttpException(
+        `Failed to select segmentation: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * Update a specific segmentation by ID for a user
+   */
+  async updateSegmentation(
+    segmentationId: string,
+    updateData: any,
+    userId: string,
+  ) {
+    try {
+      // First check if the segmentation exists and belongs to the user
+      const existingSegmentation =
+        await this.prisma.videoSegmentation.findFirst({
+          where: {
+            id: segmentationId,
+            userId, // Ensure user can only update their own segmentations
+          },
+        });
+
+      if (!existingSegmentation) {
+        throw new NotFoundException(
+          `Segmentation with ID ${segmentationId} not found or you don't have access to it`,
+        );
+      }
+
+      // Prepare update data - only include fields that are provided
+      const updateFields: any = {};
+      if (updateData.prompt !== undefined) {
+        updateFields.prompt = updateData.prompt;
+      }
+      if (updateData.concept !== undefined) {
+        updateFields.concept = updateData.concept;
+      }
+      if (updateData.negative_prompt !== undefined) {
+        updateFields.negativePrompt = updateData.negative_prompt;
+      }
+      if (updateData.projectId !== undefined) {
+        updateFields.projectId = updateData.projectId;
+      }
+
+      // Update the segmentation
+      const updatedSegmentation = await this.prisma.videoSegmentation.update({
+        where: {
+          id: segmentationId,
+        },
+        data: updateFields,
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          segments: {
+            orderBy: {
+              createdAt: 'asc',
+            },
+          },
+        },
+      });
+
+      console.log(`Updated segmentation ${segmentationId} for user ${userId}`);
+
+      // Log the update in conversation history
+      await this.prisma.conversationHistory.create({
+        data: {
+          type: 'VIDEO_SEGMENTATION',
+          userInput: `Updated segmentation ${segmentationId}`,
+          response: JSON.stringify({
+            action: 'update_segmentation',
+            segmentationId,
+            updatedFields: updateFields,
+            oldValues: {
+              prompt: existingSegmentation.prompt,
+              concept: existingSegmentation.concept,
+              negativePrompt: existingSegmentation.negativePrompt,
+            },
+          }),
+          metadata: {
+            action: 'update',
+            segmentationId,
+            updatedFields: Object.keys(updateFields),
+          },
+          projectId: updatedSegmentation.projectId,
+          userId,
+        },
+      });
+
+      return {
+        success: true,
+        message: 'Segmentation updated successfully',
+        segmentation: updatedSegmentation,
+      };
+    } catch (error) {
+      console.error(
+        `Failed to update segmentation ${segmentationId}: ${error.message}`,
+      );
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new HttpException(
+        `Failed to update segmentation: ${error.message}`,
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

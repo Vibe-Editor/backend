@@ -28,8 +28,13 @@ export const createImagenAgent = () =>
     uuid: string;
   }>({
     name: 'Imagen Text-Based Image Agent',
-    instructions:
-      "You create images with text, stylized content, and artistic visuals using Google's Imagen model. Perfect for images containing text, logos, signs, artistic styles, and creative content.",
+    instructions: `You are an image generation agent that uses Google's Imagen model. 
+
+When you receive a request to generate an image, you MUST immediately call the generate_imagen_image tool with the provided visual_prompt, art_style, and uuid parameters.
+
+Do not just respond with text - always call the generation tool to create the actual image.
+
+You are perfect for images containing text, logos, signs, artistic styles, and creative content.`,
     tools: [
       tool({
         name: 'generate_imagen_image',
@@ -62,26 +67,182 @@ async function generateImagenImage(
   logger.log(`Starting Imagen image generation for user: ${uuid}`);
 
   try {
+    // Trim visual_prompt to ensure total prompt length stays reasonable (under 2000 characters)
+    const additionalText = `. ART STYLE: ${art_style}. Follow the art style but make the image according to the visual prompt. The image should not be a storyboard image. It should be a single image.`;
+    const maxVisualPromptLength =
+      2000 - additionalText.length - 'VISUAL PROMPT: '.length;
+
+    if (visual_prompt.length > maxVisualPromptLength) {
+      logger.warn(
+        `visual_prompt exceeded ${maxVisualPromptLength} characters (${visual_prompt.length}), trimming to ${maxVisualPromptLength} characters.`,
+      );
+      visual_prompt = visual_prompt.substring(0, maxVisualPromptLength).trim();
+    }
+
+    const finalPrompt = `VISUAL PROMPT: ${visual_prompt}. ART STYLE: ${art_style}. Follow the art style but make the image according to the visual prompt. The image should not be a storyboard image. It should be a single image.`;
+
+    // Enhanced logging - log the exact request being sent
+    logger.log('=== IMAGEN API REQUEST START ===');
+    logger.log(`Request UUID: ${uuid}`);
+    logger.log(`Model: imagen-3.0-generate-002`);
+    logger.log(`Prompt length: ${finalPrompt.length} characters`);
+    logger.log(`Full prompt: ${finalPrompt}`);
+    logger.log(`Number of images requested: 1`);
+    logger.log('=== IMAGEN API REQUEST END ===');
+
     logger.log('Generating image with Google Imagen');
-    const response = await googleGenAI.models.generateImages({
-      model: 'imagen-3.0-generate-002',
-      prompt: `VISUAL PROMPT: ${visual_prompt}. ART STYLE: ${art_style}. Follow the art style but make the image according to the visual prompt. The image should not be a storyboard image. It should be a single image.`,
-      config: { numberOfImages: 1 },
-    });
+
+    let response;
+    try {
+      response = await googleGenAI.models.generateImages({
+        model: 'imagen-3.0-generate-002',
+        prompt: finalPrompt,
+        config: { numberOfImages: 1 },
+      });
+    } catch (apiError) {
+      // Enhanced error logging for API failures
+      logger.error('=== IMAGEN API ERROR START ===');
+      logger.error(`Request UUID: ${uuid}`);
+      logger.error(`Error type: ${apiError.constructor.name}`);
+      logger.error(`Error message: ${apiError.message}`);
+      logger.error(`Error stack: ${apiError.stack}`);
+
+      // Log additional error details if available
+      if (apiError.response) {
+        logger.error(`HTTP Status: ${apiError.response.status}`);
+        logger.error(
+          `HTTP Headers: ${JSON.stringify(apiError.response.headers, null, 2)}`,
+        );
+        logger.error(
+          `Response body: ${JSON.stringify(apiError.response.data, null, 2)}`,
+        );
+      }
+
+      if (apiError.code) {
+        logger.error(`Error code: ${apiError.code}`);
+      }
+
+      if (apiError.details) {
+        logger.error(
+          `Error details: ${JSON.stringify(apiError.details, null, 2)}`,
+        );
+      }
+
+      logger.error('=== IMAGEN API ERROR END ===');
+      throw apiError;
+    }
+
+    // Enhanced response logging - log the complete response structure
+    logger.log('=== IMAGEN API RESPONSE START ===');
+    logger.log(`Request UUID: ${uuid}`);
+
+    // Log response metadata
+    logger.log(`Response type: ${typeof response}`);
+    logger.log(`Response constructor: ${response?.constructor?.name}`);
+
+    // Log the raw response structure (safely)
+    try {
+      const responseKeys = response ? Object.keys(response) : [];
+      logger.log(`Response keys: [${responseKeys.join(', ')}]`);
+
+      // Log the full response (but limit size to prevent log overflow)
+      const responseString = JSON.stringify(response, null, 2);
+      if (responseString.length > 5000) {
+        logger.log(
+          `Full response (truncated): ${responseString.substring(0, 5000)}...`,
+        );
+      } else {
+        logger.log(`Full response: ${responseString}`);
+      }
+    } catch (stringifyError) {
+      logger.error(`Failed to stringify response: ${stringifyError.message}`);
+      logger.log(`Response object inspection: ${response}`);
+    }
 
     // Handle the correct response structure
     const responseData = response as any;
+
+    // Enhanced validation logging
+    logger.log('=== IMAGEN RESPONSE VALIDATION START ===');
+    logger.log(
+      `Has generatedImages property: ${!!responseData.generatedImages}`,
+    );
+    logger.log(`generatedImages type: ${typeof responseData.generatedImages}`);
+
+    if (responseData.generatedImages) {
+      logger.log(
+        `generatedImages length: ${responseData.generatedImages.length}`,
+      );
+      logger.log(
+        `generatedImages is array: ${Array.isArray(responseData.generatedImages)}`,
+      );
+
+      // Log each generated image info
+      responseData.generatedImages.forEach((img, index) => {
+        logger.log(
+          `Image ${index}: keys = [${Object.keys(img || {}).join(', ')}]`,
+        );
+        if (img.image) {
+          logger.log(
+            `Image ${index}.image: keys = [${Object.keys(img.image || {}).join(', ')}]`,
+          );
+          logger.log(
+            `Image ${index}.image.imageBytes length: ${img.image.imageBytes?.length || 'undefined'}`,
+          );
+          logger.log(
+            `Image ${index}.image.mimeType: ${img.image.mimeType || 'undefined'}`,
+          );
+        }
+      });
+    } else {
+      // Log what properties are actually available
+      const availableKeys = responseData ? Object.keys(responseData) : [];
+      logger.log(
+        `Available response properties: [${availableKeys.join(', ')}]`,
+      );
+
+      // Check for alternative response structures
+      availableKeys.forEach((key) => {
+        const value = responseData[key];
+        logger.log(
+          `Property '${key}': type=${typeof value}, value=${Array.isArray(value) ? `array[${value.length}]` : value}`,
+        );
+      });
+    }
+    logger.log('=== IMAGEN RESPONSE VALIDATION END ===');
+    logger.log('=== IMAGEN API RESPONSE END ===');
+
     if (
       !responseData.generatedImages ||
       responseData.generatedImages.length === 0
     ) {
-      logger.error('No images generated from Imagen API');
+      logger.error('=== IMAGEN GENERATION FAILURE ANALYSIS START ===');
+      logger.error(`Request UUID: ${uuid}`);
+      logger.error(`Reason: No images generated from Imagen API`);
+      logger.error(`generatedImages exists: ${!!responseData.generatedImages}`);
+      logger.error(
+        `generatedImages length: ${responseData.generatedImages?.length || 'N/A'}`,
+      );
+      logger.error(
+        `Full response for debugging: ${JSON.stringify(responseData, null, 2)}`,
+      );
+      logger.error('=== IMAGEN GENERATION FAILURE ANALYSIS END ===');
+
       throw new Error('Failed to generate image: no images returned');
     }
 
     const generatedImage = responseData.generatedImages[0].image;
     if (!generatedImage.imageBytes) {
-      logger.error('Empty image data from Imagen API');
+      logger.error('=== IMAGEN IMAGE DATA FAILURE START ===');
+      logger.error(`Request UUID: ${uuid}`);
+      logger.error(`Reason: Empty image data from Imagen API`);
+      logger.error(
+        `generatedImage keys: [${Object.keys(generatedImage || {}).join(', ')}]`,
+      );
+      logger.error(`imageBytes exists: ${!!generatedImage.imageBytes}`);
+      logger.error(`imageBytes type: ${typeof generatedImage.imageBytes}`);
+      logger.error('=== IMAGEN IMAGE DATA FAILURE END ===');
+
       throw new Error('Failed to generate image: empty image data');
     }
 

@@ -3,9 +3,11 @@ import {
   Logger,
   BadRequestException,
   InternalServerErrorException,
+  NotFoundException,
 } from '@nestjs/common';
 import { GoogleGenAI } from '@google/genai';
 import { VideoGenDto } from './dto/video-gen.dto';
+import { UpdateVideoGenDto } from './dto/update-video-gen.dto';
 import { randomUUID } from 'crypto';
 import axios from 'axios';
 import { Agent, handoff, run } from '@openai/agents';
@@ -59,15 +61,13 @@ export class VideoGenService {
   }
 
   async generateVideo(videoGenDto: VideoGenDto, userId: string) {
-    // Ensure user has a project (create default if none exists)
-    const projectId =
-      await this.projectHelperService.ensureUserHasProject(userId);
+    // Use projectId from body - no fallback project creation logic
+    const { animation_prompt, art_style, imageS3Key, uuid, projectId } =
+      videoGenDto;
     this.logger.log(`Using project ${projectId} for video generation`);
 
     const startTime = Date.now();
-    this.logger.log(
-      `Starting video generation request for user: ${videoGenDto.uuid}`,
-    );
+    this.logger.log(`Starting video generation request for user: ${uuid}`);
 
     const Veo2Agent = createVeo2Agent();
     const RunwayMLAgent = createRunwayMLAgent();
@@ -116,15 +116,11 @@ export class VideoGenService {
     });
 
     try {
-      if (
-        !videoGenDto.animation_prompt ||
-        !videoGenDto.imageS3Key ||
-        !videoGenDto.uuid
-      ) {
+      if (!animation_prompt || !imageS3Key || !uuid) {
         this.logger.error('Missing required fields in request', {
-          hasPrompt: !!videoGenDto.animation_prompt,
-          hasImageS3Key: !!videoGenDto.imageS3Key,
-          hasUuid: !!videoGenDto.uuid,
+          hasPrompt: !!animation_prompt,
+          hasImageS3Key: !!imageS3Key,
+          hasUuid: !!uuid,
         });
         throw new BadRequestException(
           'Missing required fields: animation_prompt, imageS3Key, and uuid are required',
@@ -135,7 +131,7 @@ export class VideoGenService {
       const result = await run(triageAgent, [
         {
           role: 'user',
-          content: `Generate a video with prompt: "${videoGenDto.animation_prompt}"\n art style: "${videoGenDto.art_style}"\n using image S3 key: "${videoGenDto.imageS3Key}"\n for user: "${videoGenDto.uuid}"`,
+          content: `Generate a video with prompt: "${animation_prompt}"\n art style: "${art_style}"\n using image S3 key: "${imageS3Key}"\n for user: "${uuid}"`,
         },
       ]);
 
@@ -182,17 +178,17 @@ export class VideoGenService {
               model: agentResult.model,
               totalVideos: agentResult.totalVideos,
               s3Keys: agentResult.s3Keys,
-              uuid: videoGenDto.uuid,
+              uuid: uuid,
             },
           );
 
           this.logger.log(`Saving video generation to database`);
           const savedVideo = await this.prisma.generatedVideo.create({
             data: {
-              animationPrompt: videoGenDto.animation_prompt,
-              artStyle: videoGenDto.art_style,
-              imageS3Key: videoGenDto.imageS3Key,
-              uuid: videoGenDto.uuid,
+              animationPrompt: animation_prompt,
+              artStyle: art_style,
+              imageS3Key: imageS3Key,
+              uuid: uuid,
               success: true,
               model: agentResult.model,
               totalVideos: agentResult.totalVideos,
@@ -215,7 +211,7 @@ export class VideoGenService {
           await this.prisma.conversationHistory.create({
             data: {
               type: 'VIDEO_GENERATION',
-              userInput: videoGenDto.animation_prompt,
+              userInput: animation_prompt,
               response: JSON.stringify({
                 success: true,
                 s3Keys: agentResult.s3Keys,
@@ -223,9 +219,9 @@ export class VideoGenService {
                 totalVideos: agentResult.totalVideos,
               }),
               metadata: {
-                artStyle: videoGenDto.art_style,
-                imageS3Key: videoGenDto.imageS3Key,
-                uuid: videoGenDto.uuid,
+                artStyle: art_style,
+                imageS3Key: imageS3Key,
+                uuid: uuid,
                 savedVideoId: savedVideo.id,
                 savedVideoFileIds: savedVideoFiles.map((f) => f.id),
               },
@@ -272,7 +268,7 @@ export class VideoGenService {
       const totalTime = Date.now() - startTime;
       this.logger.error(`Video generation failed after ${totalTime}ms`, {
         error: error.message,
-        uuid: videoGenDto.uuid,
+        uuid: uuid,
         stack: error.stack,
       });
 
@@ -300,6 +296,229 @@ export class VideoGenService {
 
       throw new InternalServerErrorException(
         'Failed to generate video. Please try again later.',
+      );
+    }
+  }
+
+  /**
+   * Get all generated videos for a user, optionally filtered by project
+   */
+  async getAllVideos(userId: string, projectId?: string) {
+    try {
+      const where = {
+        userId,
+        ...(projectId && { projectId }),
+      };
+
+      const videos = await this.prisma.generatedVideo.findMany({
+        where,
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          videoFiles: true,
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+
+      this.logger.log(
+        `Retrieved ${videos.length} generated videos for user ${userId}${
+          projectId ? ` in project ${projectId}` : ''
+        }`,
+      );
+
+      return {
+        success: true,
+        count: videos.length,
+        videos,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to retrieve videos: ${error.message}`);
+      throw new InternalServerErrorException(
+        `Failed to retrieve videos: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Get a specific generated video by ID for a user
+   */
+  async getVideoById(videoId: string, userId: string) {
+    try {
+      const video = await this.prisma.generatedVideo.findFirst({
+        where: {
+          id: videoId,
+          userId, // Ensure user can only access their own videos
+        },
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          videoFiles: true,
+        },
+      });
+
+      if (!video) {
+        throw new NotFoundException(
+          `Generated video with ID ${videoId} not found or you don't have access to it`,
+        );
+      }
+
+      this.logger.log(
+        `Retrieved generated video ${videoId} for user ${userId}`,
+      );
+
+      return {
+        success: true,
+        video,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to retrieve video ${videoId}: ${error.message}`,
+      );
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(
+        `Failed to retrieve video: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Update the animation prompt, art style, input imageS3Key, output video S3 keys, and/or project of a specific generated video
+   */
+  async updateVideoPrompt(
+    videoId: string,
+    updateData: UpdateVideoGenDto,
+    userId: string,
+  ) {
+    try {
+      // First, verify the video exists and belongs to the user
+      const existingVideo = await this.prisma.generatedVideo.findFirst({
+        where: { id: videoId, userId },
+        include: {
+          project: { select: { id: true, name: true } },
+          videoFiles: true,
+        },
+      });
+
+      if (!existingVideo) {
+        throw new NotFoundException(
+          `Generated video with ID ${videoId} not found or you don't have access to it`,
+        );
+      }
+
+      // Prepare update data - only include fields that are provided
+      const updateFields: any = {
+        animationPrompt: updateData.animation_prompt,
+        artStyle: updateData.art_style,
+      };
+
+      if (updateData.image_s3_key !== undefined) {
+        updateFields.imageS3Key = updateData.image_s3_key;
+      }
+      if (updateData.projectId !== undefined) {
+        updateFields.projectId = updateData.projectId;
+      }
+
+      // Begin database transaction
+      const result = await this.prisma.$transaction(async (tx) => {
+        // Update the video gen record
+        const updatedVideo = await tx.generatedVideo.update({
+          where: { id: videoId },
+          data: updateFields,
+        });
+
+        // Handle video file updates if new S3 keys provided
+        if (updateData.video_s3_keys && updateData.video_s3_keys.length > 0) {
+          // Delete existing video files
+          await tx.generatedVideoFile.deleteMany({
+            where: { generatedVideoId: videoId },
+          });
+
+          // Create new video files
+          await tx.generatedVideoFile.createMany({
+            data: updateData.video_s3_keys.map((s3Key) => ({
+              generatedVideoId: videoId,
+              s3Key,
+            })),
+          });
+        }
+
+        // Update project timestamp to ensure fresh data
+        if (existingVideo.projectId) {
+          await tx.project.update({
+            where: { id: existingVideo.projectId },
+            data: { updatedAt: new Date() },
+          });
+        }
+
+        return updatedVideo;
+      });
+
+      const finalUpdatedVideo = await this.prisma.generatedVideo.findUnique({
+        where: { id: videoId },
+        include: {
+          project: { select: { id: true, name: true } },
+          videoFiles: { orderBy: { createdAt: 'desc' } },
+        },
+      });
+
+      // Log the update in conversation history
+      if (existingVideo.projectId) {
+        await this.prisma.conversationHistory.create({
+          data: {
+            type: 'VIDEO_GENERATION',
+            userInput: JSON.stringify({
+              action: 'update_video',
+              videoId,
+              newPrompt: updateData.animation_prompt,
+              oldPrompt: existingVideo.animationPrompt,
+              newArtStyle: updateData.art_style,
+              oldArtStyle: existingVideo.artStyle,
+              updatedFields: updateFields,
+            }),
+            response: JSON.stringify({
+              success: true,
+              message: 'Video updated successfully',
+              updatedFields: Object.keys(updateFields),
+            }),
+            metadata: {
+              action: 'update',
+              videoId,
+              updatedFields: Object.keys(updateFields),
+            },
+            projectId: finalUpdatedVideo.projectId,
+            userId,
+          },
+        });
+      }
+
+      this.logger.log(
+        `Updated video ${videoId} for user ${userId}: ${Object.keys(updateFields).join(', ')} - Final video has ${finalUpdatedVideo.videoFiles.length} files`,
+      );
+
+      return {
+        success: true,
+        message: 'Video updated successfully',
+        video: finalUpdatedVideo,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to update video ${videoId}: ${error.message}`);
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(
+        `Failed to update video: ${error.message}`,
       );
     }
   }

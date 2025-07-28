@@ -51,6 +51,19 @@ async function generateKlingVideo(
   const startTime = Date.now();
   logger.log(`Starting Kling video generation for user: ${uuid}`);
 
+  // Trim animation_prompt to ensure total prompt length stays reasonable (under 1500 characters for Kling)
+  const additionalText = `. Art style: ${art_style}`;
+  const maxAnimationPromptLength = 1500 - additionalText.length;
+
+  if (animation_prompt.length > maxAnimationPromptLength) {
+    logger.warn(
+      `animation_prompt exceeded ${maxAnimationPromptLength} characters (${animation_prompt.length}), trimming to ${maxAnimationPromptLength} characters.`,
+    );
+    animation_prompt = animation_prompt
+      .substring(0, maxAnimationPromptLength)
+      .trim();
+  }
+
   try {
     // Get image from S3 as base64 and convert to data URI
     const imageBase64 = await getImageFromS3AsBase64(imageS3Key);
@@ -66,14 +79,16 @@ async function generateKlingVideo(
         input: {
           prompt: combinedPrompt,
           image_url: dataUri,
-          duration: '8', // default duration
+          duration: '5', // default duration
           negative_prompt: 'blur, distort, and low quality',
           cfg_scale: 0.5,
         },
         logs: true,
         onQueueUpdate: (update) => {
           if (update.status === 'IN_PROGRESS') {
-            update.logs?.map((log) => log.message).forEach((msg) => logger.debug(msg));
+            update.logs
+              ?.map((log) => log.message)
+              .forEach((msg) => logger.debug(msg));
           }
         },
       },
@@ -90,10 +105,13 @@ async function generateKlingVideo(
     logger.log(`Successfully uploaded Kling video to S3: ${s3Key}`);
 
     const totalTime = Date.now() - startTime;
-    logger.log(`Kling video generation completed successfully in ${totalTime}ms`, {
-      s3Key,
-      uuid,
-    });
+    logger.log(
+      `Kling video generation completed successfully in ${totalTime}ms`,
+      {
+        s3Key,
+        uuid,
+      },
+    );
 
     return {
       s3Keys: [s3Key],
