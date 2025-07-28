@@ -15,6 +15,7 @@ import { ConceptWriterModule } from './modules/concept-writer/concept-writer.mod
 import { UserInputSummarizerModule } from './modules/user-input-summarizer/user-input-summarizer.module';
 import { CharacterGenModule } from './modules/character-gen/character-gen.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
+import { ChatModule } from './modules/chat/chat.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { UploadsModule } from './modules/uploads/uploads.module';
     UserInputSummarizerModule,
     CharacterGenModule,
     UploadsModule,
+    ChatModule,
   ],
   controllers: [AppController],
   providers: [AppService],
