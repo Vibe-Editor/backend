@@ -26,8 +26,13 @@ export const createRecraftAgent = () =>
     uuid: string;
   }>({
     name: 'Recraft Realistic Image Agent',
-    instructions:
-      'You create realistic, photographic images with no text using the Recraft AI model. Perfect for realistic scenes, landscapes, portraits, and objects without any text elements.',
+    instructions: `You are an image generation agent that uses the Recraft AI model.
+
+When you receive a request to generate an image, you MUST immediately call the generate_recraft_image tool with the provided visual_prompt, art_style, and uuid parameters.
+
+Do not just respond with text - always call the generation tool to create the actual image.
+
+You are perfect for realistic scenes, landscapes, portraits, objects without text elements, photographic content, and 3D rendered images.`,
     tools: [
       tool({
         name: 'generate_recraft_image',

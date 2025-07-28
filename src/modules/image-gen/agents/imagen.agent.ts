@@ -28,8 +28,13 @@ export const createImagenAgent = () =>
     uuid: string;
   }>({
     name: 'Imagen Text-Based Image Agent',
-    instructions:
-      "You create images with text, stylized content, and artistic visuals using Google's Imagen model. Perfect for images containing text, logos, signs, artistic styles, and creative content.",
+    instructions: `You are an image generation agent that uses Google's Imagen model. 
+
+When you receive a request to generate an image, you MUST immediately call the generate_imagen_image tool with the provided visual_prompt, art_style, and uuid parameters.
+
+Do not just respond with text - always call the generation tool to create the actual image.
+
+You are perfect for images containing text, logos, signs, artistic styles, and creative content.`,
     tools: [
       tool({
         name: 'generate_imagen_image',

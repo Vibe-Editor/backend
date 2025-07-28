@@ -95,12 +95,16 @@ export class ImageGenService {
       - Photorealistic scenes
       - Real-world scenarios without text elements
       - When the art style indicates realism/photography
+      - 3D rendered content
+      - Industrial or metallic themes
       
       Use Imagen for:
-      - Any content that includes text, words, letters, or signs
+      - Content that specifically includes readable text, words, letters, or signs
       - Artistic, stylized, or creative content
       - Abstract or non-realistic art styles
-      - Logos, posters, or graphics with text
+      - Logos, posters, or graphics with text overlays
+      - UI elements, menus, or interface designs
+      - Educational diagrams or infographics
       - Cartoon, anime, or illustrated styles
       - When the art style is not realistic/photographic
       
@@ -109,12 +113,12 @@ export class ImageGenService {
         handoff(RecraftAgent, {
           toolNameOverride: 'use_recraft_agent',
           toolDescriptionOverride:
-            'Send to Recraft agent for realistic images without text.',
+            'Send to Recraft agent for realistic, photographic, or 3D rendered images.',
         }),
         handoff(ImagenAgent, {
           toolNameOverride: 'use_imagen_agent',
           toolDescriptionOverride:
-            'Send to Imagen agent for text-based/artistic content.',
+            'Send to Imagen agent for artistic content, text-based images, or illustrated styles.',
         }),
       ],
     });
