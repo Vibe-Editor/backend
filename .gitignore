@@ -402,3 +402,4 @@ dist
 
 /generated/prisma
 migrations/
+logs.txt
