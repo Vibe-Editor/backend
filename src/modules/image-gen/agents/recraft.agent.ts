@@ -117,6 +117,20 @@ async function generateRecraftImage(
     logger.log('Starting Recraft image generation');
     let response;
     try {
+      // Enhanced logging - log the exact request being sent
+      logger.log('=== RECRAFT API REQUEST START ===');
+      logger.log(`Request UUID: ${uuid}`);
+      logger.log(`Model: realistic_image`);
+      logger.log(`Prompt length: ${recraftPrompt.length} characters`);
+      logger.log(`Full prompt: ${recraftPrompt}`);
+      logger.log(`Size: 1024x1024`);
+      logger.log(`Number of images requested: 1`);
+      logger.log(`Substyle: ${substyle}`);
+      logger.log(
+        `API Endpoint: https://external.api.recraft.ai/v1/images/generations`,
+      );
+      logger.log('=== RECRAFT API REQUEST END ===');
+
       response = await axios.post(
         'https://external.api.recraft.ai/v1/images/generations',
         {
@@ -133,13 +147,97 @@ async function generateRecraftImage(
           },
         },
       );
+
+      // Enhanced response logging - log the complete response structure
+      logger.log('=== RECRAFT API RESPONSE START ===');
+      logger.log(`Request UUID: ${uuid}`);
+      logger.log(`HTTP Status: ${response.status}`);
+      logger.log(`HTTP Status Text: ${response.statusText}`);
+
+      // Log response headers (especially for rate limiting info)
+      if (response.headers) {
+        logger.log('Response Headers:');
+        Object.keys(response.headers).forEach((header) => {
+          // Log rate limiting and important headers
+          if (
+            header.toLowerCase().includes('rate') ||
+            header.toLowerCase().includes('limit') ||
+            header.toLowerCase().includes('remaining') ||
+            header.toLowerCase().includes('reset') ||
+            header.toLowerCase().includes('retry') ||
+            header.toLowerCase() === 'content-type' ||
+            header.toLowerCase() === 'content-length'
+          ) {
+            logger.log(`  ${header}: ${response.headers[header]}`);
+          }
+        });
+      }
+
+      // Log response data structure
+      if (response.data) {
+        logger.log(`Response data type: ${typeof response.data}`);
+        logger.log(
+          `Response data keys: [${Object.keys(response.data || {}).join(', ')}]`,
+        );
+
+        // Log the full response data (but limit size)
+        try {
+          const responseString = JSON.stringify(response.data, null, 2);
+          if (responseString.length > 3000) {
+            logger.log(
+              `Response data (truncated): ${responseString.substring(0, 3000)}...`,
+            );
+          } else {
+            logger.log(`Response data: ${responseString}`);
+          }
+        } catch (stringifyError) {
+          logger.error(
+            `Failed to stringify response data: ${stringifyError.message}`,
+          );
+        }
+      }
+      logger.log('=== RECRAFT API RESPONSE END ===');
     } catch (axiosError) {
-      logger.error('Recraft API request failed:', {
-        status: axiosError.response?.status,
-        statusText: axiosError.response?.statusText,
-        data: axiosError.response?.data,
-        message: axiosError.message,
-      });
+      // Enhanced error logging for API failures
+      logger.error('=== RECRAFT API ERROR START ===');
+      logger.error(`Request UUID: ${uuid}`);
+      logger.error(`Error type: ${axiosError.constructor.name}`);
+      logger.error(`Error message: ${axiosError.message}`);
+      logger.error(`Error code: ${axiosError.code || 'N/A'}`);
+
+      if (axiosError.response) {
+        logger.error(`HTTP Status: ${axiosError.response.status}`);
+        logger.error(`HTTP Status Text: ${axiosError.response.statusText}`);
+
+        // Log response headers for rate limiting info
+        if (axiosError.response.headers) {
+          logger.error('Response Headers:');
+          Object.keys(axiosError.response.headers).forEach((header) => {
+            logger.error(`  ${header}: ${axiosError.response.headers[header]}`);
+          });
+        }
+
+        // Log full error response
+        try {
+          const errorResponseString = JSON.stringify(
+            axiosError.response.data,
+            null,
+            2,
+          );
+          logger.error(`Error Response Data: ${errorResponseString}`);
+        } catch (stringifyError) {
+          logger.error(
+            `Error Response Data (raw): ${axiosError.response.data}`,
+          );
+        }
+      }
+
+      if (axiosError.request) {
+        logger.error(`Request details: ${axiosError.request._header || 'N/A'}`);
+      }
+
+      logger.error(`Error stack: ${axiosError.stack}`);
+      logger.error('=== RECRAFT API ERROR END ===');
 
       if (axiosError.response?.status === 400) {
         throw new Error(
@@ -158,12 +256,47 @@ async function generateRecraftImage(
 
     logger.log('Recraft image generation completed');
 
+    // Enhanced validation logging
+    logger.log('=== RECRAFT RESPONSE VALIDATION START ===');
+    logger.log(`Request UUID: ${uuid}`);
+    logger.log(`Response.data exists: ${!!response.data}`);
+    logger.log(`Response.data.data exists: ${!!response.data?.data}`);
+    logger.log(
+      `Response.data.data is array: ${Array.isArray(response.data?.data)}`,
+    );
+    logger.log(
+      `Response.data.data length: ${response.data?.data?.length || 'N/A'}`,
+    );
+
+    if (response.data?.data?.length > 0) {
+      response.data.data.forEach((item, index) => {
+        logger.log(
+          `Item ${index} keys: [${Object.keys(item || {}).join(', ')}]`,
+        );
+        logger.log(`Item ${index}.url exists: ${!!item?.url}`);
+        logger.log(`Item ${index}.url: ${item?.url || 'N/A'}`);
+      });
+    }
+    logger.log('=== RECRAFT RESPONSE VALIDATION END ===');
+
     if (
       !response.data ||
       !response.data.data ||
       response.data.data.length === 0
     ) {
-      logger.error('Recraft generation failed - no images returned');
+      logger.error('=== RECRAFT GENERATION FAILURE ANALYSIS START ===');
+      logger.error(`Request UUID: ${uuid}`);
+      logger.error(`Reason: Recraft generation failed - no images returned`);
+      logger.error(`response.data exists: ${!!response.data}`);
+      logger.error(`response.data.data exists: ${!!response.data?.data}`);
+      logger.error(
+        `response.data.data length: ${response.data?.data?.length || 'N/A'}`,
+      );
+      logger.error(
+        `Full response.data for debugging: ${JSON.stringify(response.data, null, 2)}`,
+      );
+      logger.error('=== RECRAFT GENERATION FAILURE ANALYSIS END ===');
+
       throw new Error('Recraft image generation failed - no images returned');
     }
 

@@ -63,6 +63,18 @@ export class ImageGenService {
     const startTime = Date.now();
     const operationId = uuid;
 
+    // Enhanced logging for request tracking
+    this.logger.log('=== IMAGE GENERATION REQUEST START ===');
+    this.logger.log(`Operation ID: ${operationId}`);
+    this.logger.log(`User ID: ${userId}`);
+    this.logger.log(`Project ID: ${projectId}`);
+    this.logger.log(
+      `Visual prompt length: ${visual_prompt?.length || 0} characters`,
+    );
+    this.logger.log(`Art style: ${art_style}`);
+    this.logger.log(`Request timestamp: ${new Date().toISOString()}`);
+    this.logger.log('=== IMAGE GENERATION REQUEST START END ===');
+
     this.logger.log(`Starting image generation [${operationId}]`);
     this.logger.log(
       `Image generation with prompt: ${visual_prompt?.substring(0, 100)}... [${operationId}]`,
@@ -139,6 +151,58 @@ export class ImageGenService {
           content: `Generate an image with prompt: "${visual_prompt}"\n art style: "${art_style}"\n for user: "${uuid}"`,
         },
       ]);
+
+      // Enhanced logging for agent execution results
+      this.logger.log('=== AGENT EXECUTION ANALYSIS START ===');
+      this.logger.log(`Operation ID: ${operationId}`);
+      this.logger.log(`Agent execution completed`);
+      this.logger.log(
+        `Total agent execution time: ${Date.now() - startTime}ms`,
+      );
+      this.logger.log(
+        `Result output array length: ${result.output?.length || 0}`,
+      );
+
+      // Log the sequence of agent calls
+      const agentCalls =
+        result.output?.filter((msg) => msg.type === 'function_call') || [];
+      this.logger.log(`Number of function calls made: ${agentCalls.length}`);
+
+      agentCalls.forEach((call, index) => {
+        this.logger.log(`Call ${index + 1}: ${call.name} (${call.status})`);
+      });
+
+      // Identify which agent was selected
+      const triageCall = agentCalls.find(
+        (call) =>
+          call.name === 'use_recraft_agent' || call.name === 'use_imagen_agent',
+      );
+
+      if (triageCall) {
+        const selectedAgent =
+          triageCall.name === 'use_recraft_agent' ? 'RECRAFT' : 'IMAGEN';
+        this.logger.log(`=== TRIAGE DECISION: ${selectedAgent} SELECTED ===`);
+        this.logger.log(
+          `Decision based on prompt: "${visual_prompt?.substring(0, 100)}..."`,
+        );
+        this.logger.log(`Art style: "${art_style}"`);
+      }
+
+      // Check for any errors in the execution
+      const errorCalls =
+        result.output?.filter(
+          (msg) =>
+            msg.type === 'function_call_result' &&
+            msg.output?.type === 'text' &&
+            msg.output?.text?.includes('An error occurred'),
+        ) || [];
+
+      this.logger.log(`Number of error calls: ${errorCalls.length}`);
+      errorCalls.forEach((error, index) => {
+        this.logger.error(`Error ${index + 1}: ${error.output?.text}`);
+      });
+
+      this.logger.log('=== AGENT EXECUTION ANALYSIS END ===');
 
       this.logger.debug('Agent execution completed, parsing result');
       console.log(result.output);
