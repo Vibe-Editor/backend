@@ -79,7 +79,7 @@ async function generateKlingVideo(
         input: {
           prompt: combinedPrompt,
           image_url: dataUri,
-          duration: '8', // default duration
+          duration: '5', // default duration
           negative_prompt: 'blur, distort, and low quality',
           cfg_scale: 0.5,
         },
