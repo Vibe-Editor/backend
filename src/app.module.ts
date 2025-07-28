@@ -16,6 +16,7 @@ import { UserInputSummarizerModule } from './modules/user-input-summarizer/user-
 import { CharacterGenModule } from './modules/character-gen/character-gen.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
 import { CreditsModule } from './modules/credits/credits.module';
+import { ChatModule } from './modules/chat/chat.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { CreditsModule } from './modules/credits/credits.module';
     CharacterGenModule,
     UploadsModule,
     CreditsModule,
+    ChatModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -1,8 +1,8 @@
 import { Agent, tool } from '@openai/agents';
 import { z } from 'zod';
 import { VideoGenerationResult } from '../video-gen.service';
-import { getImageFromS3AsBase64, uploadVideoToS3 } from '../s3/s3.service';
 import { GoogleGenAI } from '@google/genai';
+import { getImageFromS3AsBase64, uploadVideoToS3 } from '../s3/s3.service';
 import 'dotenv/config';
 import { Logger } from '@nestjs/common';
 
