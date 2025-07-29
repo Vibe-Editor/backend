@@ -31,7 +31,11 @@
       "videos/segment-001-video-2.mp4"
     ],
     "model": "runwayml-gen3",
-    "totalVideos": 2
+    "totalVideos": 2,
+    "credits": {
+      "used": 2.5,
+      "balance": 47.5
+    }
   }
   ```
 

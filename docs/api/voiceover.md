@@ -25,7 +25,11 @@
     "success": true,
     "s3_key": "voiceovers/abc123-def456.mp3",
     "message": "Voiceover generated and uploaded successfully",
-    "audio_size_bytes": 145620
+    "audio_size_bytes": 145620,
+    "credits": {
+      "used": 5.5,
+      "balance": 44.5
+    }
   }
   ```
 
@@ -85,4 +89,4 @@
 
 - **400 Bad Request**: Invalid narration_prompt (empty or too long)
 - **500 Internal Server Error**: ElevenLabs API issues, quota exceeded, or storage errors
-- **404 Not Found**: Voiceover not found or access denied (for PATCH requests) 
+- **404 Not Found**: Voiceover not found or access denied (for PATCH requests)

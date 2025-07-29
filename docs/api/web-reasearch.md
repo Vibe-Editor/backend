@@ -16,7 +16,26 @@
   }
   ```
 
-  - **Returns**: Response from Perplexity AI's chat completion API
+  - **Example Response**:
+
+  ```json
+  {
+    "choices": [
+      {
+        "message": {
+          "content": "Based on current research, the latest trends in sustainable packaging for 2025 include: 1) Biodegradable materials made from seaweed and mushroom fibers, 2) Edible packaging solutions...",
+          "role": "assistant"
+        }
+      }
+    ],
+    "credits": {
+      "used": 1,
+      "balance": 49.0
+    }
+  }
+  ```
+
+  - **Returns**: Response from Perplexity AI's chat completion API with credit information
 
 - `GET /get-web-info` - Get all web research results
   - **Requires**: JWT Authentication

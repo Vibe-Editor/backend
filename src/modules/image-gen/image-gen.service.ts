@@ -11,8 +11,10 @@ import { GoogleGenAI } from '@google/genai';
 import { Agent, handoff, run } from '@openai/agents';
 import { ProjectHelperService } from '../../common/services/project-helper.service';
 import { PrismaClient } from '../../../generated/prisma';
+import { Decimal } from '@prisma/client/runtime/library';
 import { createRecraftAgent } from './agents/recraft.agent';
 import { createImagenAgent } from './agents/imagen.agent';
+import { CreditService } from '../credits/credit.service';
 
 export interface ImageGenerationResult {
   s3_key: string;
@@ -26,7 +28,10 @@ export class ImageGenService {
   private readonly prisma = new PrismaClient();
   private readonly genAI: GoogleGenAI;
 
-  constructor(private readonly projectHelperService: ProjectHelperService) {
+  constructor(
+    private readonly projectHelperService: ProjectHelperService,
+    private readonly creditService: CreditService,
+  ) {
     try {
       // Validate environment variables
       if (!process.env.GEMINI_API_KEY) {
@@ -147,6 +152,47 @@ export class ImageGenService {
           'visual_prompt must be less than 2000 characters',
         );
       }
+
+      // ===== CREDIT SYSTEM INTEGRATION =====
+      this.logger.log(
+        `Checking user credits before image generation [${operationId}]`,
+      );
+
+      // We'll determine the model and pricing after triage, so we'll check credits for both models
+      // and use the worst case (highest cost) for initial validation
+      const imagenCheck = await this.creditService.checkUserCredits(
+        userId,
+        'IMAGE_GENERATION',
+        'imagen',
+        false, // We'll handle edit calls separately later
+      );
+
+      const recraftCheck = await this.creditService.checkUserCredits(
+        userId,
+        'IMAGE_GENERATION',
+        'recraft',
+        false,
+      );
+
+      // Use the higher cost for validation (imagen costs more)
+      const creditCheck =
+        imagenCheck.requiredCredits >= recraftCheck.requiredCredits
+          ? imagenCheck
+          : recraftCheck;
+
+      if (!creditCheck.hasEnoughCredits) {
+        this.logger.error(
+          `Insufficient credits for user ${userId}. Required: ${creditCheck.requiredCredits}, Available: ${creditCheck.currentBalance} [${operationId}]`,
+        );
+        throw new BadRequestException(
+          `Insufficient credits. Required: ${creditCheck.requiredCredits}, Available: ${creditCheck.currentBalance}`,
+        );
+      }
+
+      this.logger.log(
+        `Credit validation passed. User ${userId} has ${creditCheck.currentBalance} credits available [${operationId}]`,
+      );
+      // ===== END CREDIT VALIDATION =====
 
       this.logger.log('Running triage agent to determine model selection');
       const result = await run(triageAgent, [
@@ -325,6 +371,50 @@ export class ImageGenService {
             },
           );
 
+          // ===== CREDIT DEDUCTION =====
+          this.logger.log(
+            `Deducting credits for successful image generation [${operationId}]`,
+          );
+
+          let creditTransactionId: string;
+          let actualCreditsUsed: number;
+
+          try {
+            // Determine the model used from the agent result
+            let modelUsed = 'imagen'; // default fallback
+            if (agentResult.model.toLowerCase().includes('recraft')) {
+              modelUsed = 'recraft';
+            } else if (agentResult.model.toLowerCase().includes('imagen')) {
+              modelUsed = 'imagen';
+            }
+
+            actualCreditsUsed = modelUsed === 'imagen' ? 2 : 1;
+
+            // Deduct credits for the actual model used
+            creditTransactionId = await this.creditService.deductCredits(
+              userId,
+              'IMAGE_GENERATION',
+              modelUsed,
+              operationId,
+              false, // isEditCall - we'll handle edit calls in a separate endpoint later
+              `Image generation using ${modelUsed} model`,
+            );
+
+            this.logger.log(
+              `Successfully deducted ${actualCreditsUsed} credits for ${modelUsed}. Transaction ID: ${creditTransactionId} [${operationId}]`,
+            );
+          } catch (creditError) {
+            this.logger.error(
+              `Failed to deduct credits after successful image generation [${operationId}]:`,
+              creditError,
+            );
+            // Note: We still continue and save the image since generation was successful
+            // The credit transaction can be handled manually if needed
+            creditTransactionId = null;
+            actualCreditsUsed = 0;
+          }
+          // ===== END CREDIT DEDUCTION =====
+
           // Save to database
           this.logger.log(`Saving image generation to database`);
           const savedImage = await this.prisma.generatedImage.create({
@@ -339,6 +429,10 @@ export class ImageGenService {
               imageSizeBytes: agentResult.image_size_bytes,
               projectId,
               userId,
+              // Add credit tracking
+              creditTransactionId: creditTransactionId,
+              creditsUsed:
+                actualCreditsUsed > 0 ? new Decimal(actualCreditsUsed) : null, // Store the actual credits used
             },
           });
 
@@ -368,12 +462,19 @@ export class ImageGenService {
             `Successfully saved image generation: ${savedImage.id}`,
           );
 
+          // Get user's new balance after credit deduction
+          const newBalance = await this.creditService.getUserBalance(userId);
+
           return {
             success: true,
             s3_key: agentResult.s3_key,
             model: agentResult.model,
             message: 'Image generated and uploaded successfully',
             image_size_bytes: agentResult.image_size_bytes,
+            credits: {
+              used: actualCreditsUsed,
+              balance: newBalance.toNumber(),
+            },
           };
         }
       } catch (parseError) {

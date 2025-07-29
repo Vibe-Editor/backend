@@ -14,9 +14,11 @@ import { Agent, handoff, run } from '@openai/agents';
 import { z } from 'zod';
 import { ProjectHelperService } from '../../common/services/project-helper.service';
 import { PrismaClient } from '../../../generated/prisma';
+import { Decimal } from '@prisma/client/runtime/library';
 import { createVeo2Agent } from './agents/veo2.agent';
 import { createRunwayMLAgent } from './agents/runwayml.agent';
 import { createKlingAgent } from './agents/kling.agent';
+import { CreditService } from '../credits/credit.service';
 
 export interface VideoGenerationResult {
   s3Keys: string[];
@@ -30,7 +32,10 @@ export class VideoGenService {
   private readonly genAI: GoogleGenAI;
   private readonly prisma = new PrismaClient();
 
-  constructor(private readonly projectHelperService: ProjectHelperService) {
+  constructor(
+    private readonly projectHelperService: ProjectHelperService,
+    private readonly creditService: CreditService,
+  ) {
     try {
       if (!process.env.GEMINI_API_KEY) {
         throw new Error('GEMINI_API_KEY environment variable not set.');
@@ -127,6 +132,50 @@ export class VideoGenService {
         );
       }
 
+      // ===== CREDIT SYSTEM INTEGRATION =====
+      this.logger.log(
+        `Checking user credits before video generation [${uuid}]`,
+      );
+
+      // Check credits for all video models and use worst case (highest cost) for validation
+      const veo2Check = await this.creditService.checkUserCredits(
+        userId,
+        'VIDEO_GENERATION',
+        'veo2',
+        false,
+      );
+
+      const runwaymlCheck = await this.creditService.checkUserCredits(
+        userId,
+        'VIDEO_GENERATION',
+        'runwayml',
+        false,
+      );
+
+      const klingCheck = await this.creditService.checkUserCredits(
+        userId,
+        'VIDEO_GENERATION',
+        'kling',
+        false,
+      );
+
+      // Use the highest cost for validation (veo2 = 25 credits is most expensive)
+      const creditCheck = veo2Check; // veo2 has highest cost at 25 credits
+
+      if (!creditCheck.hasEnoughCredits) {
+        this.logger.error(
+          `Insufficient credits for user ${userId}. Required: ${creditCheck.requiredCredits}, Available: ${creditCheck.currentBalance} [${uuid}]`,
+        );
+        throw new BadRequestException(
+          `Insufficient credits. Required: ${creditCheck.requiredCredits}, Available: ${creditCheck.currentBalance}`,
+        );
+      }
+
+      this.logger.log(
+        `Credit validation passed. User ${userId} has ${creditCheck.currentBalance} credits available [${uuid}]`,
+      );
+      // ===== END CREDIT VALIDATION =====
+
       this.logger.log('Running triage agent to determine model selection');
       const result = await run(triageAgent, [
         {
@@ -182,6 +231,67 @@ export class VideoGenService {
             },
           );
 
+          // ===== CREDIT DEDUCTION =====
+          this.logger.log(
+            `Deducting credits for successful video generation [${uuid}]`,
+          );
+
+          let creditTransactionId: string;
+          let actualCreditsUsed: number;
+
+          try {
+            // Determine the model used from the agent result
+            let modelUsed = 'veo2'; // default fallback
+            if (
+              agentResult.model.toLowerCase().includes('runwayml') ||
+              agentResult.model.toLowerCase().includes('runway')
+            ) {
+              modelUsed = 'runwayml';
+            } else if (agentResult.model.toLowerCase().includes('kling')) {
+              modelUsed = 'kling';
+            } else if (
+              agentResult.model.toLowerCase().includes('veo2') ||
+              agentResult.model.toLowerCase().includes('veo')
+            ) {
+              modelUsed = 'veo2';
+            }
+
+            // Set actual credits used based on model
+            if (modelUsed === 'veo2') {
+              actualCreditsUsed = 25;
+            } else if (modelUsed === 'runwayml') {
+              actualCreditsUsed = 2.5;
+            } else if (modelUsed === 'kling') {
+              actualCreditsUsed = 20;
+            } else {
+              actualCreditsUsed = 25; // fallback to veo2 pricing
+            }
+
+            // Deduct credits for the actual model used
+            creditTransactionId = await this.creditService.deductCredits(
+              userId,
+              'VIDEO_GENERATION',
+              modelUsed,
+              uuid, // using uuid as operationId
+              false, // isEditCall - we'll handle edit calls in a separate endpoint later
+              `Video generation using ${modelUsed} model`,
+            );
+
+            this.logger.log(
+              `Successfully deducted ${actualCreditsUsed} credits for ${modelUsed}. Transaction ID: ${creditTransactionId} [${uuid}]`,
+            );
+          } catch (creditError) {
+            this.logger.error(
+              `Failed to deduct credits after successful video generation [${uuid}]:`,
+              creditError,
+            );
+            // Note: We still continue and save the video since generation was successful
+            // The credit transaction can be handled manually if needed
+            creditTransactionId = null;
+            actualCreditsUsed = 0;
+          }
+          // ===== END CREDIT DEDUCTION =====
+
           this.logger.log(`Saving video generation to database`);
           const savedVideo = await this.prisma.generatedVideo.create({
             data: {
@@ -194,6 +304,10 @@ export class VideoGenService {
               totalVideos: agentResult.totalVideos,
               projectId,
               userId,
+              // Add credit tracking
+              creditTransactionId: creditTransactionId,
+              creditsUsed:
+                actualCreditsUsed > 0 ? new Decimal(actualCreditsUsed) : null, // Store the actual credits used
             },
           });
 
@@ -234,11 +348,18 @@ export class VideoGenService {
             `Successfully saved video generation: ${savedVideo.id} with ${savedVideoFiles.length} files`,
           );
 
+          // Get user's new balance after credit deduction
+          const newBalance = await this.creditService.getUserBalance(userId);
+
           return {
             success: true,
             s3Keys: agentResult.s3Keys,
             model: agentResult.model,
             totalVideos: agentResult.totalVideos,
+            credits: {
+              used: actualCreditsUsed,
+              balance: newBalance.toNumber(),
+            },
           };
         } else {
           this.logger.error(

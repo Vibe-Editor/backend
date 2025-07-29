@@ -1,6 +1,12 @@
 # Segmentation
 
 - `POST /segmentation` - Generate and segment video scripts using AI model handoff (OpenAI GPT-4o or Gemini 2.5 Pro)
+  - **Requires**: JWT Authentication
+  - **Body Parameters**:
+    - `prompt` (required): Description of the video to create
+    - `concept` (required): Core concept or focus for the video
+    - `negative_prompt` (optional): Things to avoid in the video
+    - `projectId` (required): ID of the project to save the segmentation to
   - **Example Request**:
 
   ```json
@@ -11,12 +17,6 @@
     "projectId": "clxyz123abc"
   }
   ```
-
-  - **Body Parameters**:
-    - `prompt` (required): Description of the video to create
-    - `concept` (required): Core concept or focus for the video
-    - `negative_prompt` (optional): Things to avoid in the video
-    - `projectId` (optional): ID of the project to save the segmentation to. If not provided, creates or uses a default project.
 
   - **Example Response**:
 
@@ -37,7 +37,11 @@
       }
     ],
     "artStyle": "modern minimalist",
-    "model": "gpt-4o"
+    "model": "gpt-4o",
+    "credits": {
+      "used": 3,
+      "balance": 47.5
+    }
   }
   ```
 
@@ -47,6 +51,41 @@
     - `id` (optional): Get specific segmentation by ID
     - `projectId` (optional): Filter segmentations by project
   - **Returns**: Array of all user's video segmentations
+
+  ```json
+  {
+    "success": true,
+    "count": 2,
+    "segmentations": [
+      {
+        "id": "seg-123",
+        "prompt": "Create a 30-second promotional video showcasing our eco-friendly water bottle",
+        "concept": "Focus on sustainability, health benefits, and modern lifestyle",
+        "negativePrompt": "Avoid plastic waste imagery, don't show competing brands",
+        "artStyle": "modern minimalist",
+        "model": "gpt-4o",
+        "isSelected": false,
+        "projectId": "proj123",
+        "userId": "user123",
+        "createdAt": "2025-01-16T10:30:00Z",
+        "project": {
+          "id": "proj123",
+          "name": "My Video Project"
+        },
+        "segments": [
+          {
+            "id": "segment-1",
+            "segmentId": "seg-1",
+            "visual": "Close-up of sleek water bottle on wooden desk with plants",
+            "narration": "Meet the future of hydration",
+            "animation": "Smooth zoom-in on bottle label",
+            "createdAt": "2025-01-16T10:30:00Z"
+          }
+        ]
+      }
+    ]
+  }
+  ```
 
 - `PATCH /segmentation/:id/select` - Select a segmentation for production
   - **Requires**: JWT Authentication
@@ -134,3 +173,17 @@
     }
   }
   ```
+
+## Credit Usage
+
+- **POST /segmentation**: 3 credits per generation
+- **GET /segmentation**: Free (no credits deducted)
+- **PATCH /segmentation/:id/select**: Free (no credits deducted)
+- **PATCH /segmentation/:id**: Free (no credits deducted)
+
+## Error Codes
+
+- **400 Bad Request**: Invalid input (missing required fields)
+- **401 Unauthorized**: JWT authentication required
+- **404 Not Found**: Segmentation not found or access denied
+- **500 Internal Server Error**: AI model errors or database issues
