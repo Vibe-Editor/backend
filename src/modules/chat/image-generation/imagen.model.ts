@@ -5,7 +5,7 @@ import { GoogleGenAI } from '@google/genai';
 
 const bucketName = process.env.S3_BUCKET_NAME;
 
-const logger = new Logger('Recraft Agent');
+const logger = new Logger('Imagen Agent');
 
 const s3 = new S3Client({
   region: process.env.AWS_REGION,
@@ -23,6 +23,7 @@ export async function imagenImageGen(
   art_style: string,
 ) {
   const prompt = `${visual_prompt}. Art style: ${art_style}`;
+  logger.log(`Generating Imagen image with prompt: ${prompt.substring(0, 100)}...`);
 
   const response = await googleGenAI.models.generateImages({
     model: 'imagen-4.0-generate-preview-06-06',
@@ -35,6 +36,7 @@ export async function imagenImageGen(
     const imageBuffer = Buffer.from(generatedImage.imageBytes, 'base64');
     const s3Key = `${uuid}/images/${randomUUID()}.png`;
     logger.log(`Uploading Imagen image to S3 with key: ${s3Key}`);
+    logger.log(`Imagen image size: ${imageBuffer.length} bytes`);
 
     const command = new PutObjectCommand({
       Bucket: bucketName,
@@ -45,11 +47,15 @@ export async function imagenImageGen(
     });
 
     await s3.send(command);
+    logger.log(`Successfully uploaded Imagen image to S3: ${s3Key}`);
 
     return {
       s3_key: s3Key,
       model: 'imagen',
       image_size_bytes: imageBuffer.length,
     };
+  } else {
+    logger.error('Imagen generation failed - no image returned');
+    throw new Error('Imagen image generation failed - no image returned');
   }
 }
