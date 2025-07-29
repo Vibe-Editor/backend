@@ -86,6 +86,8 @@ export class ConceptWriterService {
     );
     // ===== END CREDIT VALIDATION =====
 
+    let creditTransactionId: string | null = null;
+
     try {
       const result = await this.gemini.models.generateContent({
         model: 'gemini-2.5-flash',
@@ -239,6 +241,29 @@ export class ConceptWriterService {
       }
     } catch (error) {
       this.logger.error(`Failed to generate concepts: ${error.message}`);
+
+      // Refund credits if deduction was successful
+      if (creditTransactionId) {
+        try {
+          await this.creditService.refundCredits(
+            userId,
+            'TEXT_OPERATIONS',
+            'concept-gen',
+            `concept-gen-${Date.now()}`,
+            creditTransactionId,
+            false,
+            `Refund for failed concept generation: ${error.message}`,
+          );
+          this.logger.log(
+            `Successfully refunded 1 credit for failed concept generation. User: ${userId}`,
+          );
+        } catch (refundError) {
+          this.logger.error(
+            `Failed to refund credits for concept generation: ${refundError.message}`,
+          );
+        }
+      }
+
       throw new Error(`Failed to generate concepts: ${error.message}`);
     }
   }

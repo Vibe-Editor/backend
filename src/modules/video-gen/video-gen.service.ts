@@ -8,12 +8,9 @@ import {
 import { GoogleGenAI } from '@google/genai';
 import { VideoGenDto } from './dto/video-gen.dto';
 import { UpdateVideoGenDto } from './dto/update-video-gen.dto';
-import { randomUUID } from 'crypto';
-import axios from 'axios';
 import { Agent, handoff, run } from '@openai/agents';
-import { z } from 'zod';
 import { ProjectHelperService } from '../../common/services/project-helper.service';
-import { PrismaClient } from '../../../generated/prisma';
+import { PrismaClient, CreditTransactionType } from '../../../generated/prisma';
 import { Decimal } from '@prisma/client/runtime/library';
 import { createVeo2Agent } from './agents/veo2.agent';
 import { createRunwayMLAgent } from './agents/runwayml.agent';
@@ -32,10 +29,7 @@ export class VideoGenService {
   private readonly genAI: GoogleGenAI;
   private readonly prisma = new PrismaClient();
 
-  constructor(
-    private readonly projectHelperService: ProjectHelperService,
-    private readonly creditService: CreditService,
-  ) {
+  constructor(private readonly creditService: CreditService) {
     try {
       if (!process.env.GEMINI_API_KEY) {
         throw new Error('GEMINI_API_KEY environment variable not set.');
@@ -120,6 +114,10 @@ export class VideoGenService {
       ],
     });
 
+    let creditTransactionId: string | null = null;
+    let modelUsed: string | null = null;
+    let actualCreditsUsed: number | null = null;
+
     try {
       if (!animation_prompt || !imageS3Key || !uuid) {
         this.logger.error('Missing required fields in request', {
@@ -134,47 +132,25 @@ export class VideoGenService {
 
       // ===== CREDIT SYSTEM INTEGRATION =====
       this.logger.log(
-        `Checking user credits before video generation [${uuid}]`,
+        `Checking and deducting credits for video generation [${uuid}]`,
       );
 
-      // Check credits for all video models and use worst case (highest cost) for validation
-      const veo2Check = await this.creditService.checkUserCredits(
+      // Deduct credits upfront for the most expensive model (veo2)
+      // The deductCredits function will handle validation internally
+      // We'll refund the difference later if a cheaper model is used
+      creditTransactionId = await this.creditService.deductCredits(
         userId,
         'VIDEO_GENERATION',
-        'veo2',
+        'veo2', // Deduct for most expensive model upfront
+        uuid,
         false,
+        `Video generation - upfront deduction for ${uuid}`,
       );
-
-      const runwaymlCheck = await this.creditService.checkUserCredits(
-        userId,
-        'VIDEO_GENERATION',
-        'runwayml',
-        false,
-      );
-
-      const klingCheck = await this.creditService.checkUserCredits(
-        userId,
-        'VIDEO_GENERATION',
-        'kling',
-        false,
-      );
-
-      // Use the highest cost for validation (veo2 = 25 credits is most expensive)
-      const creditCheck = veo2Check; // veo2 has highest cost at 25 credits
-
-      if (!creditCheck.hasEnoughCredits) {
-        this.logger.error(
-          `Insufficient credits for user ${userId}. Required: ${creditCheck.requiredCredits}, Available: ${creditCheck.currentBalance} [${uuid}]`,
-        );
-        throw new BadRequestException(
-          `Insufficient credits. Required: ${creditCheck.requiredCredits}, Available: ${creditCheck.currentBalance}`,
-        );
-      }
 
       this.logger.log(
-        `Credit validation passed. User ${userId} has ${creditCheck.currentBalance} credits available [${uuid}]`,
+        `Successfully deducted 25 credits upfront for video generation. Transaction ID: ${creditTransactionId} [${uuid}]`,
       );
-      // ===== END CREDIT VALIDATION =====
+      // ===== END CREDIT SYSTEM =====
 
       this.logger.log('Running triage agent to determine model selection');
       const result = await run(triageAgent, [
@@ -231,17 +207,16 @@ export class VideoGenService {
             },
           );
 
-          // ===== CREDIT DEDUCTION =====
+          // ===== CREDIT ADJUSTMENT =====
           this.logger.log(
-            `Deducting credits for successful video generation [${uuid}]`,
+            `Adjusting credits for successful video generation [${uuid}]`,
           );
 
-          let creditTransactionId: string;
           let actualCreditsUsed: number;
 
           try {
             // Determine the model used from the agent result
-            let modelUsed = 'veo2'; // default fallback
+            modelUsed = 'veo2'; // default fallback
             if (
               agentResult.model.toLowerCase().includes('runwayml') ||
               agentResult.model.toLowerCase().includes('runway')
@@ -267,30 +242,37 @@ export class VideoGenService {
               actualCreditsUsed = 25; // fallback to veo2 pricing
             }
 
-            // Deduct credits for the actual model used
-            creditTransactionId = await this.creditService.deductCredits(
-              userId,
-              'VIDEO_GENERATION',
-              modelUsed,
-              uuid, // using uuid as operationId
-              false, // isEditCall - we'll handle edit calls in a separate endpoint later
-              `Video generation using ${modelUsed} model`,
-            );
+            // We deducted 25 credits upfront for veo2
+            // If a cheaper model was used, refund the difference
+            const deductedAmount = 25; // We always deduct veo2 amount upfront
+            const refundAmount = deductedAmount - actualCreditsUsed;
 
-            this.logger.log(
-              `Successfully deducted ${actualCreditsUsed} credits for ${modelUsed}. Transaction ID: ${creditTransactionId} [${uuid}]`,
-            );
+            if (refundAmount > 0) {
+              // Refund excess credits
+              const refundTransactionId = await this.creditService.addCredits(
+                userId,
+                refundAmount,
+                CreditTransactionType.REFUND,
+                `Refund excess credits: used ${modelUsed} (${actualCreditsUsed}) instead of veo2 (25)`,
+              );
+
+              this.logger.log(
+                `Refunded ${refundAmount} excess credits. Actual usage: ${actualCreditsUsed} credits for ${modelUsed}. Refund Transaction ID: ${refundTransactionId} [${uuid}]`,
+              );
+            } else {
+              this.logger.log(
+                `No refund needed. Used ${actualCreditsUsed} credits for ${modelUsed} [${uuid}]`,
+              );
+            }
           } catch (creditError) {
             this.logger.error(
-              `Failed to deduct credits after successful video generation [${uuid}]:`,
+              `Failed to adjust credits after successful video generation [${uuid}]:`,
               creditError,
             );
             // Note: We still continue and save the video since generation was successful
-            // The credit transaction can be handled manually if needed
-            creditTransactionId = null;
-            actualCreditsUsed = 0;
+            actualCreditsUsed = 25; // Assume full deduction if adjustment fails
           }
-          // ===== END CREDIT DEDUCTION =====
+          // ===== END CREDIT ADJUSTMENT =====
 
           this.logger.log(`Saving video generation to database`);
           const savedVideo = await this.prisma.generatedVideo.create({
@@ -392,6 +374,29 @@ export class VideoGenService {
         uuid: uuid,
         stack: error.stack,
       });
+
+      // Refund credits if they were deducted
+      if (creditTransactionId) {
+        try {
+          await this.creditService.refundCredits(
+            userId,
+            'VIDEO_GENERATION',
+            'veo2', // We always deduct veo2 amount upfront
+            uuid,
+            creditTransactionId,
+            false,
+            `Refund for failed video generation: ${error.message}`,
+          );
+          this.logger.log(
+            `Successfully refunded 25 credits for failed video generation. User: ${userId}, Operation: ${uuid}`,
+          );
+        } catch (refundError) {
+          this.logger.error(
+            `Failed to refund credits for user ${userId}, operation ${uuid}:`,
+            refundError,
+          );
+        }
+      }
 
       if (error instanceof BadRequestException) {
         throw error;

@@ -53,6 +53,8 @@ export class UserInputSummarizerService {
       'Starting content summarization with user input prioritization',
     );
 
+    let creditTransactionId: string | null = null;
+
     try {
       // Validate input
       if (!original_content || original_content.trim().length === 0) {
@@ -103,30 +105,23 @@ User Input: ${user_input}
 **TASK:**
 Create a comprehensive summary that prioritizes user input when conflicts exist and integrates non-conflicting information from both sources. Return only the summary text, nothing else.`;
 
-      // ===== CREDIT SYSTEM INTEGRATION =====
-      this.logger.log(`Checking user credits before content summarization`);
+      // ===== CREDIT DEDUCTION =====
+      this.logger.log(`Deducting credits for content summarization`);
 
-      // Check credits for content summarization
-      const creditCheck = await this.creditService.checkUserCredits(
+      // Deduct credits first - this handles validation internally
+      creditTransactionId = await this.creditService.deductCredits(
         userId,
         'TEXT_OPERATIONS',
         'content-summarizer',
-        false, // no edit calls for content summarization currently
+        `content-summary-${Date.now()}`, // operationId
+        false, // isEditCall - no edit calls for content summarization currently
+        `Content summarization using Gemini API`,
       );
-
-      if (!creditCheck.hasEnoughCredits) {
-        this.logger.error(
-          `Insufficient credits for user ${userId}. Required: ${creditCheck.requiredCredits}, Available: ${creditCheck.currentBalance}`,
-        );
-        throw new BadRequestException(
-          `Insufficient credits. Required: ${creditCheck.requiredCredits}, Available: ${creditCheck.currentBalance}`,
-        );
-      }
 
       this.logger.log(
-        `Credit validation passed. User ${userId} has ${creditCheck.currentBalance} credits available`,
+        `Successfully deducted credits for content summarization. Transaction ID: ${creditTransactionId}`,
       );
-      // ===== END CREDIT VALIDATION =====
+      // ===== END CREDIT DEDUCTION =====
 
       this.logger.log('Generating summary with Gemini Flash model');
       const result = await this.genAI.models.generateContent({
@@ -144,41 +139,6 @@ Create a comprehensive summary that prioritizes user input when conflicts exist 
         );
       }
 
-      // ===== CREDIT DEDUCTION =====
-      this.logger.log(`Deducting credits for successful content summarization`);
-
-      let creditTransactionId: string;
-      let actualCreditsUsed: number;
-
-      try {
-        // Content summarization uses fixed pricing
-        actualCreditsUsed = 1;
-
-        // Deduct credits for content summarization
-        creditTransactionId = await this.creditService.deductCredits(
-          userId,
-          'TEXT_OPERATIONS',
-          'content-summarizer',
-          `content-summary-${Date.now()}`, // operationId
-          false, // isEditCall - no edit calls for content summarization currently
-          `Content summarization using Gemini API`,
-        );
-
-        this.logger.log(
-          `Successfully deducted ${actualCreditsUsed} credits for content summarization. Transaction ID: ${creditTransactionId}`,
-        );
-      } catch (creditError) {
-        this.logger.error(
-          `Failed to deduct credits after successful content summarization:`,
-          creditError,
-        );
-        // Note: We still continue and save the summary since generation was successful
-        // The credit transaction can be handled manually if needed
-        creditTransactionId = null;
-        actualCreditsUsed = 0;
-      }
-      // ===== END CREDIT DEDUCTION =====
-
       // Save to database
       this.logger.log(`Saving content summary to database`);
       const savedSummary = await this.prisma.contentSummary.create({
@@ -190,8 +150,7 @@ Create a comprehensive summary that prioritizes user input when conflicts exist 
           userId,
           // Add credit tracking
           creditTransactionId: creditTransactionId,
-          creditsUsed:
-            actualCreditsUsed > 0 ? new Decimal(actualCreditsUsed) : null,
+          creditsUsed: new Decimal(1), // Content summarization uses fixed pricing
         },
       });
 
@@ -224,7 +183,7 @@ Create a comprehensive summary that prioritizes user input when conflicts exist 
       return {
         summary: summary,
         credits: {
-          used: actualCreditsUsed,
+          used: 1, // Content summarization uses fixed pricing
           balance: newBalance.toNumber(),
         },
       };
@@ -233,6 +192,28 @@ Create a comprehensive summary that prioritizes user input when conflicts exist 
       this.logger.error(
         `Content summarization failed after ${duration}ms: ${error.message}`,
       );
+
+      // Refund credits if they were deducted
+      if (creditTransactionId) {
+        try {
+          await this.creditService.refundCredits(
+            userId,
+            'TEXT_OPERATIONS',
+            'content-summarizer',
+            `content-summary-${Date.now()}`,
+            creditTransactionId,
+            false,
+            `Refund for failed content summarization: ${error.message}`,
+          );
+          this.logger.log(
+            `Successfully refunded 1 credit for failed content summarization. User: ${userId}`,
+          );
+        } catch (refundError) {
+          this.logger.error(
+            `Failed to refund credits for content summarization: ${refundError.message}`,
+          );
+        }
+      }
 
       if (
         error instanceof BadRequestException ||

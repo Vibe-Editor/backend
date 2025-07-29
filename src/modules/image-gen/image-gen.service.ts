@@ -128,6 +128,10 @@ export class ImageGenService {
       ],
     });
 
+    let creditTransactionId: string | null = null;
+    let modelUsed: string | null = null;
+    let actualCreditsUsed: number | null = null;
+
     try {
       // Validate input
       if (!visual_prompt || visual_prompt.trim().length === 0) {
@@ -153,46 +157,26 @@ export class ImageGenService {
         );
       }
 
-      // ===== CREDIT SYSTEM INTEGRATION =====
+      // ===== CREDIT DEDUCTION =====
       this.logger.log(
-        `Checking user credits before image generation [${operationId}]`,
+        `Deducting credits for image generation (using higher-cost model pricing) [${operationId}]`,
       );
 
-      // We'll determine the model and pricing after triage, so we'll check credits for both models
-      // and use the worst case (highest cost) for initial validation
-      const imagenCheck = await this.creditService.checkUserCredits(
+      // Deduct credits for the higher-cost model upfront (imagen: 2 credits)
+      // We'll refund the difference if a lower-cost model (recraft: 1 credit) is used
+      creditTransactionId = await this.creditService.deductCredits(
         userId,
         'IMAGE_GENERATION',
-        'imagen',
+        'imagen', // Use higher-cost model for initial deduction
+        operationId,
         false, // We'll handle edit calls separately later
+        `Image generation with AI model`,
       );
-
-      const recraftCheck = await this.creditService.checkUserCredits(
-        userId,
-        'IMAGE_GENERATION',
-        'recraft',
-        false,
-      );
-
-      // Use the higher cost for validation (imagen costs more)
-      const creditCheck =
-        imagenCheck.requiredCredits >= recraftCheck.requiredCredits
-          ? imagenCheck
-          : recraftCheck;
-
-      if (!creditCheck.hasEnoughCredits) {
-        this.logger.error(
-          `Insufficient credits for user ${userId}. Required: ${creditCheck.requiredCredits}, Available: ${creditCheck.currentBalance} [${operationId}]`,
-        );
-        throw new BadRequestException(
-          `Insufficient credits. Required: ${creditCheck.requiredCredits}, Available: ${creditCheck.currentBalance}`,
-        );
-      }
 
       this.logger.log(
-        `Credit validation passed. User ${userId} has ${creditCheck.currentBalance} credits available [${operationId}]`,
+        `Successfully deducted credits for image generation. Transaction ID: ${creditTransactionId} [${operationId}]`,
       );
-      // ===== END CREDIT VALIDATION =====
+      // ===== END CREDIT DEDUCTION =====
 
       this.logger.log('Running triage agent to determine model selection');
       const result = await run(triageAgent, [
@@ -371,49 +355,48 @@ export class ImageGenService {
             },
           );
 
-          // ===== CREDIT DEDUCTION =====
-          this.logger.log(
-            `Deducting credits for successful image generation [${operationId}]`,
-          );
+          // Check which model was actually used and adjust credits if needed
+          modelUsed = 'imagen'; // default fallback
+          if (agentResult.model.toLowerCase().includes('recraft')) {
+            modelUsed = 'recraft';
 
-          let creditTransactionId: string;
-          let actualCreditsUsed: number;
+            // Refund 1 credit since recraft (1 credit) costs less than imagen (2 credits)
+            try {
+              await this.creditService.refundCredits(
+                userId,
+                'IMAGE_GENERATION',
+                'imagen', // refund from the originally deducted model
+                operationId,
+                creditTransactionId,
+                false,
+                `Partial refund: used recraft (1 credit) instead of imagen (2 credits)`,
+              );
 
-          try {
-            // Determine the model used from the agent result
-            let modelUsed = 'imagen'; // default fallback
-            if (agentResult.model.toLowerCase().includes('recraft')) {
-              modelUsed = 'recraft';
-            } else if (agentResult.model.toLowerCase().includes('imagen')) {
-              modelUsed = 'imagen';
+              // Now deduct the correct amount for recraft
+              creditTransactionId = await this.creditService.deductCredits(
+                userId,
+                'IMAGE_GENERATION',
+                'recraft',
+                operationId,
+                false,
+                `Image generation using recraft model`,
+              );
+
+              actualCreditsUsed = 1;
+              this.logger.log(
+                `Adjusted credits for recraft model usage [${operationId}]`,
+              );
+            } catch (adjustError) {
+              this.logger.error(
+                `Failed to adjust credits for recraft model: ${adjustError.message}`,
+              );
+              // Use imagen pricing as fallback
+              actualCreditsUsed = 2;
             }
-
-            actualCreditsUsed = modelUsed === 'imagen' ? 2 : 1;
-
-            // Deduct credits for the actual model used
-            creditTransactionId = await this.creditService.deductCredits(
-              userId,
-              'IMAGE_GENERATION',
-              modelUsed,
-              operationId,
-              false, // isEditCall - we'll handle edit calls in a separate endpoint later
-              `Image generation using ${modelUsed} model`,
-            );
-
-            this.logger.log(
-              `Successfully deducted ${actualCreditsUsed} credits for ${modelUsed}. Transaction ID: ${creditTransactionId} [${operationId}]`,
-            );
-          } catch (creditError) {
-            this.logger.error(
-              `Failed to deduct credits after successful image generation [${operationId}]:`,
-              creditError,
-            );
-            // Note: We still continue and save the image since generation was successful
-            // The credit transaction can be handled manually if needed
-            creditTransactionId = null;
-            actualCreditsUsed = 0;
+          } else {
+            // Imagen was used, no adjustment needed
+            actualCreditsUsed = 2;
           }
-          // ===== END CREDIT DEDUCTION =====
 
           // Save to database
           this.logger.log(`Saving image generation to database`);
@@ -431,8 +414,7 @@ export class ImageGenService {
               userId,
               // Add credit tracking
               creditTransactionId: creditTransactionId,
-              creditsUsed:
-                actualCreditsUsed > 0 ? new Decimal(actualCreditsUsed) : null, // Store the actual credits used
+              creditsUsed: new Decimal(actualCreditsUsed), // Store the actual credits used
             },
           });
 
@@ -493,6 +475,29 @@ export class ImageGenService {
         uuid: uuid,
         stack: error.stack,
       });
+
+      // Refund credits if they were deducted
+      if (creditTransactionId) {
+        try {
+          await this.creditService.refundCredits(
+            userId,
+            'IMAGE_GENERATION',
+            modelUsed || 'imagen',
+            operationId,
+            creditTransactionId,
+            false,
+            `Refund for failed image generation: ${error.message}`,
+          );
+          this.logger.log(
+            `Successfully refunded ${actualCreditsUsed || 2} credits for failed image generation. User: ${userId}, Operation: ${operationId}`,
+          );
+        } catch (refundError) {
+          this.logger.error(
+            `Failed to refund credits for user ${userId}, operation ${operationId}:`,
+            refundError,
+          );
+        }
+      }
 
       // If it's a known NestJS exception, rethrow it
       if (

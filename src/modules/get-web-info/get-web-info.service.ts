@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { GetWebInfoDto } from './dto/get-web-info.dto';
 import { UpdateWebInfoDto } from './dto/update-web-info.dto';
@@ -24,30 +25,23 @@ export class GetWebInfoService {
     const { prompt, projectId } = getWebInfoDto;
     console.log(`Using project ${projectId} for web research`);
 
-    // ===== CREDIT SYSTEM INTEGRATION =====
-    console.log(`Checking user credits before web research`);
+    // ===== CREDIT DEDUCTION =====
+    console.log(`Deducting credits for web research`);
 
-    // Check credits for perplexity web research
-    const creditCheck = await this.creditService.checkUserCredits(
+    // Deduct credits first - this handles validation internally
+    let creditTransactionId = await this.creditService.deductCredits(
       userId,
       'TEXT_OPERATIONS',
       'perplexity',
+      `web-research-${Date.now()}`, // operationId
       false, // no edit calls for web research currently
+      `Web research using Perplexity API`,
     );
-
-    if (!creditCheck.hasEnoughCredits) {
-      console.error(
-        `Insufficient credits for user ${userId}. Required: ${creditCheck.requiredCredits}, Available: ${creditCheck.currentBalance}`,
-      );
-      throw new BadRequestException(
-        `Insufficient credits. Required: ${creditCheck.requiredCredits}, Available: ${creditCheck.currentBalance}`,
-      );
-    }
 
     console.log(
-      `Credit validation passed. User ${userId} has ${creditCheck.currentBalance} credits available`,
+      `Successfully deducted credits for web research. Transaction ID: ${creditTransactionId}`,
     );
-    // ===== END CREDIT VALIDATION =====
+    // ===== END CREDIT DEDUCTION =====
 
     try {
       const response = await fetch(
@@ -71,41 +65,6 @@ export class GetWebInfoService {
 
       const data = await response.json();
 
-      // ===== CREDIT DEDUCTION =====
-      console.log(`Deducting credits for successful web research`);
-
-      let creditTransactionId: string;
-      let actualCreditsUsed: number;
-
-      try {
-        // Perplexity uses fixed pricing for web research
-        actualCreditsUsed = 1;
-
-        // Deduct credits for web research
-        creditTransactionId = await this.creditService.deductCredits(
-          userId,
-          'TEXT_OPERATIONS',
-          'perplexity',
-          `web-research-${Date.now()}`, // operationId
-          false, // isEditCall - no edit calls for web research currently
-          `Web research using Perplexity API`,
-        );
-
-        console.log(
-          `Successfully deducted ${actualCreditsUsed} credits for web research. Transaction ID: ${creditTransactionId}`,
-        );
-      } catch (creditError) {
-        console.error(
-          `Failed to deduct credits after successful web research:`,
-          creditError,
-        );
-        // Note: We still continue and save the research since API call was successful
-        // The credit transaction can be handled manually if needed
-        creditTransactionId = null;
-        actualCreditsUsed = 0;
-      }
-      // ===== END CREDIT DEDUCTION =====
-
       // Save to database
       console.log(`Saving web research to database`);
       const savedWebResearch = await this.prisma.webResearchQuery.create({
@@ -116,8 +75,7 @@ export class GetWebInfoService {
           userId,
           // Add credit tracking
           creditTransactionId: creditTransactionId,
-          creditsUsed:
-            actualCreditsUsed > 0 ? new Decimal(actualCreditsUsed) : null, // Store the actual credits used
+          creditsUsed: new Decimal(1), // Perplexity uses fixed pricing for web research
         },
       });
 
@@ -143,12 +101,36 @@ export class GetWebInfoService {
       return {
         ...data,
         credits: {
-          used: actualCreditsUsed,
+          used: 1, // Perplexity uses fixed pricing for web research
           balance: newBalance.toNumber(),
         },
       };
     } catch (error) {
-      throw new Error(`Failed to get web info: ${error.message}`);
+      // Refund credits if deduction was successful
+      if (creditTransactionId) {
+        try {
+          await this.creditService.refundCredits(
+            userId,
+            'TEXT_OPERATIONS',
+            'perplexity',
+            `web-research-${Date.now()}`,
+            creditTransactionId,
+            false,
+            `Refund for failed web research: ${error.message}`,
+          );
+          console.log(
+            `Successfully refunded 1 credit for failed web research. User: ${userId}`,
+          );
+        } catch (refundError) {
+          console.error(
+            `Failed to refund credits for web research: ${refundError.message}`,
+          );
+        }
+      }
+
+      throw new InternalServerErrorException(
+        `Failed to get web info: ${error.message}`,
+      );
     }
   }
 
@@ -189,7 +171,9 @@ export class GetWebInfoService {
         webInfoQueries,
       };
     } catch (error) {
-      throw new Error(`Failed to retrieve web info queries: ${error.message}`);
+      throw new InternalServerErrorException(
+        `Failed to retrieve web info queries: ${error.message}`,
+      );
     }
   }
 
@@ -240,7 +224,9 @@ export class GetWebInfoService {
       if (error instanceof NotFoundException) {
         throw error;
       }
-      throw new Error(`Failed to retrieve web info query: ${error.message}`);
+      throw new InternalServerErrorException(
+        `Failed to retrieve web info query: ${error.message}`,
+      );
     }
   }
 
@@ -347,7 +333,9 @@ export class GetWebInfoService {
       if (error instanceof NotFoundException) {
         throw error;
       }
-      throw new Error(`Failed to update web info query: ${error.message}`);
+      throw new InternalServerErrorException(
+        `Failed to update web info query: ${error.message}`,
+      );
     }
   }
 }

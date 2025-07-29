@@ -229,6 +229,88 @@ export class CreditService {
   }
 
   /**
+   * Refund credits for a failed operation
+   */
+  async refundCredits(
+    userId: string,
+    operationType: string,
+    modelName: string,
+    operationId: string,
+    originalTransactionId: string,
+    isEditCall: boolean = false,
+    description?: string,
+  ): Promise<string> {
+    const refundAmount = this.getRequiredCredits(
+      operationType,
+      modelName,
+      isEditCall,
+    );
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const user = await tx.user.findUnique({
+          where: { id: userId },
+          select: { credits: true },
+        });
+
+        if (!user) {
+          throw new BadRequestException('User not found');
+        }
+
+        const newBalance = user.credits.add(refundAmount);
+
+        // Create refund transaction
+        const refundTransaction = await tx.creditTransaction.create({
+          data: {
+            userId,
+            amount: new Decimal(refundAmount),
+            balanceAfter: newBalance,
+            type: CreditTransactionType.REFUND,
+            status: CreditTransactionStatus.COMPLETED,
+            operationType,
+            modelUsed: modelName,
+            operationId,
+            isEditCall,
+            description:
+              description ||
+              `Refund for failed ${operationType} using ${modelName}`,
+          },
+        });
+
+        // Update user balance
+        await tx.user.update({
+          where: { id: userId },
+          data: {
+            credits: newBalance,
+            totalCreditsSpent: { decrement: new Decimal(refundAmount) },
+            lastCreditUpdate: new Date(),
+          },
+        });
+
+        // Mark original transaction as refunded (optional, for tracking)
+        if (originalTransactionId) {
+          await tx.creditTransaction.update({
+            where: { id: originalTransactionId },
+            data: { status: CreditTransactionStatus.REFUNDED },
+          });
+        }
+
+        this.logger.log(
+          `Refunded ${refundAmount} credits to user ${userId} for failed ${operationType}/${modelName}`,
+        );
+
+        return refundTransaction.id;
+      });
+    } catch (error) {
+      this.logger.error(`Error refunding credits for user ${userId}:`, error);
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to refund credits');
+    }
+  }
+
+  /**
    * Get user's credit balance
    */
   async getUserBalance(userId: string): Promise<Decimal> {
