@@ -20,7 +20,7 @@ export class ChatService implements OnModuleDestroy {
 
   constructor(private readonly creditService: CreditService) {}
 
-  async chat(chatDto: ChatDto) {
+  async chat(chatDto: ChatDto, authenticatedUserId?: string) {
     const {
       model,
       gen_type,
@@ -32,10 +32,10 @@ export class ChatService implements OnModuleDestroy {
       projectId,
     } = chatDto;
 
-    // Use uuid as userId since there's no auth
-    const userId = uuid;
-    let creditTransactionId: string | null = null;
+    // Use authenticated user ID if available, fallback to uuid for backward compatibility
+    const userId = authenticatedUserId || uuid;
 
+    let creditTransactionId: string | null = null;
     if (gen_type === 'image') {
       if (model === 'recraft-v3') {
         try {
@@ -62,7 +62,7 @@ export class ChatService implements OnModuleDestroy {
               model: image.model,
               imageSizeBytes: image.image_size_bytes,
               projectId: projectId,
-              userId: uuid,
+              userId: userId,
               creditsUsed: 1,
               creditTransactionId: creditTransactionId,
             },
@@ -79,21 +79,27 @@ export class ChatService implements OnModuleDestroy {
             },
           };
         } catch (error) {
-          // Save failed attempt to database
-          await this.prisma.generatedImage.create({
-            data: {
-              visualPrompt: visual_prompt,
-              artStyle: art_style,
-              uuid: uuid,
-              success: false,
-              model: model,
-              message: error.message,
-              projectId: projectId,
-              userId: uuid,
-              creditsUsed: creditTransactionId ? 1 : 0,
-              creditTransactionId: creditTransactionId,
-            },
-          });
+          // Save failed attempt to database only if user exists
+          try {
+            await this.prisma.generatedImage.create({
+              data: {
+                visualPrompt: visual_prompt,
+                artStyle: art_style,
+                uuid: uuid,
+                success: false,
+                model: model,
+                message: error.message,
+                projectId: projectId,
+                userId: userId,
+                creditsUsed: creditTransactionId ? 1 : 0,
+                creditTransactionId: creditTransactionId,
+              },
+            });
+          } catch (dbError) {
+            logger.error(
+              `Failed to save error record to database: ${dbError.message}`,
+            );
+          }
           throw new Error('Failed to generate image');
         }
       } else if (model === 'imagen') {
@@ -121,7 +127,7 @@ export class ChatService implements OnModuleDestroy {
               model: image.model,
               imageSizeBytes: image.image_size_bytes,
               projectId: projectId,
-              userId: uuid,
+              userId: userId,
               creditsUsed: 2,
               creditTransactionId: creditTransactionId,
             },
@@ -138,21 +144,27 @@ export class ChatService implements OnModuleDestroy {
             },
           };
         } catch (error) {
-          // Save failed attempt to database
-          await this.prisma.generatedImage.create({
-            data: {
-              visualPrompt: visual_prompt,
-              artStyle: art_style,
-              uuid: uuid,
-              success: false,
-              model: model,
-              message: error.message,
-              projectId: projectId,
-              userId: uuid,
-              creditsUsed: creditTransactionId ? 2 : 0,
-              creditTransactionId: creditTransactionId,
-            },
-          });
+          // Save failed attempt to database only if user exists
+          try {
+            await this.prisma.generatedImage.create({
+              data: {
+                visualPrompt: visual_prompt,
+                artStyle: art_style,
+                uuid: uuid,
+                success: false,
+                model: model,
+                message: error.message,
+                projectId: projectId,
+                userId: userId,
+                creditsUsed: creditTransactionId ? 2 : 0,
+                creditTransactionId: creditTransactionId,
+              },
+            });
+          } catch (dbError) {
+            logger.error(
+              `Failed to save error record to database: ${dbError.message}`,
+            );
+          }
           throw new Error('Failed to generate image');
         }
       }
@@ -193,7 +205,7 @@ export class ChatService implements OnModuleDestroy {
               model: video.model,
               totalVideos: 1,
               projectId: projectId,
-              userId: uuid,
+              userId: userId,
               creditsUsed: 20,
               creditTransactionId: creditTransactionId,
             },
@@ -218,21 +230,27 @@ export class ChatService implements OnModuleDestroy {
             },
           };
         } catch (error) {
-          // Save failed attempt to database
-          await this.prisma.generatedVideo.create({
-            data: {
-              animationPrompt: animation_prompt,
-              artStyle: art_style,
-              imageS3Key: image_s3_key,
-              uuid: uuid,
-              success: false,
-              model: model,
-              projectId: projectId,
-              userId: uuid,
-              creditsUsed: creditTransactionId ? 20 : 0,
-              creditTransactionId: creditTransactionId,
-            },
-          });
+          // Save failed attempt to database only if user exists
+          try {
+            await this.prisma.generatedVideo.create({
+              data: {
+                animationPrompt: animation_prompt,
+                artStyle: art_style,
+                imageS3Key: image_s3_key,
+                uuid: uuid,
+                success: false,
+                model: model,
+                projectId: projectId,
+                userId: userId,
+                creditsUsed: creditTransactionId ? 20 : 0,
+                creditTransactionId: creditTransactionId,
+              },
+            });
+          } catch (dbError) {
+            logger.error(
+              `Failed to save error record to database: ${dbError.message}`,
+            );
+          }
           throw new Error('Failed to generate video');
         }
       } else if (model === 'gen4_turbo') {
@@ -265,7 +283,7 @@ export class ChatService implements OnModuleDestroy {
               model: video.model,
               totalVideos: 1,
               projectId: projectId,
-              userId: uuid,
+              userId: userId,
               creditsUsed: 2.5,
               creditTransactionId: creditTransactionId,
             },
@@ -290,21 +308,27 @@ export class ChatService implements OnModuleDestroy {
             },
           };
         } catch (error) {
-          // Save failed attempt to database
-          await this.prisma.generatedVideo.create({
-            data: {
-              animationPrompt: animation_prompt,
-              artStyle: art_style,
-              imageS3Key: image_s3_key,
-              uuid: uuid,
-              success: false,
-              model: model,
-              projectId: projectId,
-              userId: uuid,
-              creditsUsed: creditTransactionId ? 2.5 : 0,
-              creditTransactionId: creditTransactionId,
-            },
-          });
+          // Save failed attempt to database only if user exists
+          try {
+            await this.prisma.generatedVideo.create({
+              data: {
+                animationPrompt: animation_prompt,
+                artStyle: art_style,
+                imageS3Key: image_s3_key,
+                uuid: uuid,
+                success: false,
+                model: model,
+                projectId: projectId,
+                userId: userId,
+                creditsUsed: creditTransactionId ? 2.5 : 0,
+                creditTransactionId: creditTransactionId,
+              },
+            });
+          } catch (dbError) {
+            logger.error(
+              `Failed to save error record to database: ${dbError.message}`,
+            );
+          }
           throw new Error('Failed to generate video');
         }
       }
