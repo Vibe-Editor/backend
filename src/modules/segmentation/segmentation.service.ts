@@ -40,6 +40,8 @@ export class SegmentationService {
     narrationPrompt: string;
     visualPrompt: string;
     animationPrompt: string;
+    concept: string;
+    negativePrompt: string;
   }): Promise<{
     narration: string;
     visual: string;
@@ -48,7 +50,7 @@ export class SegmentationService {
   }> {
     const { narrationPrompt, visualPrompt, animationPrompt } = options;
 
-    const [animationRes, narrationRes, visualRes, artStyleRes] =
+    const [animationRes, narrationRes, artStyleRes] =
       await Promise.all([
         this.genAI.models.generateContent({
           model: 'gemini-2.5-pro-preview-06-05',
@@ -57,10 +59,6 @@ export class SegmentationService {
         this.genAI.models.generateContent({
           model: 'gemini-2.5-pro-preview-06-05',
           contents: narrationPrompt,
-        }),
-        this.genAI.models.generateContent({
-          model: 'gemini-2.5-pro-preview-06-05',
-          contents: visualPrompt,
         }),
         this.genAI.models.generateContent({
           model: 'gemini-2.5-pro-preview-06-05',
@@ -76,32 +74,121 @@ export class SegmentationService {
 
     const animation = animationRes.text?.trim();
     const narration = narrationRes.text?.trim();
-    const visual = visualRes.text?.trim();
     const artStyle = artStyleRes.text?.trim();
 
-    if (!animation || !narration || !visual) {
+    if (!animation || !narration) {
       throw new HttpException(
-        'Failed to generate full script with Gemini.',
+        'Failed to generate animation and narration with Gemini.',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
 
+    // Generate visual script using Director Brain 'Micro' Spec model
+    const visual = await this.generateVisualScriptWithDirectorBrain({
+      animationPrompt: animation,
+      userPrompt: visualPrompt,
+      artStyle: artStyle,
+      concept: options.concept || '',
+      negativePrompt: options.negativePrompt || '',
+    });
+
     return { narration, visual, animation, artStyle };
+  }
+
+  private async generateVisualScriptWithDirectorBrain(options: {
+    animationPrompt: string;
+    userPrompt: string;
+    artStyle: string;
+    concept: string;
+    negativePrompt: string;
+  }): Promise<string> {
+    const { animationPrompt, userPrompt, artStyle, concept, negativePrompt } = options;
+
+    try {
+      const response = await this.genAI.models.generateContent({
+        model: 'gemini-2.5-pro-preview-06-05',
+        contents: `You are the **Director Brain 'Micro' Spec** model. Your task is to generate a detailed visual prompt string that incorporates cinematographic principles and contextual storytelling.
+
+### Core Operating Principles
+1. Pick the emotion first (E). Everything else follows.
+2. Choose perspective (P) & distance (V) to set the connection level.
+3. Use angle/space (D) to show power.
+4. Stage (S) controls pacing: INTRO should be wide, PIVOT should be tight.
+5. Reveal (R) from ENV to DETAIL to escalate meaning over successive shots.
+
+### EPVSDRM Framework Parameters
+- **E - Emotion goal:** AWE | TENSION | INTIMACY | QUIET | POWER | LOSS | UNEASE
+- **P - Perspective:** EXT | POV | OTS | TWO | GROUP | OH | DUTCH
+- **V - View distance:** ELS | LS | MS | MCU | CU | ECU
+- **S - Stage in scene:** INTRO | BUILD | PIVOT | BREATHE | BUTTON
+- **D - Dynamic / power:** HI_ANGLE | LO_ANGLE | LEVEL | WIDE_SPACE | TIGHT_SPACE
+- **R - Reveal level:** ENV | CHAR | DETAIL
+- **M - Motion:** STATIC | PUSH_IN | PULL_OUT | TRACK | HANDHELD | CRANE | DRONE
+
+### Input Context
+Animation Prompt: ${animationPrompt}
+User Prompt: ${userPrompt}
+Concept: ${concept}
+Art Style: ${artStyle}
+Negative Prompt: ${negativePrompt}
+
+### Required Output Format
+Generate a detailed visual prompt string that includes:
+1. Cinematographic description using EPVSDRM framework
+2. Context about how this image fits into the video sequence
+3. Detailed visual elements and composition
+4. Art style integration
+5. Emotional and narrative context
+
+### Example Output Format:
+"shot: medium close-up of a man seated in an office cubicle, angled slightly toward camera, soft daylight from window highlights one side of his face, neutral expression, cluttered desk in soft blur behind him, photorealistic human, 35mm film, shallow depth of field, cinematic realism, realistic grain, muted corporate tones --ar 16:9 --v 7 --style raw --chaos 12"
+
+### Instructions:
+- Analyze the animation prompt to understand the visual sequence and timing
+- Apply EPVSDRM framework to create cinematographic description
+- Include context about what moment in the video this image represents
+- Add detailed visual elements, lighting, composition, and background
+- Integrate the provided art style naturally into the description
+- Include emotional and narrative context that supports the overall concept
+- Ensure the description aligns with the concept and avoids negative prompt elements
+- Return ONLY the visual prompt string, no additional text or formatting
+
+Generate the visual prompt:`,
+      });
+
+      const visualScript = response.text?.trim();
+      if (!visualScript) {
+        throw new HttpException(
+          'Failed to generate visual script with Director Brain model.',
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
+
+      return visualScript;
+    } catch (error) {
+      console.error('Error generating visual script with Director Brain:', error);
+      throw new HttpException(
+        'Failed to generate visual script with Director Brain model.',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
   private async generateScriptWithOpenAI(options: {
     narrationPrompt: string;
     visualPrompt: string;
     animationPrompt: string;
+    concept: string;
+    negativePrompt: string;
   }): Promise<{
     narration: string;
     visual: string;
     animation: string;
     artStyle: string;
   }> {
-    const { narrationPrompt, visualPrompt, animationPrompt } = options;
+    const { narrationPrompt, visualPrompt, animationPrompt, concept, negativePrompt } = options;
 
-    const [animationRes, narrationRes, visualRes, artStyleRes] =
+    const [animationRes, narrationRes, artStyleRes] =
       await Promise.all([
         this.openai.chat.completions.create({
           model: 'gpt-4o',
@@ -110,10 +197,6 @@ export class SegmentationService {
         this.openai.chat.completions.create({
           model: 'gpt-4o',
           messages: [{ role: 'user', content: narrationPrompt }],
-        }),
-        this.openai.chat.completions.create({
-          model: 'gpt-4o',
-          messages: [{ role: 'user', content: visualPrompt }],
         }),
         this.openai.chat.completions.create({
           model: 'gpt-4o',
@@ -134,15 +217,23 @@ export class SegmentationService {
 
     const animation = animationRes.choices[0]?.message?.content?.trim();
     const narration = narrationRes.choices[0]?.message?.content?.trim();
-    const visual = visualRes.choices[0]?.message?.content?.trim();
     const artStyle = artStyleRes.choices[0]?.message?.content?.trim();
 
-    if (!animation || !narration || !visual) {
+    if (!animation || !narration) {
       throw new HttpException(
-        'Failed to generate full script with OpenAI.',
+        'Failed to generate animation and narration with OpenAI.',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+
+    // Generate visual script using Director Brain 'Micro' Spec model
+    const visual = await this.generateVisualScriptWithDirectorBrain({
+      animationPrompt: animation,
+      userPrompt: visualPrompt,
+      artStyle: artStyle,
+      concept: concept,
+      negativePrompt: negativePrompt,
+    });
 
     return { narration, visual, animation, artStyle };
   }
@@ -188,6 +279,8 @@ export class SegmentationService {
       The image should be a single, coherent visual concept that can be generated in isolation.
       Do NOT include multiple actions or frames within a segment.
       Focus on visual composition, mood, setting, and core subject for each image.
+      PRESERVE ALL TECHNICAL PARAMETERS (--ar, --v, --style, --s, etc.) in each segment.
+      Do NOT remove or modify any technical flags or parameters.
       `;
 
       const animationAddendum = `
@@ -353,12 +446,18 @@ export class SegmentationService {
               negative_prompt: z.string(),
             }) as any,
             execute: async ({ prompt, negative_prompt }) => {
+              // Extract concept from the original user message
+              const conceptMatch = prompt.match(/CONCEPT: (.+?)(?:\n|$)/);
+              const concept = conceptMatch ? conceptMatch[1].trim() : '';
+              
               const script = await this.generateScriptWithGemini({
                 animationPrompt: `Create an animation sequence for a video about: "${prompt}". The animation should be engaging and well-paced. Structure the animation into exactly 5 parts that flow naturally. Include specific animation cues and transitions. Focus on the animation flow and visual storytelling.`,
 
                 narrationPrompt: `Write a voiceover script for a video about: "${prompt}". The script should be engaging, clear, and well-structured. Structure the script into exactly 5 distinct segments. Each segment should be standalone and flow naturally into the next. Focus on clear, compelling narration.`,
 
                 visualPrompt: `Generate a visual concept for a video about: "${prompt}". Create descriptions for 5 distinct visual segments, each representing a single, cohesive image concept. Each image should be visually compelling and support the overall narrative. Focus on visual composition and storytelling.`,
+                concept: concept,
+                negativePrompt: negative_prompt,
               });
               return { script, model: 'gemini-2.5-pro' };
             },
@@ -380,12 +479,18 @@ export class SegmentationService {
               negative_prompt: z.string(),
             }) as any,
             execute: async ({ prompt, negative_prompt }) => {
+              // Extract concept from the original user message
+              const conceptMatch = prompt.match(/CONCEPT: (.+?)(?:\n|$)/);
+              const concept = conceptMatch ? conceptMatch[1].trim() : '';
+              
               const script = await this.generateScriptWithOpenAI({
                 animationPrompt: `Create an animation sequence for a video about: "${prompt}". The animation should be engaging and well-paced. Structure the animation into exactly 5 parts that flow naturally. Include specific animation cues and transitions. Focus on the animation flow and visual storytelling.`,
 
                 narrationPrompt: `Write a voiceover script for a video about: "${prompt}". The script should be engaging, clear, and well-structured. Structure the script into exactly 5 distinct segments. Each segment should be standalone and flow naturally into the next. Focus on clear, compelling narration.`,
 
                 visualPrompt: `Generate a visual concept for a video about: "${prompt}". Create descriptions for 5 distinct visual segments, each representing a single, cohesive image concept. Each image should be visually compelling and support the overall narrative. Focus on visual composition and storytelling.`,
+                concept: concept,
+                negativePrompt: negative_prompt,
               });
               return { script, model: 'gpt-4o' };
             },
