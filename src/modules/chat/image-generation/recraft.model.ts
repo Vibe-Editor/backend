@@ -20,7 +20,17 @@ export async function recraftImageGen(
   visual_prompt: string,
   art_style: string,
 ) {
-  const recraftPrompt = `${visual_prompt}. Art style: ${art_style}. Create a realistic, photographic image with no text elements.`;
+  let recraftPrompt = `${visual_prompt}. Art style: ${art_style}. Create a realistic, photographic image with no text elements.`;
+
+  if (recraftPrompt.length > 950) {
+    logger.error(
+      `Final prompt still exceeds 950 characters (${recraftPrompt.length}). Applying emergency trim.`,
+    );
+    recraftPrompt = recraftPrompt.substring(0, 950).trim();
+    logger.warn(
+      `Emergency trimmed prompt to ${recraftPrompt.length} characters`,
+    );
+  }
 
   const response = await axios.post(
     'https://external.api.recraft.ai/v1/images/generations',
