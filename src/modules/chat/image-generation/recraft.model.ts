@@ -23,7 +23,7 @@ export async function recraftImageGen(
   let recraftPrompt = `${visual_prompt}. Art style: ${art_style}. Create a realistic, photographic image with no text elements.`;
 
   if (recraftPrompt.length > 950) {
-    logger.error(
+    logger.warn(
       `Final prompt still exceeds 950 characters (${recraftPrompt.length}). Applying emergency trim.`,
     );
     recraftPrompt = recraftPrompt.substring(0, 950).trim();
