@@ -29,7 +29,11 @@
         "tone": "inspirational and modern",
         "goal": "increase brand awareness and environmental consciousness"
       }
-    ]
+    ],
+    "credits": {
+      "used": 1,
+      "balance": 49.0
+    }
   }
   ```
 

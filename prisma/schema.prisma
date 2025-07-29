@@ -16,16 +16,23 @@ model User {
   googleId  String   @unique
   createdAt DateTime @default(now())
 
-  projects            Project[]
-  conversationHistory ConversationHistory[]
-  videoConcepts       VideoConcept[]
-  webResearchQueries  WebResearchQuery[]
-  contentSummaries    ContentSummary[]
-  videoSegmentations  VideoSegmentation[]
-  generatedImages     GeneratedImage[]
-  generatedVideos     GeneratedVideo[]
-  generatedVoiceovers GeneratedVoiceover[]
+  // Credit system fields
+  credits            Decimal  @default(0) @db.Decimal(10, 2) // Current credit balance
+  totalCreditsEarned Decimal  @default(0) @db.Decimal(12, 2) // Lifetime credits earned
+  totalCreditsSpent  Decimal  @default(0) @db.Decimal(12, 2) // Lifetime credits spent
+  lastCreditUpdate   DateTime @default(now()) // Last credit operation timestamp
+
+  projects             Project[]
+  conversationHistory  ConversationHistory[]
+  videoConcepts        VideoConcept[]
+  webResearchQueries   WebResearchQuery[]
+  contentSummaries     ContentSummary[]
+  videoSegmentations   VideoSegmentation[]
+  generatedImages      GeneratedImage[]
+  generatedVideos      GeneratedVideo[]
+  generatedVoiceovers  GeneratedVoiceover[]
   characterGenerations CharacterGeneration[]
+  creditTransactions   CreditTransaction[]
 }
 
 model Project {
@@ -36,16 +43,53 @@ model Project {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  user                User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  conversations       ConversationHistory[]
-  videoConcepts       VideoConcept[]
-  webResearchQueries  WebResearchQuery[]
-  contentSummaries    ContentSummary[]
-  videoSegmentations  VideoSegmentation[]
-  generatedImages     GeneratedImage[]
-  generatedVideos     GeneratedVideo[]
-  generatedVoiceovers GeneratedVoiceover[]
+  user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversations        ConversationHistory[]
+  videoConcepts        VideoConcept[]
+  webResearchQueries   WebResearchQuery[]
+  contentSummaries     ContentSummary[]
+  videoSegmentations   VideoSegmentation[]
+  generatedImages      GeneratedImage[]
+  generatedVideos      GeneratedVideo[]
+  generatedVoiceovers  GeneratedVoiceover[]
   characterGenerations CharacterGeneration[]
+}
+
+// Credit system models
+model CreditTransaction {
+  id            String                  @id @default(cuid())
+  userId        String
+  amount        Decimal                 @db.Decimal(10, 2) // Credit amount (positive for credits, negative for debits)
+  balanceAfter  Decimal                 @db.Decimal(10, 2) // User balance after this transaction
+  type          CreditTransactionType
+  status        CreditTransactionStatus @default(PENDING)
+  operationType String? // e.g., "IMAGE_GENERATION", "VIDEO_GENERATION"
+  modelUsed     String? // e.g., "imagen", "recraft", "veo2"
+  operationId   String? // Reference to the specific operation
+  isEditCall    Boolean                 @default(false) // Whether this used edit call pricing
+  metadata      Json? // Additional operation details
+  description   String? // Human-readable description
+  createdAt     DateTime                @default(now())
+  processedAt   DateTime? // When the transaction was completed
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([operationType, modelUsed])
+}
+
+enum CreditTransactionType {
+  DEDUCTION
+  REFUND
+  PURCHASE
+}
+
+enum CreditTransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CANCELLED
+  REFUNDED
 }
 
 model ConversationHistory {
@@ -86,6 +130,10 @@ model VideoConcept {
   userId    String
   createdAt DateTime @default(now())
 
+  creditsUsed         Decimal? @db.Decimal(8, 2)
+  creditTransactionId String?
+  isRefunded          Boolean  @default(false)
+
   project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -97,6 +145,10 @@ model WebResearchQuery {
   projectId String?
   userId    String
   createdAt DateTime @default(now())
+
+  creditsUsed         Decimal? @db.Decimal(8, 2)
+  creditTransactionId String?
+  isRefunded          Boolean  @default(false)
 
   project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -110,6 +162,10 @@ model ContentSummary {
   projectId       String?
   userId          String
   createdAt       DateTime @default(now())
+
+  creditsUsed         Decimal? @db.Decimal(8, 2)
+  creditTransactionId String?
+  isRefunded          Boolean  @default(false)
 
   project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -126,6 +182,10 @@ model VideoSegmentation {
   projectId      String?
   userId         String
   createdAt      DateTime @default(now())
+
+  creditsUsed         Decimal? @db.Decimal(8, 2)
+  creditTransactionId String?
+  isRefunded          Boolean  @default(false)
 
   project  Project?       @relation(fields: [projectId], references: [id], onDelete: Cascade)
   user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -158,6 +218,10 @@ model GeneratedImage {
   userId         String
   createdAt      DateTime @default(now())
 
+  creditsUsed         Decimal? @db.Decimal(8, 2)
+  creditTransactionId String?
+  isRefunded          Boolean  @default(false)
+
   project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -174,6 +238,10 @@ model GeneratedVideo {
   projectId       String?
   userId          String
   createdAt       DateTime @default(now())
+
+  creditsUsed         Decimal? @db.Decimal(8, 2)
+  creditTransactionId String?
+  isRefunded          Boolean  @default(false)
 
   project    Project?             @relation(fields: [projectId], references: [id], onDelete: Cascade)
   user       User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -197,27 +265,35 @@ model GeneratedVoiceover {
   userId          String
   createdAt       DateTime @default(now())
 
+  creditsUsed         Decimal? @db.Decimal(8, 2)
+  creditTransactionId String?
+  isRefunded          Boolean  @default(false)
+
   project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model CharacterGeneration {
-  id                String   @id @default(cuid())
-  name              String?
-  description       String?
-  referenceImages   String[] // Array of 6 image S3 keys
-  spriteSheetS3Key  String?
+  id                  String   @id @default(cuid())
+  name                String?
+  description         String?
+  referenceImages     String[] // Array of 6 image S3 keys
+  spriteSheetS3Key    String?
   finalCharacterS3Key String?
-  visualPrompt      String
-  artStyle          String
-  uuid              String
-  success           Boolean  @default(false)
-  model             String?
-  message           String?
-  projectId         String?
-  userId            String
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  visualPrompt        String
+  artStyle            String
+  uuid                String
+  success             Boolean  @default(false)
+  model               String?
+  message             String?
+  projectId           String?
+  userId              String
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  creditsUsed         Decimal? @db.Decimal(8, 2)
+  creditTransactionId String?
+  isRefunded          Boolean  @default(false)
 
   project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)

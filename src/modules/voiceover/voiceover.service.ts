@@ -12,6 +12,8 @@ import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { randomUUID } from 'crypto';
 import { ProjectHelperService } from '../../common/services/project-helper.service';
 import { PrismaClient } from '../../../generated/prisma';
+import { Decimal } from '@prisma/client/runtime/library';
+import { CreditService } from '../credits/credit.service';
 
 @Injectable()
 export class VoiceoverService {
@@ -21,7 +23,10 @@ export class VoiceoverService {
   private readonly bucketName = process.env.S3_BUCKET_NAME;
   private readonly prisma = new PrismaClient();
 
-  constructor(private readonly projectHelperService: ProjectHelperService) {
+  constructor(
+    private readonly projectHelperService: ProjectHelperService,
+    private readonly creditService: CreditService,
+  ) {
     try {
       // Validate environment variables
       if (!process.env.ELEVENLABS_API_KEY) {
@@ -90,6 +95,33 @@ export class VoiceoverService {
         );
       }
 
+      // ===== CREDIT SYSTEM INTEGRATION =====
+      this.logger.log(
+        `Checking user credits before voiceover generation [${operationId}]`,
+      );
+
+      // Check credits for voiceover generation
+      const creditCheck = await this.creditService.checkUserCredits(
+        userId,
+        'VOICEOVER_GENERATION',
+        'elevenlabs',
+        false, // no edit calls for voiceover currently
+      );
+
+      if (!creditCheck.hasEnoughCredits) {
+        this.logger.error(
+          `Insufficient credits for user ${userId}. Required: ${creditCheck.requiredCredits}, Available: ${creditCheck.currentBalance} [${operationId}]`,
+        );
+        throw new BadRequestException(
+          `Insufficient credits. Required: ${creditCheck.requiredCredits}, Available: ${creditCheck.currentBalance}`,
+        );
+      }
+
+      this.logger.log(
+        `Credit validation passed. User ${userId} has ${creditCheck.currentBalance} credits available [${operationId}]`,
+      );
+      // ===== END CREDIT VALIDATION =====
+
       this.logger.log(`Generating audio with ElevenLabs [${operationId}]`);
 
       const stream = await this.elevenLabs.textToSpeech.convert(
@@ -124,6 +156,43 @@ export class VoiceoverService {
 
       await this.s3.send(command);
 
+      // ===== CREDIT DEDUCTION =====
+      this.logger.log(
+        `Deducting credits for successful voiceover generation [${operationId}]`,
+      );
+
+      let creditTransactionId: string;
+      let actualCreditsUsed: number;
+
+      try {
+        // ElevenLabs uses fixed pricing for voiceover
+        actualCreditsUsed = 2;
+
+        // Deduct credits for voiceover generation
+        creditTransactionId = await this.creditService.deductCredits(
+          userId,
+          'VOICEOVER_GENERATION',
+          'elevenlabs',
+          operationId,
+          false, // isEditCall - no edit calls for voiceover currently
+          `Voiceover generation using ElevenLabs`,
+        );
+
+        this.logger.log(
+          `Successfully deducted ${actualCreditsUsed} credits for voiceover. Transaction ID: ${creditTransactionId} [${operationId}]`,
+        );
+      } catch (creditError) {
+        this.logger.error(
+          `Failed to deduct credits after successful voiceover generation [${operationId}]:`,
+          creditError,
+        );
+        // Note: We still continue and save the voiceover since generation was successful
+        // The credit transaction can be handled manually if needed
+        creditTransactionId = null;
+        actualCreditsUsed = 0;
+      }
+      // ===== END CREDIT DEDUCTION =====
+
       this.logger.log(`Saving voiceover to database [${operationId}]`);
 
       const savedVoiceover = await this.prisma.generatedVoiceover.create({
@@ -132,6 +201,10 @@ export class VoiceoverService {
           s3Key: s3Key,
           projectId,
           userId,
+          // Add credit tracking
+          creditTransactionId: creditTransactionId,
+          creditsUsed:
+            actualCreditsUsed > 0 ? new Decimal(actualCreditsUsed) : null, // Store the actual credits used
         },
       });
 
@@ -163,11 +236,19 @@ export class VoiceoverService {
       this.logger.log(
         `Voiceover generation completed successfully [${operationId}]`,
       );
+
+      // Get user's new balance after credit deduction
+      const newBalance = await this.creditService.getUserBalance(userId);
+
       return {
         success: true,
         s3_key: s3Key,
         message: 'Voiceover generated and uploaded successfully',
         audio_size_bytes: audioBuffer.length,
+        credits: {
+          used: actualCreditsUsed,
+          balance: newBalance.toNumber(),
+        },
       };
     } catch (error) {
       this.logger.error(`Voiceover generation failed [${operationId}]`, {

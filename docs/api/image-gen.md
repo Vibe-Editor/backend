@@ -30,7 +30,11 @@
     "s3_key": "images/segment-001-image.jpg",
     "model": "recraft-ai",
     "message": "Image generated successfully",
-    "image_size_bytes": 245760
+    "image_size_bytes": 245760,
+    "credits": {
+      "used": 1,
+      "balance": 49.0
+    }
   }
   ```
 

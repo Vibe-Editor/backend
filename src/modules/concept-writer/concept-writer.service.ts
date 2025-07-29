@@ -1,9 +1,16 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { ConceptWriterDto } from './dto/concept-writer.dto';
 import { GoogleGenAI } from '@google/genai';
 import { GeneratedResponse } from './concept-writer.interface';
 import { ProjectHelperService } from '../../common/services/project-helper.service';
 import { PrismaClient } from '../../../generated/prisma';
+import { Decimal } from '@prisma/client/runtime/library';
+import { CreditService } from '../credits/credit.service';
 
 @Injectable()
 export class ConceptWriterService {
@@ -11,7 +18,10 @@ export class ConceptWriterService {
   private readonly logger = new Logger(ConceptWriterService.name);
   private readonly prisma = new PrismaClient();
 
-  constructor(private readonly projectHelperService: ProjectHelperService) {
+  constructor(
+    private readonly projectHelperService: ProjectHelperService,
+    private readonly creditService: CreditService,
+  ) {
     if (!process.env.GEMINI_API_KEY) {
       throw new Error('GEMINI_API_KEY environment variable not set.');
     }
@@ -50,6 +60,31 @@ export class ConceptWriterService {
       "tone": "Self-aware, funny, and hype",
       "goal": "Call out the cliché, win back attention, and make people curious"
     }`;
+
+    // ===== CREDIT SYSTEM INTEGRATION =====
+    this.logger.log(`Checking user credits before concept generation`);
+
+    // Check credits for concept generation
+    const creditCheck = await this.creditService.checkUserCredits(
+      userId,
+      'TEXT_OPERATIONS',
+      'concept-gen',
+      false, // no edit calls for concept generation currently
+    );
+
+    if (!creditCheck.hasEnoughCredits) {
+      this.logger.error(
+        `Insufficient credits for user ${userId}. Required: ${creditCheck.requiredCredits}, Available: ${creditCheck.currentBalance}`,
+      );
+      throw new BadRequestException(
+        `Insufficient credits. Required: ${creditCheck.requiredCredits}, Available: ${creditCheck.currentBalance}`,
+      );
+    }
+
+    this.logger.log(
+      `Credit validation passed. User ${userId} has ${creditCheck.currentBalance} credits available`,
+    );
+    // ===== END CREDIT VALIDATION =====
 
     try {
       const result = await this.gemini.models.generateContent({
@@ -102,6 +137,41 @@ export class ConceptWriterService {
           );
         }
 
+        // ===== CREDIT DEDUCTION =====
+        this.logger.log(`Deducting credits for successful concept generation`);
+
+        let creditTransactionId: string;
+        let actualCreditsUsed: number;
+
+        try {
+          // Concept generation uses fixed pricing
+          actualCreditsUsed = 1;
+
+          // Deduct credits for concept generation
+          creditTransactionId = await this.creditService.deductCredits(
+            userId,
+            'TEXT_OPERATIONS',
+            'concept-gen',
+            `concept-gen-${Date.now()}`, // operationId
+            false, // isEditCall - no edit calls for concept generation currently
+            `Concept generation using Gemini API`,
+          );
+
+          this.logger.log(
+            `Successfully deducted ${actualCreditsUsed} credits for concept generation. Transaction ID: ${creditTransactionId}`,
+          );
+        } catch (creditError) {
+          this.logger.error(
+            `Failed to deduct credits after successful concept generation:`,
+            creditError,
+          );
+          // Note: We still continue and save the concepts since generation was successful
+          // The credit transaction can be handled manually if needed
+          creditTransactionId = null;
+          actualCreditsUsed = 0;
+        }
+        // ===== END CREDIT DEDUCTION =====
+
         // Save each concept to the database
         this.logger.log(
           `Saving ${parsed.concepts.length} concepts to database`,
@@ -119,6 +189,10 @@ export class ConceptWriterService {
                 goal: concept.goal,
                 projectId,
                 userId,
+                // Add credit tracking
+                creditTransactionId: creditTransactionId,
+                creditsUsed:
+                  actualCreditsUsed > 0 ? new Decimal(actualCreditsUsed) : null,
               },
             });
             this.logger.log(
@@ -148,7 +222,16 @@ export class ConceptWriterService {
           `Successfully saved ${savedConcepts.length} concepts and conversation history`,
         );
 
-        return parsed;
+        // Get user's new balance after credit deduction
+        const newBalance = await this.creditService.getUserBalance(userId);
+
+        return {
+          ...parsed,
+          credits: {
+            used: actualCreditsUsed,
+            balance: newBalance.toNumber(),
+          },
+        };
       } catch (parseError) {
         this.logger.error(`JSON parsing error: ${parseError.message}`);
         this.logger.error(`Attempted to parse: ${text}`);

@@ -10,16 +10,16 @@ POST /chat
 
 ## Overview
 
-This endpoint allows users to generate images or videos based on prompts and art styles. The service automatically handles the generation process and uploads the results to S3 storage.
+This endpoint allows users to generate images or videos based on prompts and art styles. The service automatically handles the generation process, uploads the results to S3 storage, deducts credits based on the model used, and saves the generation records to the database for persistence and tracking.
 
 ## Request
 
 ### Headers
 
-| Header | Type | Required | Description |
-|--------|------|----------|-------------|
-| `Content-Type` | string | Yes | Must be `application/json` |
-| `Authorization` | string | Yes | Bearer token for authentication |
+| Header          | Type   | Required | Description                     |
+| --------------- | ------ | -------- | ------------------------------- |
+| `Content-Type`  | string | Yes      | Must be `application/json`      |
+| `Authorization` | string | Yes      | Bearer token for authentication |
 
 ### Request Body
 
@@ -38,16 +38,16 @@ This endpoint allows users to generate images or videos based on prompts and art
 
 ### Request Parameters
 
-| Parameter | Type | Required | Description | Validation |
-|-----------|------|----------|-------------|------------|
-| `model` | string | Yes | The AI model to use for generation | Must be one of: `recraft-v3`, `imagen`, `kling-v2.1-master`, `gen4_turbo` |
-| `gen_type` | string | Yes | Type of generation | Must be either `image` or `video` |
-| `uuid` | string | Yes | Unique identifier for the user | Non-empty string |
-| `visual_prompt` | string | Conditional | Text description for image generation | Required when `gen_type` is `image` |
-| `animation_prompt` | string | Conditional | Text description for video generation | Required when `gen_type` is `video` |
-| `image_s3_key` | string | Conditional | S3 key of the source image for video generation | Required when `gen_type` is `video` |
-| `art_style` | string | Yes | Art style to apply to the generation | Non-empty string |
-| `projectId` | string | Yes | Project identifier | Non-empty string |
+| Parameter          | Type   | Required    | Description                                     | Validation                                                                |
+| ------------------ | ------ | ----------- | ----------------------------------------------- | ------------------------------------------------------------------------- |
+| `model`            | string | Yes         | The AI model to use for generation              | Must be one of: `recraft-v3`, `imagen`, `kling-v2.1-master`, `gen4_turbo` |
+| `gen_type`         | string | Yes         | Type of generation                              | Must be either `image` or `video`                                         |
+| `uuid`             | string | Yes         | Unique identifier for the user                  | Non-empty string                                                          |
+| `visual_prompt`    | string | Conditional | Text description for image generation           | Required when `gen_type` is `image`                                       |
+| `animation_prompt` | string | Conditional | Text description for video generation           | Required when `gen_type` is `video`                                       |
+| `image_s3_key`     | string | Conditional | S3 key of the source image for video generation | Required when `gen_type` is `video`                                       |
+| `art_style`        | string | Yes         | Art style to apply to the generation            | Non-empty string                                                          |
+| `projectId`        | string | Yes         | Project identifier                              | Non-empty string                                                          |
 
 ## Response
 
@@ -74,10 +74,10 @@ This endpoint allows users to generate images or videos based on prompts and art
 
 ### Response Fields
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `s3_key` | string | S3 key where the generated content is stored |
-| `model` | string | The model used for generation |
+| Field              | Type   | Description                                                  |
+| ------------------ | ------ | ------------------------------------------------------------ |
+| `s3_key`           | string | S3 key where the generated content is stored                 |
+| `model`            | string | The model used for generation                                |
 | `image_size_bytes` | number | Size of the generated image in bytes (image generation only) |
 
 ### Error Responses
@@ -102,27 +102,48 @@ This endpoint allows users to generate images or videos based on prompts and art
 }
 ```
 
+## Credit Requirements
+
+The chat endpoint now deducts credits based on the model used:
+
+### Image Generation Credits
+
+| Model        | Credits Required |
+| ------------ | ---------------- |
+| `recraft-v3` | 1 credit         |
+| `imagen`     | 2 credits        |
+
+### Video Generation Credits
+
+| Model               | Credits Required |
+| ------------------- | ---------------- |
+| `kling-v2.1-master` | 20 credits       |
+| `gen4_turbo`        | 2.5 credits      |
+
+**Note**: Credits are deducted before generation begins. If generation fails, the credits are still consumed but the failure is recorded in the database.
+
 ## Supported Models
 
 ### Image Generation Models
 
-| Model | Provider | Description | Image Size |
-|-------|----------|-------------|------------|
-| `recraft-v3` | Recraft AI | Realistic photographic image generation | 1024x1024 |
-| `imagen` | Google Gemini | High-quality image generation | Variable |
+| Model        | Provider      | Description                             | Image Size |
+| ------------ | ------------- | --------------------------------------- | ---------- |
+| `recraft-v3` | Recraft AI    | Realistic photographic image generation | 1024x1024  |
+| `imagen`     | Google Gemini | High-quality image generation           | Variable   |
 
 ### Video Generation Models
 
-| Model | Provider | Description | Duration | Resolution |
-|-------|----------|-------------|----------|------------|
-| `kling-v2.1-master` | Fal.ai | Image-to-video generation | 5 seconds | Variable |
-| `gen4_turbo` | RunwayML | Advanced video generation | 5 seconds | 1280:720 |
+| Model               | Provider | Description               | Duration  | Resolution |
+| ------------------- | -------- | ------------------------- | --------- | ---------- |
+| `kling-v2.1-master` | Fal.ai   | Image-to-video generation | 5 seconds | Variable   |
+| `gen4_turbo`        | RunwayML | Advanced video generation | 5 seconds | 1280:720   |
 
 ## Examples
 
 ### Image Generation Example
 
 **Request:**
+
 ```bash
 curl -X POST http://localhost:3000/chat \
   -H "Content-Type: application/json" \
@@ -138,17 +159,23 @@ curl -X POST http://localhost:3000/chat \
 ```
 
 **Response:**
+
 ```json
 {
   "s3_key": "user-123/images/abc123-def456.png",
   "model": "recraft-v3",
-  "image_size_bytes": 245760
+  "image_size_bytes": 245760,
+  "credits": {
+    "used": 1,
+    "balance": 49.5
+  }
 }
 ```
 
 ### Video Generation Example
 
 **Request:**
+
 ```bash
 curl -X POST http://localhost:3000/chat \
   -H "Content-Type: application/json" \
@@ -165,18 +192,27 @@ curl -X POST http://localhost:3000/chat \
 ```
 
 **Response:**
+
 ```json
 {
   "s3_key": "user-123/videos/xyz789-uvw012.mp4",
-  "model": "kling-v2.1-master"
+  "model": "kling-v2.1-master",
+  "credits": {
+    "used": 20,
+    "balance": 29.5
+  }
 }
 ```
 
 ## Notes
 
-- **Image Generation**: The service automatically uploads generated images to S3 and returns the S3 key for future reference.
-- **Video Generation**: Requires an existing image S3 key as input. The service downloads the image, processes it with the video model, and uploads the result back to S3.
-- **Prompt Length Limits**: 
+- **Credit System**: Credits are automatically deducted before generation begins based on the selected model. Users must have sufficient credits to proceed.
+- **Database Persistence**: All generation requests and responses are saved to the database, including both successful and failed attempts for tracking purposes.
+- **Image Generation**: The service automatically uploads generated images to S3, saves the generation record to the database, and returns the S3 key for future reference.
+- **Video Generation**: Requires an existing image S3 key as input. The service downloads the image, processes it with the video model, uploads the result back to S3, and saves both the video record and file reference to the database.
+- **Error Tracking**: Failed generation attempts are also recorded in the database with error messages for debugging and analytics purposes.
+- **Insufficient Credits**: If a user doesn't have enough credits, the request will fail with a 400 Bad Request error before any generation is attempted.
+- **Prompt Length Limits**:
   - Kling model: Animation prompts are automatically trimmed to 1500 characters
   - RunwayML model: Animation prompts are automatically trimmed to 950 characters
 - **Error Handling**: The service provides specific error messages for different failure scenarios and logs detailed information for debugging.
@@ -189,6 +225,7 @@ Currently, no explicit rate limits are implemented. However, the underlying AI m
 ## Dependencies
 
 This endpoint requires the following environment variables:
+
 - `S3_BUCKET_NAME`: S3 bucket for storing generated content
 - `AWS_REGION`: AWS region for S3 operations
 - `AWS_ACCESS_KEY_ID`: AWS access key
@@ -196,4 +233,4 @@ This endpoint requires the following environment variables:
 - `RECRAFT_API_KEY`: API key for Recraft AI
 - `GEMINI_API_KEY`: API key for Google Gemini
 - `FAL_KEY`: API key for Fal.ai
-- `RUNWAYML_API_KEY`: API key for RunwayML 
+- `RUNWAYML_API_KEY`: API key for RunwayML

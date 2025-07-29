@@ -7,4 +7,8 @@ export interface TypeConcept {
 
 export interface GeneratedResponse {
   concepts: TypeConcept[];
+  credits: {
+    used: number;
+    balance: number;
+  };
 }
