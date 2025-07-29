@@ -348,11 +348,18 @@ export class VideoGenService {
             `Successfully saved video generation: ${savedVideo.id} with ${savedVideoFiles.length} files`,
           );
 
+          // Get user's new balance after credit deduction
+          const newBalance = await this.creditService.getUserBalance(userId);
+
           return {
             success: true,
             s3Keys: agentResult.s3Keys,
             model: agentResult.model,
             totalVideos: agentResult.totalVideos,
+            credits: {
+              used: actualCreditsUsed,
+              balance: newBalance.toNumber(),
+            },
           };
         } else {
           this.logger.error(

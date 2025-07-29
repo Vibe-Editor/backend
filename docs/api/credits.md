@@ -128,7 +128,7 @@
   {
     "userId": "cluser123",
     "amount": 100,
-    "type": "GRANT",
+    "type": "PURCHASE",
     "description": "Welcome bonus credits"
   }
   ```

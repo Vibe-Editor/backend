@@ -11,6 +11,7 @@ import {
 import { run } from '@openai/agents';
 import { ProjectHelperService } from '../../common/services/project-helper.service';
 import { PrismaClient } from '../../../generated/prisma';
+import { CreditService } from '../credits/credit.service';
 import { createOpenAIEditAgent } from './agents/openai-edit.agent';
 import { createRecraftImg2ImgAgent } from './agents/recraft-img2img.agent';
 import { getS3ImageUrl } from './agents/s3.service';
@@ -21,7 +22,10 @@ export class CharacterGenService {
   private readonly logger = new Logger(CharacterGenService.name);
   private readonly prisma = new PrismaClient();
 
-  constructor(private readonly projectHelperService: ProjectHelperService) {
+  constructor(
+    private readonly projectHelperService: ProjectHelperService,
+    private readonly creditService: CreditService,
+  ) {
     try {
       // Validate environment variables
       if (!process.env.OPENAI_API_KEY) {
@@ -98,8 +102,19 @@ export class CharacterGenService {
     }
 
     let characterGeneration: any = null;
+    let creditTransactionId: string | null = null;
 
     try {
+      // Deduct credits before generation
+      creditTransactionId = await this.creditService.deductCredits(
+        userId,
+        'CHARACTER_GENERATION',
+        'recraft-character',
+        createCharacterDto.uuid,
+        false,
+        `Character generation using recraft-character model`,
+      );
+
       // Reference images are already uploaded by the client; use provided S3 keys
       const referenceImageS3Keys: string[] =
         createCharacterDto.reference_images;
@@ -117,6 +132,8 @@ export class CharacterGenService {
           message: 'Character generation in progress',
           projectId,
           userId,
+          creditsUsed: 6,
+          creditTransactionId: creditTransactionId,
         },
       });
 
@@ -300,6 +317,9 @@ export class CharacterGenService {
           },
         );
 
+        // Get user's new balance after credit deduction
+        const newBalance = await this.creditService.getUserBalance(userId);
+
         return {
           success: true,
           character_id: updatedCharacter.id,
@@ -311,6 +331,10 @@ export class CharacterGenService {
           ),
           model: 'gpt-image-1-recraft-character-gen',
           message: 'Character generated successfully',
+          credits: {
+            used: 6,
+            balance: newBalance.toNumber(),
+          },
         };
       } else {
         throw new InternalServerErrorException(
@@ -325,14 +349,36 @@ export class CharacterGenService {
         stack: error.stack,
       });
 
-      // Update database with error
-      await this.prisma.characterGeneration.update({
-        where: { id: characterGeneration.id },
-        data: {
-          success: false,
-          message: error.message || 'Character generation failed',
-        },
-      });
+      // Update database with error and credit information
+      if (characterGeneration) {
+        await this.prisma.characterGeneration.update({
+          where: { id: characterGeneration.id },
+          data: {
+            success: false,
+            message: error.message || 'Character generation failed',
+            creditsUsed: creditTransactionId ? 6 : 0,
+            creditTransactionId: creditTransactionId,
+          },
+        });
+      } else {
+        // If character generation record wasn't created yet, create it with failure info
+        await this.prisma.characterGeneration.create({
+          data: {
+            name: createCharacterDto.name,
+            description: createCharacterDto.description,
+            referenceImages: createCharacterDto.reference_images,
+            visualPrompt: createCharacterDto.visual_prompt,
+            artStyle: createCharacterDto.art_style,
+            uuid: createCharacterDto.uuid,
+            success: false,
+            message: error.message || 'Character generation failed',
+            projectId,
+            userId,
+            creditsUsed: creditTransactionId ? 6 : 0,
+            creditTransactionId: creditTransactionId,
+          },
+        });
+      }
 
       if (
         error instanceof BadRequestException ||

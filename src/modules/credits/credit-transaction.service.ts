@@ -271,10 +271,7 @@ export class CreditTransactionService {
           case CreditTransactionType.REFUND:
             totalRefunded = totalRefunded.add(amount);
             break;
-          case CreditTransactionType.GRANT:
           case CreditTransactionType.PURCHASE:
-          case CreditTransactionType.SUBSCRIPTION:
-          case CreditTransactionType.BONUS:
             totalGranted = totalGranted.add(amount);
             break;
         }

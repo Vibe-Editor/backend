@@ -222,7 +222,16 @@ export class ConceptWriterService {
           `Successfully saved ${savedConcepts.length} concepts and conversation history`,
         );
 
-        return parsed;
+        // Get user's new balance after credit deduction
+        const newBalance = await this.creditService.getUserBalance(userId);
+
+        return {
+          ...parsed,
+          credits: {
+            used: actualCreditsUsed,
+            balance: newBalance.toNumber(),
+          },
+        };
       } catch (parseError) {
         this.logger.error(`JSON parsing error: ${parseError.message}`);
         this.logger.error(`Attempted to parse: ${text}`);

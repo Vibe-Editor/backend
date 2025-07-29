@@ -166,7 +166,7 @@ export class VoiceoverService {
 
       try {
         // ElevenLabs uses fixed pricing for voiceover
-        actualCreditsUsed = 5.5;
+        actualCreditsUsed = 2;
 
         // Deduct credits for voiceover generation
         creditTransactionId = await this.creditService.deductCredits(
@@ -236,11 +236,19 @@ export class VoiceoverService {
       this.logger.log(
         `Voiceover generation completed successfully [${operationId}]`,
       );
+
+      // Get user's new balance after credit deduction
+      const newBalance = await this.creditService.getUserBalance(userId);
+
       return {
         success: true,
         s3_key: s3Key,
         message: 'Voiceover generated and uploaded successfully',
         audio_size_bytes: audioBuffer.length,
+        credits: {
+          used: actualCreditsUsed,
+          balance: newBalance.toNumber(),
+        },
       };
     } catch (error) {
       this.logger.error(`Voiceover generation failed [${operationId}]`, {

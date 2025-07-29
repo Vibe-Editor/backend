@@ -22,7 +22,11 @@
 
   ```json
   {
-    "summary": "A comprehensive summary focused on health benefits for young professionals..."
+    "summary": "A comprehensive summary focused on health benefits for young professionals...",
+    "credits": {
+      "used": 1,
+      "balance": 49.0
+    }
   }
   ```
 

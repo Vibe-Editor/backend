@@ -310,6 +310,10 @@ export class SegmentationService {
     segments: TypeSegment[];
     artStyle: string;
     model: string;
+    credits: {
+      used: number;
+      balance: number;
+    };
   }> {
     // Use projectId from body if provided, otherwise ensure user has a project (create default if none exists)
     const projectId = segmentationDto.projectId
@@ -574,10 +578,17 @@ export class SegmentationService {
             `Successfully saved segmentation: ${savedSegmentation.id} with ${savedSegments.length} segments`,
           );
 
+          // Get user's new balance after credit deduction
+          const newBalance = await this.creditService.getUserBalance(userId);
+
           return {
             segments: segmentedScript.segments,
             artStyle: agentResult.artStyle,
             model: agentResult.model,
+            credits: {
+              used: actualCreditsUsed,
+              balance: newBalance.toNumber(),
+            },
           };
         }
       } catch (parseError) {

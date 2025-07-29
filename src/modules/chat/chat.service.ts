@@ -4,7 +4,8 @@ import {
   BadRequestException,
   OnModuleDestroy,
 } from '@nestjs/common';
-import { PrismaClient } from '../../generated/prisma';
+import { PrismaClient } from '../../../generated/prisma';
+import { CreditService } from '../credits/credit.service';
 import { recraftImageGen } from './image-generation/recraft.model';
 import { ChatDto } from './dto/chat.dto';
 import { imagenImageGen } from './image-generation/imagen.model';
@@ -16,6 +17,8 @@ const logger = new Logger('ChatService');
 @Injectable()
 export class ChatService implements OnModuleDestroy {
   private readonly prisma = new PrismaClient();
+
+  constructor(private readonly creditService: CreditService) {}
 
   async chat(chatDto: ChatDto) {
     const {
@@ -29,9 +32,23 @@ export class ChatService implements OnModuleDestroy {
       projectId,
     } = chatDto;
 
+    // Use uuid as userId since there's no auth
+    const userId = uuid;
+    let creditTransactionId: string | null = null;
+
     if (gen_type === 'image') {
       if (model === 'recraft-v3') {
         try {
+          // Deduct credits before generation
+          creditTransactionId = await this.creditService.deductCredits(
+            userId,
+            'IMAGE_GENERATION',
+            'recraft',
+            uuid,
+            false,
+            `Image generation using recraft-v3 model`,
+          );
+
           const image = await recraftImageGen(uuid, visual_prompt, art_style);
 
           // Save to database
@@ -45,11 +62,22 @@ export class ChatService implements OnModuleDestroy {
               model: image.model,
               imageSizeBytes: image.image_size_bytes,
               projectId: projectId,
-              userId: uuid, // Using uuid as userId for now since there's no auth
+              userId: uuid,
+              creditsUsed: 1,
+              creditTransactionId: creditTransactionId,
             },
           });
 
-          return image;
+          // Get user's new balance after credit deduction
+          const newBalance = await this.creditService.getUserBalance(userId);
+
+          return {
+            ...image,
+            credits: {
+              used: 1,
+              balance: newBalance.toNumber(),
+            },
+          };
         } catch (error) {
           // Save failed attempt to database
           await this.prisma.generatedImage.create({
@@ -62,12 +90,24 @@ export class ChatService implements OnModuleDestroy {
               message: error.message,
               projectId: projectId,
               userId: uuid,
+              creditsUsed: creditTransactionId ? 1 : 0,
+              creditTransactionId: creditTransactionId,
             },
           });
           throw new Error('Failed to generate image');
         }
       } else if (model === 'imagen') {
         try {
+          // Deduct credits before generation
+          creditTransactionId = await this.creditService.deductCredits(
+            userId,
+            'IMAGE_GENERATION',
+            'imagen',
+            uuid,
+            false,
+            `Image generation using imagen model`,
+          );
+
           const image = await imagenImageGen(uuid, visual_prompt, art_style);
 
           // Save to database
@@ -82,10 +122,21 @@ export class ChatService implements OnModuleDestroy {
               imageSizeBytes: image.image_size_bytes,
               projectId: projectId,
               userId: uuid,
+              creditsUsed: 2,
+              creditTransactionId: creditTransactionId,
             },
           });
 
-          return image;
+          // Get user's new balance after credit deduction
+          const newBalance = await this.creditService.getUserBalance(userId);
+
+          return {
+            ...image,
+            credits: {
+              used: 2,
+              balance: newBalance.toNumber(),
+            },
+          };
         } catch (error) {
           // Save failed attempt to database
           await this.prisma.generatedImage.create({
@@ -98,6 +149,8 @@ export class ChatService implements OnModuleDestroy {
               message: error.message,
               projectId: projectId,
               userId: uuid,
+              creditsUsed: creditTransactionId ? 2 : 0,
+              creditTransactionId: creditTransactionId,
             },
           });
           throw new Error('Failed to generate image');
@@ -112,6 +165,16 @@ export class ChatService implements OnModuleDestroy {
 
       if (model === 'kling-v2.1-master') {
         try {
+          // Deduct credits before generation
+          creditTransactionId = await this.creditService.deductCredits(
+            userId,
+            'VIDEO_GENERATION',
+            'kling',
+            uuid,
+            false,
+            `Video generation using kling-v2.1-master model`,
+          );
+
           const video = await klingVideoGen(
             uuid,
             animation_prompt,
@@ -131,6 +194,8 @@ export class ChatService implements OnModuleDestroy {
               totalVideos: 1,
               projectId: projectId,
               userId: uuid,
+              creditsUsed: 20,
+              creditTransactionId: creditTransactionId,
             },
           });
 
@@ -142,7 +207,16 @@ export class ChatService implements OnModuleDestroy {
             },
           });
 
-          return video;
+          // Get user's new balance after credit deduction
+          const newBalance = await this.creditService.getUserBalance(userId);
+
+          return {
+            ...video,
+            credits: {
+              used: 20,
+              balance: newBalance.toNumber(),
+            },
+          };
         } catch (error) {
           // Save failed attempt to database
           await this.prisma.generatedVideo.create({
@@ -155,12 +229,24 @@ export class ChatService implements OnModuleDestroy {
               model: model,
               projectId: projectId,
               userId: uuid,
+              creditsUsed: creditTransactionId ? 20 : 0,
+              creditTransactionId: creditTransactionId,
             },
           });
           throw new Error('Failed to generate video');
         }
       } else if (model === 'gen4_turbo') {
         try {
+          // Deduct credits before generation
+          creditTransactionId = await this.creditService.deductCredits(
+            userId,
+            'VIDEO_GENERATION',
+            'runwayml',
+            uuid,
+            false,
+            `Video generation using gen4_turbo model`,
+          );
+
           const video = await runwayVideoGen(
             uuid,
             animation_prompt,
@@ -180,6 +266,8 @@ export class ChatService implements OnModuleDestroy {
               totalVideos: 1,
               projectId: projectId,
               userId: uuid,
+              creditsUsed: 2.5,
+              creditTransactionId: creditTransactionId,
             },
           });
 
@@ -191,7 +279,16 @@ export class ChatService implements OnModuleDestroy {
             },
           });
 
-          return video;
+          // Get user's new balance after credit deduction
+          const newBalance = await this.creditService.getUserBalance(userId);
+
+          return {
+            ...video,
+            credits: {
+              used: 2.5,
+              balance: newBalance.toNumber(),
+            },
+          };
         } catch (error) {
           // Save failed attempt to database
           await this.prisma.generatedVideo.create({
@@ -204,6 +301,8 @@ export class ChatService implements OnModuleDestroy {
               model: model,
               projectId: projectId,
               userId: uuid,
+              creditsUsed: creditTransactionId ? 2.5 : 0,
+              creditTransactionId: creditTransactionId,
             },
           });
           throw new Error('Failed to generate video');

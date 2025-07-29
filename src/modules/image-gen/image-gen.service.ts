@@ -462,12 +462,19 @@ export class ImageGenService {
             `Successfully saved image generation: ${savedImage.id}`,
           );
 
+          // Get user's new balance after credit deduction
+          const newBalance = await this.creditService.getUserBalance(userId);
+
           return {
             success: true,
             s3_key: agentResult.s3_key,
             model: agentResult.model,
             message: 'Image generated and uploaded successfully',
             image_size_bytes: agentResult.image_size_bytes,
+            credits: {
+              used: actualCreditsUsed,
+              balance: newBalance.toNumber(),
+            },
           };
         }
       } catch (parseError) {

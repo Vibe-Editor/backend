@@ -81,10 +81,7 @@ model CreditTransaction {
 enum CreditTransactionType {
   DEDUCTION
   REFUND
-  GRANT
   PURCHASE
-  SUBSCRIPTION
-  BONUS
 }
 
 enum CreditTransactionStatus {

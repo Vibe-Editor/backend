@@ -137,7 +137,16 @@ export class GetWebInfoService {
 
       console.log(`Successfully saved web research: ${savedWebResearch.id}`);
 
-      return data;
+      // Get user's new balance after credit deduction
+      const newBalance = await this.creditService.getUserBalance(userId);
+
+      return {
+        ...data,
+        credits: {
+          used: actualCreditsUsed,
+          balance: newBalance.toNumber(),
+        },
+      };
     } catch (error) {
       throw new Error(`Failed to get web info: ${error.message}`);
     }

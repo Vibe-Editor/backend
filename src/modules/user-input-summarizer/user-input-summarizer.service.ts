@@ -43,7 +43,7 @@ export class UserInputSummarizerService {
   async summarizeContent(
     userInputSummarizerDto: UserInputSummarizerDto,
     userId: string,
-  ): Promise<{ summary: string }> {
+  ): Promise<{ summary: string; credits: { used: number; balance: number } }> {
     // Use projectId from body - no fallback project creation logic
     const { original_content, user_input, projectId } = userInputSummarizerDto;
     this.logger.log(`Using project ${projectId} for content summarization`);
@@ -218,7 +218,16 @@ Create a comprehensive summary that prioritizes user input when conflicts exist 
         `Content summarization completed successfully in ${duration}ms`,
       );
 
-      return { summary: summary };
+      // Get user's new balance after credit deduction
+      const newBalance = await this.creditService.getUserBalance(userId);
+
+      return {
+        summary: summary,
+        credits: {
+          used: actualCreditsUsed,
+          balance: newBalance.toNumber(),
+        },
+      };
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(

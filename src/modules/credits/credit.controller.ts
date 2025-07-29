@@ -57,8 +57,8 @@ export class CreditController {
   @Get('history/:userId')
   async getCreditHistory(
     @Param('userId') userId: string,
-    @Query('page', ParseIntPipe) page: number = 1,
-    @Query('limit', ParseIntPipe) limit: number = 20,
+    @Query('page', new ParseIntPipe({ optional: true })) page: number = 1,
+    @Query('limit', new ParseIntPipe({ optional: true })) limit: number = 20,
   ) {
     const result = await this.creditService.getCreditHistory(
       userId,
@@ -115,7 +115,7 @@ export class CreditController {
     const transactionId = await this.creditService.addCredits(
       addCreditsDto.userId,
       addCreditsDto.amount,
-      addCreditsDto.type || CreditTransactionType.GRANT,
+      addCreditsDto.type || CreditTransactionType.PURCHASE,
       addCreditsDto.description,
     );
 

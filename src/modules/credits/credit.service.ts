@@ -24,6 +24,10 @@ const PRICING = {
     kling: { regular: 20, edit: 30 },
     veo3: { regular: 37.5, edit: 0 },
   },
+  // Character Generation
+  CHARACTER_GENERATION: {
+    'recraft-character': { regular: 6, edit: 12 }, // Sprite sheet + final character generation
+  },
   // Text Operations
   TEXT_OPERATIONS: {
     perplexity: { regular: 1, edit: 1 },
@@ -33,7 +37,7 @@ const PRICING = {
   },
   // Voiceover
   VOICEOVER_GENERATION: {
-    elevenlabs: { regular: 5.5, edit: 5.5 },
+    elevenlabs: { regular: 2, edit: 2 },
   },
 };
 
@@ -174,7 +178,7 @@ export class CreditService {
   async addCredits(
     userId: string,
     amount: number,
-    type: CreditTransactionType = CreditTransactionType.GRANT,
+    type: CreditTransactionType = CreditTransactionType.PURCHASE,
     description?: string,
   ): Promise<string> {
     try {

@@ -10,7 +10,7 @@ POST /chat
 
 ## Overview
 
-This endpoint allows users to generate images or videos based on prompts and art styles. The service automatically handles the generation process and uploads the results to S3 storage.
+This endpoint allows users to generate images or videos based on prompts and art styles. The service automatically handles the generation process, uploads the results to S3 storage, deducts credits based on the model used, and saves the generation records to the database for persistence and tracking.
 
 ## Request
 
@@ -102,6 +102,26 @@ This endpoint allows users to generate images or videos based on prompts and art
 }
 ```
 
+## Credit Requirements
+
+The chat endpoint now deducts credits based on the model used:
+
+### Image Generation Credits
+
+| Model        | Credits Required |
+| ------------ | ---------------- |
+| `recraft-v3` | 1 credit         |
+| `imagen`     | 2 credits        |
+
+### Video Generation Credits
+
+| Model               | Credits Required |
+| ------------------- | ---------------- |
+| `kling-v2.1-master` | 20 credits       |
+| `gen4_turbo`        | 2.5 credits      |
+
+**Note**: Credits are deducted before generation begins. If generation fails, the credits are still consumed but the failure is recorded in the database.
+
 ## Supported Models
 
 ### Image Generation Models
@@ -144,7 +164,11 @@ curl -X POST http://localhost:3000/chat \
 {
   "s3_key": "user-123/images/abc123-def456.png",
   "model": "recraft-v3",
-  "image_size_bytes": 245760
+  "image_size_bytes": 245760,
+  "credits": {
+    "used": 1,
+    "balance": 49.5
+  }
 }
 ```
 
@@ -172,14 +196,22 @@ curl -X POST http://localhost:3000/chat \
 ```json
 {
   "s3_key": "user-123/videos/xyz789-uvw012.mp4",
-  "model": "kling-v2.1-master"
+  "model": "kling-v2.1-master",
+  "credits": {
+    "used": 20,
+    "balance": 29.5
+  }
 }
 ```
 
 ## Notes
 
-- **Image Generation**: The service automatically uploads generated images to S3 and returns the S3 key for future reference.
-- **Video Generation**: Requires an existing image S3 key as input. The service downloads the image, processes it with the video model, and uploads the result back to S3.
+- **Credit System**: Credits are automatically deducted before generation begins based on the selected model. Users must have sufficient credits to proceed.
+- **Database Persistence**: All generation requests and responses are saved to the database, including both successful and failed attempts for tracking purposes.
+- **Image Generation**: The service automatically uploads generated images to S3, saves the generation record to the database, and returns the S3 key for future reference.
+- **Video Generation**: Requires an existing image S3 key as input. The service downloads the image, processes it with the video model, uploads the result back to S3, and saves both the video record and file reference to the database.
+- **Error Tracking**: Failed generation attempts are also recorded in the database with error messages for debugging and analytics purposes.
+- **Insufficient Credits**: If a user doesn't have enough credits, the request will fail with a 400 Bad Request error before any generation is attempted.
 - **Prompt Length Limits**:
   - Kling model: Animation prompts are automatically trimmed to 1500 characters
   - RunwayML model: Animation prompts are automatically trimmed to 950 characters
