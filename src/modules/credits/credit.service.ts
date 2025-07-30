@@ -113,11 +113,10 @@ export class CreditService {
 
     try {
       return await this.prisma.$transaction(async (tx) => {
-        // Check user credits
-        const user = await tx.user.findUnique({
-          where: { id: userId },
-          select: { credits: true },
-        });
+        // Lock the user row for update to prevent race conditions
+        const [user] = await tx.$queryRaw<
+          Array<{ credits: Decimal }>
+        >`SELECT credits FROM "User" WHERE id = ${userId} FOR UPDATE`;
 
         if (!user) {
           throw new BadRequestException('User not found');
