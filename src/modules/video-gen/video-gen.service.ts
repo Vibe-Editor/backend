@@ -10,7 +10,7 @@ import { VideoGenDto } from './dto/video-gen.dto';
 import { UpdateVideoGenDto } from './dto/update-video-gen.dto';
 import { Agent, handoff, run } from '@openai/agents';
 import { ProjectHelperService } from '../../common/services/project-helper.service';
-import { PrismaClient, CreditTransactionType } from '../../../generated/prisma';
+import { PrismaClient } from '../../../generated/prisma';
 import { Decimal } from '@prisma/client/runtime/library';
 import { createVeo2Agent } from './agents/veo2.agent';
 import { createRunwayMLAgent } from './agents/runwayml.agent';
@@ -116,7 +116,6 @@ export class VideoGenService {
 
     let creditTransactionId: string | null = null;
     let modelUsed: string | null = null;
-    let actualCreditsUsed: number | null = null;
 
     try {
       if (!animation_prompt || !imageS3Key || !uuid) {
@@ -130,14 +129,10 @@ export class VideoGenService {
         );
       }
 
-      // ===== CREDIT SYSTEM INTEGRATION =====
-      this.logger.log(
-        `Checking and deducting credits for video generation [${uuid}]`,
-      );
+      // ===== ATOMIC CREDIT DEDUCTION =====
+      this.logger.log(`Deducting credits for video generation [${uuid}]`);
 
-      // Deduct credits upfront for the most expensive model (veo2)
-      // The deductCredits function will handle validation internally
-      // We'll refund the difference later if a cheaper model is used
+      // Deduct credits for most expensive model upfront (prevents race conditions)
       creditTransactionId = await this.creditService.deductCredits(
         userId,
         'VIDEO_GENERATION',
@@ -150,7 +145,7 @@ export class VideoGenService {
       this.logger.log(
         `Successfully deducted 25 credits upfront for video generation. Transaction ID: ${creditTransactionId} [${uuid}]`,
       );
-      // ===== END CREDIT SYSTEM =====
+      // ===== END CREDIT DEDUCTION =====
 
       this.logger.log('Running triage agent to determine model selection');
       const result = await run(triageAgent, [
@@ -207,7 +202,7 @@ export class VideoGenService {
             },
           );
 
-          // ===== CREDIT ADJUSTMENT =====
+          // ===== CREDIT ADJUSTMENT (REFUND EXCESS) =====
           this.logger.log(
             `Adjusting credits for successful video generation [${uuid}]`,
           );
@@ -249,15 +244,15 @@ export class VideoGenService {
 
             if (refundAmount > 0) {
               // Refund excess credits
-              const refundTransactionId = await this.creditService.addCredits(
+              await this.creditService.addCredits(
                 userId,
                 refundAmount,
-                CreditTransactionType.REFUND,
+                'REFUND',
                 `Refund excess credits: used ${modelUsed} (${actualCreditsUsed}) instead of veo2 (25)`,
               );
 
               this.logger.log(
-                `Refunded ${refundAmount} excess credits. Actual usage: ${actualCreditsUsed} credits for ${modelUsed}. Refund Transaction ID: ${refundTransactionId} [${uuid}]`,
+                `Refunded ${refundAmount} excess credits. Actual usage: ${actualCreditsUsed} credits for ${modelUsed} [${uuid}]`,
               );
             } else {
               this.logger.log(
@@ -375,27 +370,43 @@ export class VideoGenService {
         stack: error.stack,
       });
 
-      // Refund credits if they were deducted
-      if (creditTransactionId) {
-        try {
-          await this.creditService.refundCredits(
+      // REFUND CREDITS since we deducted upfront
+      try {
+        await this.creditService.addCredits(
+          userId,
+          25, // We deducted 25 credits upfront for veo2 pricing
+          'REFUND',
+          `Video generation failed - refunding pre-deducted credits [${uuid}]`,
+        );
+        this.logger.log(
+          `Refunded 25 credits due to failed video generation [${uuid}]`,
+        );
+      } catch (refundError) {
+        this.logger.error(
+          `Failed to refund credits after video generation failure [${uuid}]:`,
+          refundError,
+        );
+        // This is a critical error - user paid but got no service
+      }
+
+      // Save failed attempt to database for analytics
+      try {
+        await this.prisma.generatedVideo.create({
+          data: {
+            animationPrompt: animation_prompt,
+            artStyle: art_style,
+            imageS3Key: imageS3Key,
+            uuid: uuid,
+            success: false,
+            model: 'failed',
+            projectId,
             userId,
-            'VIDEO_GENERATION',
-            'veo2', // We always deduct veo2 amount upfront
-            uuid,
-            creditTransactionId,
-            false,
-            `Refund for failed video generation: ${error.message}`,
-          );
-          this.logger.log(
-            `Successfully refunded 25 credits for failed video generation. User: ${userId}, Operation: ${uuid}`,
-          );
-        } catch (refundError) {
-          this.logger.error(
-            `Failed to refund credits for user ${userId}, operation ${uuid}:`,
-            refundError,
-          );
-        }
+            creditsUsed: new Decimal(0), // 0 because no credits were deducted
+            creditTransactionId: null,
+          },
+        });
+      } catch (dbError) {
+        this.logger.error(`Failed to save error record: ${dbError.message}`);
       }
 
       if (error instanceof BadRequestException) {
