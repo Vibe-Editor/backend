@@ -414,30 +414,23 @@ Generate the visual prompt:`,
       : await this.projectHelperService.ensureUserHasProject(userId);
     console.log(`Using project ${projectId} for segmentation`);
 
-    // ===== CREDIT SYSTEM INTEGRATION =====
-    console.log(`Checking user credits before script segmentation`);
+    // ===== CREDIT DEDUCTION =====
+    console.log(`Deducting credits for script segmentation`);
 
-    // Check credits for segmentation (note: this is the more expensive operation)
-    const creditCheck = await this.creditService.checkUserCredits(
+    // Deduct credits first - this handles validation internally
+    let creditTransactionId = await this.creditService.deductCredits(
       userId,
       'TEXT_OPERATIONS',
       'segmentation',
+      `segmentation-${Date.now()}`,
       false, // we'll handle edit calls separately if needed
+      `Script segmentation with AI models`,
     );
-
-    if (!creditCheck.hasEnoughCredits) {
-      console.error(
-        `Insufficient credits for user ${userId}. Required: ${creditCheck.requiredCredits}, Available: ${creditCheck.currentBalance}`,
-      );
-      throw new BadRequestException(
-        `Insufficient credits. Required: ${creditCheck.requiredCredits}, Available: ${creditCheck.currentBalance}`,
-      );
-    }
 
     console.log(
-      `Credit validation passed. User ${userId} has ${creditCheck.currentBalance} credits available`,
+      `Successfully deducted credits for segmentation. Transaction ID: ${creditTransactionId}`,
     );
-    // ===== END CREDIT VALIDATION =====
+    // ===== END CREDIT DEDUCTION =====
 
     const createGeminiAgent = () =>
       new Agent<{ prompt: string; negative_prompt: string }>({
@@ -589,41 +582,6 @@ Generate the visual prompt:`,
             negative_prompt: segmentationDto.negative_prompt,
           });
 
-          // ===== CREDIT DEDUCTION =====
-          console.log(`Deducting credits for successful script segmentation`);
-
-          let creditTransactionId: string;
-          let actualCreditsUsed: number;
-
-          try {
-            // Segmentation uses fixed pricing
-            actualCreditsUsed = 3; // regular segmentation cost
-
-            // Deduct credits for segmentation
-            creditTransactionId = await this.creditService.deductCredits(
-              userId,
-              'TEXT_OPERATIONS',
-              'segmentation',
-              `segmentation-${Date.now()}`, // operationId
-              false, // isEditCall - regular segmentation
-              `Script segmentation using ${agentResult.model}`,
-            );
-
-            console.log(
-              `Successfully deducted ${actualCreditsUsed} credits for segmentation. Transaction ID: ${creditTransactionId}`,
-            );
-          } catch (creditError) {
-            console.error(
-              `Failed to deduct credits after successful segmentation:`,
-              creditError,
-            );
-            // Note: We still continue and save the segmentation since generation was successful
-            // The credit transaction can be handled manually if needed
-            creditTransactionId = null;
-            actualCreditsUsed = 0;
-          }
-          // ===== END CREDIT DEDUCTION =====
-
           // Save to database
           console.log(`Saving segmentation to database`);
           const savedSegmentation = await this.prisma.videoSegmentation.create({
@@ -637,8 +595,7 @@ Generate the visual prompt:`,
               userId,
               // Add credit tracking
               creditTransactionId: creditTransactionId,
-              creditsUsed:
-                actualCreditsUsed > 0 ? new Decimal(actualCreditsUsed) : null,
+              creditsUsed: new Decimal(3), // Segmentation uses fixed pricing
             },
           });
 
@@ -691,7 +648,7 @@ Generate the visual prompt:`,
             artStyle: agentResult.artStyle,
             model: agentResult.model,
             credits: {
-              used: actualCreditsUsed,
+              used: 3, // Segmentation uses fixed pricing
               balance: newBalance.toNumber(),
             },
           };
@@ -706,6 +663,29 @@ Generate the visual prompt:`,
       );
     } catch (error) {
       console.error('Error during agent execution:', error);
+
+      // Refund credits if they were deducted
+      if (creditTransactionId) {
+        try {
+          await this.creditService.refundCredits(
+            userId,
+            'TEXT_OPERATIONS',
+            'segmentation',
+            `segmentation-${Date.now()}`,
+            creditTransactionId,
+            false,
+            `Refund for failed segmentation: ${error.message}`,
+          );
+          console.log(
+            `Successfully refunded 3 credits for failed segmentation. User: ${userId}`,
+          );
+        } catch (refundError) {
+          console.error(
+            `Failed to refund credits for segmentation: ${refundError.message}`,
+          );
+        }
+      }
+
       if (error instanceof HttpException) throw error;
       throw new HttpException(
         'An unexpected error occurred.',

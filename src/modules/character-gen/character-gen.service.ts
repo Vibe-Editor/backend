@@ -349,6 +349,29 @@ export class CharacterGenService {
         stack: error.stack,
       });
 
+      // Refund credits if they were deducted
+      if (creditTransactionId) {
+        try {
+          await this.creditService.refundCredits(
+            userId,
+            'CHARACTER_GENERATION',
+            'recraft-character',
+            createCharacterDto.uuid,
+            creditTransactionId,
+            false,
+            `Refund for failed character generation: ${error.message}`,
+          );
+          this.logger.log(
+            `Successfully refunded 6 credits for failed character generation. User: ${userId}, Operation: ${createCharacterDto.uuid}`,
+          );
+        } catch (refundError) {
+          this.logger.error(
+            `Failed to refund credits for user ${userId}, operation ${createCharacterDto.uuid}:`,
+            refundError,
+          );
+        }
+      }
+
       // Update database with error and credit information
       if (characterGeneration) {
         await this.prisma.characterGeneration.update({
@@ -356,8 +379,8 @@ export class CharacterGenService {
           data: {
             success: false,
             message: error.message || 'Character generation failed',
-            creditsUsed: creditTransactionId ? 6 : 0,
-            creditTransactionId: creditTransactionId,
+            creditsUsed: 0, // Set to 0 since we refunded
+            creditTransactionId: null, // Clear transaction ID since refunded
           },
         });
       } else {
@@ -374,8 +397,8 @@ export class CharacterGenService {
             message: error.message || 'Character generation failed',
             projectId,
             userId,
-            creditsUsed: creditTransactionId ? 6 : 0,
-            creditTransactionId: creditTransactionId,
+            creditsUsed: 0, // Set to 0 since we refunded
+            creditTransactionId: null, // Clear transaction ID since refunded
           },
         });
       }

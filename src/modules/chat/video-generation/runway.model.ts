@@ -1,5 +1,8 @@
 import { Logger } from '@nestjs/common';
-import { getImageFromS3AsBase64, uploadVideoToS3 } from '../../video-gen/s3/s3.service';
+import {
+  getImageFromS3AsBase64,
+  uploadVideoToS3,
+} from '../../video-gen/s3/s3.service';
 import RunwayML from '@runwayml/sdk';
 
 const logger = new Logger('RunwayML Model');
@@ -78,7 +81,9 @@ export async function runwayVideoGen(
     const videoUrl = task.output[0];
     if (!videoUrl) {
       logger.error('RunwayML generation failed - no video URL in first output');
-      throw new Error('RunwayML video generation failed - no video URL returned');
+      throw new Error(
+        'RunwayML video generation failed - no video URL returned',
+      );
     }
 
     logger.log(`RunwayML video URL: ${videoUrl}`);
@@ -109,4 +114,4 @@ export async function runwayVideoGen(
     });
     throw error;
   }
-} 
+}

@@ -3,6 +3,7 @@ import {
   Logger,
   BadRequestException,
   OnModuleDestroy,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { PrismaClient } from '../../../generated/prisma';
 import { CreditService } from '../credits/credit.service';
@@ -79,6 +80,29 @@ export class ChatService implements OnModuleDestroy {
             },
           };
         } catch (error) {
+          // Refund credits if they were deducted
+          if (creditTransactionId) {
+            try {
+              await this.creditService.refundCredits(
+                userId,
+                'IMAGE_GENERATION',
+                'recraft',
+                uuid,
+                creditTransactionId,
+                false,
+                `Refund for failed image generation: ${error.message}`,
+              );
+              logger.log(
+                `Successfully refunded 1 credit for failed recraft generation. User: ${userId}, Operation: ${uuid}`,
+              );
+            } catch (refundError) {
+              logger.error(
+                `Failed to refund credits for user ${userId}, operation ${uuid}:`,
+                refundError,
+              );
+            }
+          }
+
           // Save failed attempt to database only if user exists
           try {
             await this.prisma.generatedImage.create({
@@ -91,16 +115,28 @@ export class ChatService implements OnModuleDestroy {
                 message: error.message,
                 projectId: projectId,
                 userId: userId,
-                creditsUsed: creditTransactionId ? 1 : 0,
-                creditTransactionId: creditTransactionId,
+                creditsUsed: 0, // Set to 0 since we refunded
+                creditTransactionId: null, // Clear transaction ID since refunded
               },
             });
           } catch (dbError) {
             logger.error(
-              `Failed to save error record to database: ${dbError.message}`,
+              `Failed to save error record to database: ${(dbError as Error).message}`,
             );
           }
-          throw new Error('Failed to generate image');
+
+          // If it's a known NestJS exception, rethrow it
+          if (
+            error instanceof BadRequestException ||
+            error instanceof InternalServerErrorException
+          ) {
+            throw error;
+          }
+
+          // Otherwise, throw the original error message as an internal server error
+          throw new InternalServerErrorException(
+            error.message || 'Failed to generate image.',
+          );
         }
       } else if (model === 'imagen') {
         try {
@@ -144,6 +180,29 @@ export class ChatService implements OnModuleDestroy {
             },
           };
         } catch (error) {
+          // Refund credits if they were deducted
+          if (creditTransactionId) {
+            try {
+              await this.creditService.refundCredits(
+                userId,
+                'IMAGE_GENERATION',
+                'imagen',
+                uuid,
+                creditTransactionId,
+                false,
+                `Refund for failed image generation: ${error.message}`,
+              );
+              logger.log(
+                `Successfully refunded 2 credits for failed imagen generation. User: ${userId}, Operation: ${uuid}`,
+              );
+            } catch (refundError) {
+              logger.error(
+                `Failed to refund credits for user ${userId}, operation ${uuid}:`,
+                refundError,
+              );
+            }
+          }
+
           // Save failed attempt to database only if user exists
           try {
             await this.prisma.generatedImage.create({
@@ -156,16 +215,28 @@ export class ChatService implements OnModuleDestroy {
                 message: error.message,
                 projectId: projectId,
                 userId: userId,
-                creditsUsed: creditTransactionId ? 2 : 0,
-                creditTransactionId: creditTransactionId,
+                creditsUsed: 0, // Set to 0 since we refunded
+                creditTransactionId: null, // Clear transaction ID since refunded
               },
             });
           } catch (dbError) {
             logger.error(
-              `Failed to save error record to database: ${dbError.message}`,
+              `Failed to save error record to database: ${(dbError as Error).message}`,
             );
           }
-          throw new Error('Failed to generate image');
+
+          // If it's a known NestJS exception, rethrow it
+          if (
+            error instanceof BadRequestException ||
+            error instanceof InternalServerErrorException
+          ) {
+            throw error;
+          }
+
+          // Otherwise, throw the original error message as an internal server error
+          throw new InternalServerErrorException(
+            (error as Error).message || 'Failed to generate image.',
+          );
         }
       }
     } else if (gen_type === 'video') {
@@ -230,6 +301,29 @@ export class ChatService implements OnModuleDestroy {
             },
           };
         } catch (error) {
+          // Refund credits if they were deducted
+          if (creditTransactionId) {
+            try {
+              await this.creditService.refundCredits(
+                userId,
+                'VIDEO_GENERATION',
+                'kling',
+                uuid,
+                creditTransactionId,
+                false,
+                `Refund for failed video generation: ${error.message}`,
+              );
+              logger.log(
+                `Successfully refunded 20 credits for failed kling generation. User: ${userId}, Operation: ${uuid}`,
+              );
+            } catch (refundError) {
+              logger.error(
+                `Failed to refund credits for user ${userId}, operation ${uuid}:`,
+                refundError,
+              );
+            }
+          }
+
           // Save failed attempt to database only if user exists
           try {
             await this.prisma.generatedVideo.create({
@@ -242,16 +336,28 @@ export class ChatService implements OnModuleDestroy {
                 model: model,
                 projectId: projectId,
                 userId: userId,
-                creditsUsed: creditTransactionId ? 20 : 0,
-                creditTransactionId: creditTransactionId,
+                creditsUsed: 0, // Set to 0 since we refunded
+                creditTransactionId: null, // Clear transaction ID since refunded
               },
             });
           } catch (dbError) {
             logger.error(
-              `Failed to save error record to database: ${dbError.message}`,
+              `Failed to save error record to database: ${(dbError as Error).message}`,
             );
           }
-          throw new Error('Failed to generate video');
+
+          // If it's a known NestJS exception, rethrow it
+          if (
+            error instanceof BadRequestException ||
+            error instanceof InternalServerErrorException
+          ) {
+            throw error;
+          }
+
+          // Otherwise, throw the original error message as an internal server error
+          throw new InternalServerErrorException(
+            (error as Error).message || 'Failed to generate video.',
+          );
         }
       } else if (model === 'gen4_turbo') {
         try {
@@ -308,6 +414,29 @@ export class ChatService implements OnModuleDestroy {
             },
           };
         } catch (error) {
+          // Refund credits if they were deducted
+          if (creditTransactionId) {
+            try {
+              await this.creditService.refundCredits(
+                userId,
+                'VIDEO_GENERATION',
+                'runwayml',
+                uuid,
+                creditTransactionId,
+                false,
+                `Refund for failed video generation: ${error.message}`,
+              );
+              logger.log(
+                `Successfully refunded 2.5 credits for failed gen4_turbo generation. User: ${userId}, Operation: ${uuid}`,
+              );
+            } catch (refundError) {
+              logger.error(
+                `Failed to refund credits for user ${userId}, operation ${uuid}:`,
+                refundError,
+              );
+            }
+          }
+
           // Save failed attempt to database only if user exists
           try {
             await this.prisma.generatedVideo.create({
@@ -320,16 +449,28 @@ export class ChatService implements OnModuleDestroy {
                 model: model,
                 projectId: projectId,
                 userId: userId,
-                creditsUsed: creditTransactionId ? 2.5 : 0,
-                creditTransactionId: creditTransactionId,
+                creditsUsed: 0, // Set to 0 since we refunded
+                creditTransactionId: null, // Clear transaction ID since refunded
               },
             });
           } catch (dbError) {
             logger.error(
-              `Failed to save error record to database: ${dbError.message}`,
+              `Failed to save error record to database: ${(dbError as Error).message}`,
             );
           }
-          throw new Error('Failed to generate video');
+
+          // If it's a known NestJS exception, rethrow it
+          if (
+            error instanceof BadRequestException ||
+            error instanceof InternalServerErrorException
+          ) {
+            throw error;
+          }
+
+          // Otherwise, throw the original error message as an internal server error
+          throw new InternalServerErrorException(
+            (error as Error).message || 'Failed to generate video.',
+          );
         }
       }
     }

@@ -1,9 +1,4 @@
-import {
-  Injectable,
-  Logger,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConceptWriterDto } from './dto/concept-writer.dto';
 import { GoogleGenAI } from '@google/genai';
 import { GeneratedResponse } from './concept-writer.interface';
@@ -61,32 +56,26 @@ export class ConceptWriterService {
       "goal": "Call out the cliché, win back attention, and make people curious"
     }`;
 
-    // ===== CREDIT SYSTEM INTEGRATION =====
-    this.logger.log(`Checking user credits before concept generation`);
-
-    // Check credits for concept generation
-    const creditCheck = await this.creditService.checkUserCredits(
-      userId,
-      'TEXT_OPERATIONS',
-      'concept-gen',
-      false, // no edit calls for concept generation currently
-    );
-
-    if (!creditCheck.hasEnoughCredits) {
-      this.logger.error(
-        `Insufficient credits for user ${userId}. Required: ${creditCheck.requiredCredits}, Available: ${creditCheck.currentBalance}`,
-      );
-      throw new BadRequestException(
-        `Insufficient credits. Required: ${creditCheck.requiredCredits}, Available: ${creditCheck.currentBalance}`,
-      );
-    }
-
-    this.logger.log(
-      `Credit validation passed. User ${userId} has ${creditCheck.currentBalance} credits available`,
-    );
-    // ===== END CREDIT VALIDATION =====
+    let creditTransactionId: string | null = null;
 
     try {
+      // ===== ATOMIC CREDIT DEDUCTION =====
+      this.logger.log(`Deducting credits for concept generation`);
+
+      // Deduct credits first - this handles validation internally and prevents race conditions
+      creditTransactionId = await this.creditService.deductCredits(
+        userId,
+        'TEXT_OPERATIONS',
+        'concept-gen',
+        `concept-gen-${Date.now()}`,
+        false,
+        `Concept generation using Gemini API`,
+      );
+
+      this.logger.log(
+        `Successfully deducted credits for concept generation. Transaction ID: ${creditTransactionId}`,
+      );
+      // ===== END CREDIT DEDUCTION =====
       const result = await this.gemini.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: systemPrompt,
@@ -137,42 +126,12 @@ export class ConceptWriterService {
           );
         }
 
-        // ===== CREDIT DEDUCTION =====
-        this.logger.log(`Deducting credits for successful concept generation`);
+        // ===== CONCEPT GENERATION SUCCESS =====
+        this.logger.log(
+          `Successfully generated ${parsed.concepts.length} concepts`,
+        );
 
-        let creditTransactionId: string;
-        let actualCreditsUsed: number;
-
-        try {
-          // Concept generation uses fixed pricing
-          actualCreditsUsed = 1;
-
-          // Deduct credits for concept generation
-          creditTransactionId = await this.creditService.deductCredits(
-            userId,
-            'TEXT_OPERATIONS',
-            'concept-gen',
-            `concept-gen-${Date.now()}`, // operationId
-            false, // isEditCall - no edit calls for concept generation currently
-            `Concept generation using Gemini API`,
-          );
-
-          this.logger.log(
-            `Successfully deducted ${actualCreditsUsed} credits for concept generation. Transaction ID: ${creditTransactionId}`,
-          );
-        } catch (creditError) {
-          this.logger.error(
-            `Failed to deduct credits after successful concept generation:`,
-            creditError,
-          );
-          // Note: We still continue and save the concepts since generation was successful
-          // The credit transaction can be handled manually if needed
-          creditTransactionId = null;
-          actualCreditsUsed = 0;
-        }
-        // ===== END CREDIT DEDUCTION =====
-
-        // Save each concept to the database
+        // Save each concept to the database (credits already deducted)
         this.logger.log(
           `Saving ${parsed.concepts.length} concepts to database`,
         );
@@ -191,8 +150,7 @@ export class ConceptWriterService {
                 userId,
                 // Add credit tracking
                 creditTransactionId: creditTransactionId,
-                creditsUsed:
-                  actualCreditsUsed > 0 ? new Decimal(actualCreditsUsed) : null,
+                creditsUsed: new Decimal(1), // Fixed 1 credit for concept generation
               },
             });
             this.logger.log(
@@ -228,7 +186,7 @@ export class ConceptWriterService {
         return {
           ...parsed,
           credits: {
-            used: actualCreditsUsed,
+            used: 1, // Fixed 1 credit for concept generation
             balance: newBalance.toNumber(),
           },
         };
@@ -239,6 +197,29 @@ export class ConceptWriterService {
       }
     } catch (error) {
       this.logger.error(`Failed to generate concepts: ${error.message}`);
+
+      // Refund credits if deduction was successful
+      if (creditTransactionId) {
+        try {
+          await this.creditService.refundCredits(
+            userId,
+            'TEXT_OPERATIONS',
+            'concept-gen',
+            `concept-gen-${Date.now()}`,
+            creditTransactionId,
+            false,
+            `Refund for failed concept generation: ${error.message}`,
+          );
+          this.logger.log(
+            `Successfully refunded 1 credit for failed concept generation. User: ${userId}`,
+          );
+        } catch (refundError) {
+          this.logger.error(
+            `Failed to refund credits for concept generation: ${refundError.message}`,
+          );
+        }
+      }
+
       throw new Error(`Failed to generate concepts: ${error.message}`);
     }
   }
