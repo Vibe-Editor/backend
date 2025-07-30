@@ -95,7 +95,7 @@ export class CreditService {
   }
 
   /**
-   * Deduct credits from user account
+   * Deduct credits using optimistic concurrency control with version field
    */
   async deductCredits(
     userId: string,
@@ -111,68 +111,116 @@ export class CreditService {
       isEditCall,
     );
 
-    try {
-      return await this.prisma.$transaction(async (tx) => {
-        // Lock the user row for update to prevent race conditions
-        const [user] = await tx.$queryRaw<
-          Array<{ credits: Decimal }>
-        >`SELECT credits FROM "User" WHERE id = ${userId} FOR UPDATE`;
+    // Fast fail: Check if user has roughly enough credits (non-blocking read)
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { credits: true },
+    });
 
-        if (!user) {
-          throw new BadRequestException('User not found');
-        }
-
-        if (user.credits.lt(requiredCredits)) {
-          throw new BadRequestException(
-            `Insufficient credits. Required: ${requiredCredits}, Available: ${user.credits}`,
-          );
-        }
-
-        const newBalance = user.credits.sub(requiredCredits);
-
-        // Create credit transaction
-        const transaction = await tx.creditTransaction.create({
-          data: {
-            userId,
-            amount: new Decimal(-requiredCredits),
-            balanceAfter: newBalance,
-            type: CreditTransactionType.DEDUCTION,
-            status: CreditTransactionStatus.COMPLETED,
-            operationType,
-            modelUsed: modelName,
-            operationId,
-            isEditCall,
-            description: description || `${operationType} using ${modelName}`,
-          },
-        });
-
-        // Update user balance and stats
-        await tx.user.update({
-          where: { id: userId },
-          data: {
-            credits: newBalance,
-            totalCreditsSpent: { increment: new Decimal(requiredCredits) },
-            lastCreditUpdate: new Date(),
-          },
-        });
-
-        this.logger.log(
-          `Deducted ${requiredCredits} credits from user ${userId} for ${operationType}/${modelName}`,
-        );
-
-        return transaction.id;
-      });
-    } catch (error) {
-      this.logger.error(`Error deducting credits for user ${userId}:`, error);
-      if (error instanceof BadRequestException) {
-        throw error;
-      }
-      throw new InternalServerErrorException('Failed to deduct credits');
+    if (!user) {
+      throw new BadRequestException('User not found');
     }
+
+    if (user.credits.lt(requiredCredits)) {
+      throw new BadRequestException(
+        `Insufficient credits. Required: ${requiredCredits}, Available: ${user.credits.toNumber()}`,
+      );
+    }
+
+    // Optimistic concurrency control with exponential backoff + jitter
+    const maxRetries = 3;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        return await this.prisma.$transaction(async (tx) => {
+          // Read current user data with version
+          const currentUser = await tx.user.findUnique({
+            where: { id: userId },
+            select: { credits: true, creditVersion: true },
+          });
+
+          if (!currentUser) {
+            throw new BadRequestException('User not found');
+          }
+
+          // Double-check credits within transaction
+          if (currentUser.credits.lt(requiredCredits)) {
+            throw new BadRequestException(
+              `Insufficient credits. Required: ${requiredCredits}, Available: ${currentUser.credits.toNumber()}`,
+            );
+          }
+
+          const newBalance = currentUser.credits.sub(requiredCredits);
+
+          // Create transaction record first
+          const transaction = await tx.creditTransaction.create({
+            data: {
+              userId,
+              amount: new Decimal(-requiredCredits),
+              balanceAfter: newBalance,
+              type: CreditTransactionType.DEDUCTION,
+              status: CreditTransactionStatus.COMPLETED,
+              operationType,
+              modelUsed: modelName,
+              operationId,
+              isEditCall,
+              description: description || `${operationType} using ${modelName}`,
+            },
+          });
+
+          // Optimistic update with version check
+          const updateResult = await tx.user.updateMany({
+            where: {
+              id: userId,
+              creditVersion: currentUser.creditVersion, // Concurrency token check
+            },
+            data: {
+              credits: newBalance,
+              totalCreditsSpent: { increment: new Decimal(requiredCredits) },
+              creditVersion: { increment: 1 }, // Atomic version increment
+              lastCreditUpdate: new Date(),
+            },
+          });
+
+          // If no rows updated, version changed (concurrent modification)
+          if (updateResult.count === 0) {
+            throw new Error('VERSION_CONFLICT');
+          }
+
+          this.logger.log(
+            `Successfully deducted ${requiredCredits} credits from user ${userId} (version: ${currentUser.creditVersion} → ${currentUser.creditVersion + 1}, attempt: ${attempt})`,
+          );
+
+          return transaction.id;
+        });
+      } catch (error) {
+        if (error.message === 'VERSION_CONFLICT' && attempt < maxRetries) {
+          // Exponential backoff with jitter
+          const baseDelay = Math.pow(2, attempt - 1) * 10; // 10ms, 20ms, 40ms
+          const jitter = Math.random() * 10; // 0-10ms random jitter
+          const delay = baseDelay + jitter;
+
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          this.logger.debug(
+            `Version conflict for user ${userId}, retrying in ${delay.toFixed(1)}ms (attempt ${attempt + 1}/${maxRetries})`,
+          );
+          continue;
+        }
+
+        this.logger.error(`Error deducting credits for user ${userId}:`, error);
+        if (error instanceof BadRequestException) {
+          throw error;
+        }
+        throw new InternalServerErrorException('Failed to deduct credits');
+      }
+    }
+
+    throw new InternalServerErrorException(
+      `Failed to deduct credits after ${maxRetries} attempts due to high concurrency`,
+    );
   }
 
   /**
-   * Add credits to user account
+   * Add credits using optimistic concurrency control with version field
    */
   async addCredits(
     userId: string,
@@ -180,51 +228,84 @@ export class CreditService {
     type: CreditTransactionType = CreditTransactionType.PURCHASE,
     description?: string,
   ): Promise<string> {
-    try {
-      return await this.prisma.$transaction(async (tx) => {
-        const user = await tx.user.findUnique({
-          where: { id: userId },
-          select: { credits: true },
-        });
+    const maxRetries = 3;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        return await this.prisma.$transaction(async (tx) => {
+          // Read current user data with version
+          const user = await tx.user.findUnique({
+            where: { id: userId },
+            select: { credits: true, creditVersion: true },
+          });
 
-        if (!user) {
-          throw new BadRequestException('User not found');
+          if (!user) {
+            throw new BadRequestException('User not found');
+          }
+
+          const newBalance = user.credits.add(amount);
+
+          // Create transaction record first
+          const transaction = await tx.creditTransaction.create({
+            data: {
+              userId,
+              amount: new Decimal(amount),
+              balanceAfter: newBalance,
+              type,
+              status: CreditTransactionStatus.COMPLETED,
+              description: description || `Credits added via ${type}`,
+            },
+          });
+
+          // Optimistic update with version check
+          const updateResult = await tx.user.updateMany({
+            where: {
+              id: userId,
+              creditVersion: user.creditVersion, // Concurrency token check
+            },
+            data: {
+              credits: newBalance,
+              totalCreditsEarned: { increment: new Decimal(amount) },
+              creditVersion: { increment: 1 }, // Atomic version increment
+              lastCreditUpdate: new Date(),
+            },
+          });
+
+          // If no rows updated, version changed (concurrent modification)
+          if (updateResult.count === 0) {
+            throw new Error('VERSION_CONFLICT');
+          }
+
+          this.logger.log(
+            `Successfully added ${amount} credits to user ${userId} (version: ${user.creditVersion} → ${user.creditVersion + 1}, attempt: ${attempt})`,
+          );
+
+          return transaction.id;
+        });
+      } catch (error) {
+        if (error.message === 'VERSION_CONFLICT' && attempt < maxRetries) {
+          // Exponential backoff with jitter
+          const baseDelay = Math.pow(2, attempt - 1) * 10; // 10ms, 20ms, 40ms
+          const jitter = Math.random() * 10; // 0-10ms random jitter
+          const delay = baseDelay + jitter;
+
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          this.logger.debug(
+            `Version conflict for adding credits to user ${userId}, retrying in ${delay.toFixed(1)}ms (attempt ${attempt + 1}/${maxRetries})`,
+          );
+          continue;
         }
 
-        const newBalance = user.credits.add(amount);
-
-        // Create credit transaction
-        const transaction = await tx.creditTransaction.create({
-          data: {
-            userId,
-            amount: new Decimal(amount),
-            balanceAfter: newBalance,
-            type,
-            status: CreditTransactionStatus.COMPLETED,
-            description: description || `Credits added via ${type}`,
-          },
-        });
-
-        // Update user balance and stats
-        await tx.user.update({
-          where: { id: userId },
-          data: {
-            credits: newBalance,
-            totalCreditsEarned: { increment: new Decimal(amount) },
-            lastCreditUpdate: new Date(),
-          },
-        });
-
-        this.logger.log(`Added ${amount} credits to user ${userId}`);
-        return transaction.id;
-      });
-    } catch (error) {
-      this.logger.error(`Error adding credits for user ${userId}:`, error);
-      if (error instanceof BadRequestException) {
-        throw error;
+        this.logger.error(`Error adding credits for user ${userId}:`, error);
+        if (error instanceof BadRequestException) {
+          throw error;
+        }
+        throw new InternalServerErrorException('Failed to add credits');
       }
-      throw new InternalServerErrorException('Failed to add credits');
     }
+
+    throw new InternalServerErrorException(
+      `Failed to add credits after ${maxRetries} attempts due to high concurrency`,
+    );
   }
 
   /**
