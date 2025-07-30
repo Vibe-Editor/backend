@@ -53,7 +53,7 @@ export class ChatService implements OnModuleDestroy {
           const image = await recraftImageGen(uuid, visual_prompt, art_style);
 
           // Save to database
-          const savedImage = await this.prisma.generatedImage.create({
+          await this.prisma.generatedImage.create({
             data: {
               visualPrompt: visual_prompt,
               artStyle: art_style,
@@ -103,27 +103,10 @@ export class ChatService implements OnModuleDestroy {
             }
           }
 
-          // Save failed attempt to database only if user exists
-          try {
-            await this.prisma.generatedImage.create({
-              data: {
-                visualPrompt: visual_prompt,
-                artStyle: art_style,
-                uuid: uuid,
-                success: false,
-                model: model,
-                message: error.message,
-                projectId: projectId,
-                userId: userId,
-                creditsUsed: 0, // Set to 0 since we refunded
-                creditTransactionId: null, // Clear transaction ID since refunded
-              },
-            });
-          } catch (dbError) {
-            logger.error(
-              `Failed to save error record to database: ${(dbError as Error).message}`,
-            );
-          }
+          // Log the error for debugging purposes
+          logger.error(
+            `Image generation failed for user ${userId}, operation ${uuid}: ${(error as Error).message}`,
+          );
 
           // If it's a known NestJS exception, rethrow it
           if (
@@ -135,7 +118,7 @@ export class ChatService implements OnModuleDestroy {
 
           // Otherwise, throw the original error message as an internal server error
           throw new InternalServerErrorException(
-            error.message || 'Failed to generate image.',
+            (error as Error).message || 'Failed to generate image.',
           );
         }
       } else if (model === 'imagen') {
@@ -153,7 +136,7 @@ export class ChatService implements OnModuleDestroy {
           const image = await imagenImageGen(uuid, visual_prompt, art_style);
 
           // Save to database
-          const savedImage = await this.prisma.generatedImage.create({
+          await this.prisma.generatedImage.create({
             data: {
               visualPrompt: visual_prompt,
               artStyle: art_style,
@@ -203,27 +186,10 @@ export class ChatService implements OnModuleDestroy {
             }
           }
 
-          // Save failed attempt to database only if user exists
-          try {
-            await this.prisma.generatedImage.create({
-              data: {
-                visualPrompt: visual_prompt,
-                artStyle: art_style,
-                uuid: uuid,
-                success: false,
-                model: model,
-                message: error.message,
-                projectId: projectId,
-                userId: userId,
-                creditsUsed: 0, // Set to 0 since we refunded
-                creditTransactionId: null, // Clear transaction ID since refunded
-              },
-            });
-          } catch (dbError) {
-            logger.error(
-              `Failed to save error record to database: ${(dbError as Error).message}`,
-            );
-          }
+          // Log the error for debugging purposes
+          logger.error(
+            `Image generation failed for user ${userId}, operation ${uuid}: ${(error as Error).message}`,
+          );
 
           // If it's a known NestJS exception, rethrow it
           if (
@@ -324,27 +290,10 @@ export class ChatService implements OnModuleDestroy {
             }
           }
 
-          // Save failed attempt to database only if user exists
-          try {
-            await this.prisma.generatedVideo.create({
-              data: {
-                animationPrompt: animation_prompt,
-                artStyle: art_style,
-                imageS3Key: image_s3_key,
-                uuid: uuid,
-                success: false,
-                model: model,
-                projectId: projectId,
-                userId: userId,
-                creditsUsed: 0, // Set to 0 since we refunded
-                creditTransactionId: null, // Clear transaction ID since refunded
-              },
-            });
-          } catch (dbError) {
-            logger.error(
-              `Failed to save error record to database: ${(dbError as Error).message}`,
-            );
-          }
+          // Log the error for debugging purposes
+          logger.error(
+            `Video generation failed for user ${userId}, operation ${uuid}: ${(error as Error).message}`,
+          );
 
           // If it's a known NestJS exception, rethrow it
           if (
@@ -437,27 +386,10 @@ export class ChatService implements OnModuleDestroy {
             }
           }
 
-          // Save failed attempt to database only if user exists
-          try {
-            await this.prisma.generatedVideo.create({
-              data: {
-                animationPrompt: animation_prompt,
-                artStyle: art_style,
-                imageS3Key: image_s3_key,
-                uuid: uuid,
-                success: false,
-                model: model,
-                projectId: projectId,
-                userId: userId,
-                creditsUsed: 0, // Set to 0 since we refunded
-                creditTransactionId: null, // Clear transaction ID since refunded
-              },
-            });
-          } catch (dbError) {
-            logger.error(
-              `Failed to save error record to database: ${(dbError as Error).message}`,
-            );
-          }
+          // Log the error for debugging purposes
+          logger.error(
+            `Video generation failed for user ${userId}, operation ${uuid}: ${(error as Error).message}`,
+          );
 
           // If it's a known NestJS exception, rethrow it
           if (
