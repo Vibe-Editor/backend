@@ -10,6 +10,11 @@ export async function klingVideoGen(
   art_style: string,
   imageS3Key: string,
 ) {
+  console.log(process.env.FAL_KEY);
+  fal.config({
+    credentials: process.env.FAL_KEY,
+  });
+  
   const startTime = Date.now();
   logger.log(`Starting Kling video generation for user: ${uuid}`);
 
