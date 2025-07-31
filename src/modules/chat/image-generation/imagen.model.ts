@@ -23,7 +23,9 @@ export async function imagenImageGen(
   art_style: string,
 ) {
   const prompt = `${visual_prompt}. Art style: ${art_style}`;
-  logger.log(`Generating Imagen image with prompt: ${prompt.substring(0, 100)}...`);
+  logger.log(
+    `Generating Imagen image with prompt: ${prompt.substring(0, 100)}...`,
+  );
 
   const response = await googleGenAI.models.generateImages({
     model: 'imagen-4.0-generate-preview-06-06',

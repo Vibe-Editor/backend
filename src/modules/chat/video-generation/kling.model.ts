@@ -1,5 +1,8 @@
 import { Logger } from '@nestjs/common';
-import { getImageFromS3AsBase64, uploadVideoToS3 } from '../../video-gen/s3/s3.service';
+import {
+  getImageFromS3AsBase64,
+  uploadVideoToS3,
+} from '../../video-gen/s3/s3.service';
 import { fal } from '@fal-ai/client';
 
 const logger = new Logger('Kling Model');
@@ -40,7 +43,9 @@ export async function klingVideoGen(
     const combinedPrompt = `${animation_prompt}. Art style: ${art_style}`;
 
     // Call fal.ai Kling 2.1 Master API
-    logger.debug(`Calling fal.ai with prompt: ${combinedPrompt.substring(0, 100)}...`);
+    logger.debug(
+      `Calling fal.ai with prompt: ${combinedPrompt.substring(0, 100)}...`,
+    );
     const result = await fal.subscribe(
       'fal-ai/kling-video/v2.1/master/image-to-video',
       {
@@ -93,12 +98,14 @@ export async function klingVideoGen(
       uuid,
       stack: error.stack,
     });
-    
+
     // Add more specific error logging for fal.ai issues
     if (error.message === 'Forbidden') {
-      logger.error('Fal.ai API returned Forbidden - check your FAL_KEY environment variable and account permissions');
+      logger.error(
+        'Fal.ai API returned Forbidden - check your FAL_KEY environment variable and account permissions',
+      );
     }
-    
+
     throw error;
   }
 }

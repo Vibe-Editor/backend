@@ -18,6 +18,7 @@ model User {
 
   // Credit system fields
   credits            Decimal  @default(0) @db.Decimal(10, 2) // Current credit balance
+  creditVersion      Int      @default(0) // Optimistic concurrency control version
   totalCreditsEarned Decimal  @default(0) @db.Decimal(12, 2) // Lifetime credits earned
   totalCreditsSpent  Decimal  @default(0) @db.Decimal(12, 2) // Lifetime credits spent
   lastCreditUpdate   DateTime @default(now()) // Last credit operation timestamp
