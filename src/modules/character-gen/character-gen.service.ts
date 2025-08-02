@@ -306,6 +306,8 @@ export class CharacterGenService {
           ),
           model: 'gpt-image-1-recraft-character-gen',
           message: 'Character generated successfully',
+          video_generation_ready: true,
+          video_generation_endpoint: `/character-gen/${updatedCharacter.id}/generate-video`,
         };
       } else {
         throw new InternalServerErrorException(
@@ -552,10 +554,24 @@ export class CharacterGenService {
         }`,
       );
 
+      const charactersWithUrls = characters.map(character => ({
+        ...character,
+        sprite_sheet_url: character.spriteSheetS3Key 
+          ? getS3ImageUrl(character.spriteSheetS3Key)
+          : null,
+        final_character_url: character.finalCharacterS3Key
+          ? getS3ImageUrl(character.finalCharacterS3Key)
+          : null,
+        video_generation_ready: !!character.finalCharacterS3Key,
+        video_generation_endpoint: character.finalCharacterS3Key 
+          ? `/character-gen/${character.id}/generate-video`
+          : null,
+      }));
+
       return {
         success: true,
         count: characters.length,
-        characters,
+        characters: charactersWithUrls,
       };
     } catch (error) {
       this.logger.error(`Failed to retrieve characters: ${error.message}`);
@@ -595,6 +611,16 @@ export class CharacterGenService {
       return {
         success: true,
         character,
+        video_generation_ready: !!character.finalCharacterS3Key,
+        video_generation_endpoint: character.finalCharacterS3Key
+          ? `/character-gen/${character.id}/generate-video`
+          : null,
+        sprite_sheet_url: character.spriteSheetS3Key
+          ? getS3ImageUrl(character.spriteSheetS3Key)
+          : null,
+        final_character_url: character.finalCharacterS3Key
+          ? getS3ImageUrl(character.finalCharacterS3Key)
+          : null,
       };
     } catch (error) {
       this.logger.error(
