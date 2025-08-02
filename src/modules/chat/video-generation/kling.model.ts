@@ -13,15 +13,14 @@ export async function klingVideoGen(
   art_style: string,
   imageS3Key: string,
 ) {
-  console.log(process.env.FAL_KEY);
+
   fal.config({
     credentials: process.env.FAL_KEY,
   });
   
   const startTime = Date.now();
-  logger.log(`Starting Kling video generation for user: ${uuid}`);
+  logger.log(`Starting Kling video generation for id: ${uuid}`);
 
-  // Trim animation_prompt to ensure total prompt length stays reasonable (under 1500 characters for Kling)
   const additionalText = `. Art style: ${art_style}`;
   const maxAnimationPromptLength = 1500 - additionalText.length;
 
@@ -35,14 +34,12 @@ export async function klingVideoGen(
   }
 
   try {
-    // Get image from S3 as base64 and convert to data URI
+    logger.log(`Getting image from S3: ${imageS3Key}`);
     const imageBase64 = await getImageFromS3AsBase64(imageS3Key);
     const dataUri = `data:image/png;base64,${imageBase64}`;
 
-    // Combine prompt and art style
     const combinedPrompt = `${animation_prompt}. Art style: ${art_style}`;
 
-    // Call fal.ai Kling 2.1 Master API
     logger.debug(
       `Calling fal.ai with prompt: ${combinedPrompt.substring(0, 100)}...`,
     );
@@ -52,7 +49,7 @@ export async function klingVideoGen(
         input: {
           prompt: combinedPrompt,
           image_url: dataUri,
-          duration: '5', // default duration
+          duration: '5', 
           negative_prompt: 'blur, distort, and low quality',
           cfg_scale: 0.5,
         },
@@ -61,7 +58,7 @@ export async function klingVideoGen(
           if (update.status === 'IN_PROGRESS') {
             update.logs
               ?.map((log) => log.message)
-              .forEach((msg) => logger.debug(msg));
+              .forEach((msg) => logger.log(msg));
           }
         },
       },
@@ -74,7 +71,7 @@ export async function klingVideoGen(
 
     logger.log(`Kling video URL: ${result.data.video.url}`);
 
-    logger.debug('Uploading Kling video to S3');
+    logger.log('Uploading Kling video to S3');
     const s3Key = await uploadVideoToS3(result.data.video.url, uuid);
     logger.log(`Successfully uploaded Kling video to S3: ${s3Key}`);
 
@@ -98,13 +95,6 @@ export async function klingVideoGen(
       uuid,
       stack: error.stack,
     });
-
-    // Add more specific error logging for fal.ai issues
-    if (error.message === 'Forbidden') {
-      logger.error(
-        'Fal.ai API returned Forbidden - check your FAL_KEY environment variable and account permissions',
-      );
-    }
 
     throw error;
   }
