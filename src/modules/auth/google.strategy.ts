@@ -17,12 +17,10 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
         configService.get<string>('GOOGLE_CALLBACK_URL') ||
         'http://localhost:8080/auth/google-redirect',
       scope: ['email', 'profile'],
-      passReqToCallback: true,
     });
   }
 
   async validate(
-    req: any,
     accessToken: string,
     refreshToken: string,
     profile: any,
@@ -30,10 +28,7 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
   ): Promise<void> {
     try {
       const user = await this.authService.validateGoogleUser(profile);
-      // Attach the redirect_uri from the original request to the user object
-      const redirectUri = req.query?.redirect_uri;
-      const userWithRedirect = { ...user, redirectUri };
-      done(null, userWithRedirect);
+      done(null, user);
     } catch (error) {
       done(error, null);
     }
