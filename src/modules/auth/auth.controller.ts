@@ -23,49 +23,24 @@ export class AuthController {
     @Req() req: Request,
     @Query('redirect_uri') redirectUri?: string,
   ) {
-    // The redirect_uri will be preserved in the state parameter by Passport
-    // This is handled automatically by the GoogleStrategy
+    // The redirect_uri is handled through state parameter in GoogleStrategy
+    // Passport will automatically add the state parameter to the OAuth URL
   }
 
   @Get('google-redirect')
   @UseGuards(AuthGuard('google'))
   async googleAuthRedirect(@Req() req: Request, @Res() res: Response) {
     try {
-      const userWithRedirect = req.user as any;
-      const { redirectUri, ...user } = userWithRedirect;
+      const user = req.user as User;
       const loginResult = await this.authService.login(user);
 
-      if (redirectUri) {
-        // Frontend provided a redirect_uri, so redirect there with token
-        const frontendCallbackUrl = `${redirectUri}?token=${loginResult.access_token}&user=${encodeURIComponent(JSON.stringify(loginResult.user))}`;
-        return res.redirect(frontendCallbackUrl);
-      } else {
-        // No redirect_uri provided, return JSON (for mobile/electron or direct API calls)
-        const redirectUrl = `myapp://auth-callback?token=${loginResult.access_token}&user=${encodeURIComponent(JSON.stringify(loginResult.user))}`;
-
-        res.status(HttpStatus.OK).json({
-          success: true,
-          message: 'Authentication successful',
-          redirect_url: redirectUrl,
-          ...loginResult,
-        });
-      }
+      // For now, always redirect to your Vercel frontend
+      const frontendCallbackUrl = `https://testingui-fza5haf8d-naval1525s-projects.vercel.app/auth/google-redirect?token=${loginResult.access_token}&user=${encodeURIComponent(JSON.stringify(loginResult.user))}`;
+      return res.redirect(frontendCallbackUrl);
     } catch (error) {
-      const userWithRedirect = req.user as any;
-      const redirectUri = userWithRedirect?.redirectUri;
-
-      if (redirectUri) {
-        // Redirect to frontend with error
-        const errorUrl = `${redirectUri}?error=${encodeURIComponent(error.message)}`;
-        return res.redirect(errorUrl);
-      } else {
-        // Return JSON error
-        res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
-          success: false,
-          message: 'Authentication failed',
-          error: error.message,
-        });
-      }
+      // Redirect to frontend with error
+      const errorUrl = `https://testingui-fza5haf8d-naval1525s-projects.vercel.app/auth/google-redirect?error=${encodeURIComponent(error.message)}`;
+      return res.redirect(errorUrl);
     }
   }
 
