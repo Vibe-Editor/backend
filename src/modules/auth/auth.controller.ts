@@ -44,6 +44,35 @@ export class AuthController {
     }
   }
 
+  // New web-specific endpoints
+  @Get('web-google')
+  @UseGuards(AuthGuard('google-web'))
+  async webGoogleAuth(@Req() req: Request) {}
+
+  @Get('web-google-redirect')
+  @UseGuards(AuthGuard('google-web'))
+  async webGoogleAuthRedirect(@Req() req: Request, @Res() res: Response) {
+    try {
+      const user = req.user as User;
+      const loginResult = await this.authService.login(user);
+
+      // Redirect to frontend with token and user data
+      const frontendUrl =
+        process.env.FRONTEND_URL ||
+        'https://testingui-fza5haf8d-naval1525s-projects.vercel.app';
+      const redirectUrl = `${frontendUrl}/auth/callback?token=${loginResult.access_token}&user=${encodeURIComponent(JSON.stringify(loginResult.user))}`;
+
+      res.redirect(redirectUrl);
+    } catch (error) {
+      // Redirect to frontend with error
+      const frontendUrl =
+        process.env.FRONTEND_URL ||
+        'https://testingui-fza5haf8d-naval1525s-projects.vercel.app';
+      const errorUrl = `${frontendUrl}/auth/error?message=${encodeURIComponent('Authentication failed')}`;
+      res.redirect(errorUrl);
+    }
+  }
+
   @Get('status')
   @UseGuards(AuthGuard('jwt'))
   async getStatus(@CurrentUser() user: User) {
