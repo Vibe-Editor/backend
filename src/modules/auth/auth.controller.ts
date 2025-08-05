@@ -23,19 +23,16 @@ export class AuthController {
     @Req() req: Request,
     @Query('redirect_uri') redirectUri?: string,
   ) {
-    // Store redirect_uri in session or pass it through state parameter
-    // This will be handled by Passport automatically
+    // The redirect_uri will be preserved in the state parameter by Passport
+    // This is handled automatically by the GoogleStrategy
   }
 
   @Get('google-redirect')
   @UseGuards(AuthGuard('google'))
-  async googleAuthRedirect(
-    @Req() req: Request,
-    @Res() res: Response,
-    @Query('redirect_uri') redirectUri?: string,
-  ) {
+  async googleAuthRedirect(@Req() req: Request, @Res() res: Response) {
     try {
-      const user = req.user as User;
+      const userWithRedirect = req.user as any;
+      const { redirectUri, ...user } = userWithRedirect;
       const loginResult = await this.authService.login(user);
 
       if (redirectUri) {
@@ -54,6 +51,9 @@ export class AuthController {
         });
       }
     } catch (error) {
+      const userWithRedirect = req.user as any;
+      const redirectUri = userWithRedirect?.redirectUri;
+
       if (redirectUri) {
         // Redirect to frontend with error
         const errorUrl = `${redirectUri}?error=${encodeURIComponent(error.message)}`;
