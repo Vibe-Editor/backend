@@ -451,6 +451,8 @@ export class ImageGenService {
             success: true,
             s3_key: agentResult.s3_key,
             model: agentResult.model,
+            visual_prompt: visual_prompt,
+            art_style: art_style,
             message: 'Image generated and uploaded successfully',
             image_size_bytes: agentResult.image_size_bytes,
             credits: {

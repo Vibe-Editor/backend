@@ -332,6 +332,9 @@ export class VideoGenService {
             success: true,
             s3Keys: agentResult.s3Keys,
             model: agentResult.model,
+            animation_prompt: animation_prompt,
+            art_style: art_style,
+            imageS3Key: imageS3Key,
             totalVideos: agentResult.totalVideos,
             credits: {
               used: actualCreditsUsed,
