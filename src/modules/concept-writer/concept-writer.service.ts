@@ -184,6 +184,8 @@ export class ConceptWriterService {
         const newBalance = await this.creditService.getUserBalance(userId);
 
         return {
+          input: prompt,
+          system_prompt: systemPrompt,
           ...parsed,
           credits: {
             used: 1, // Fixed 1 credit for concept generation

@@ -99,6 +99,8 @@ export class GetWebInfoService {
       const newBalance = await this.creditService.getUserBalance(userId);
 
       return {
+        input: prompt,
+        system_prompt: 'Perplexity Web Research',
         ...data,
         credits: {
           used: 1, // Perplexity uses fixed pricing for web research

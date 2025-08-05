@@ -6,6 +6,8 @@ export interface TypeConcept {
 }
 
 export interface GeneratedResponse {
+  input?: string;
+  system_prompt?: string;
   concepts: TypeConcept[];
   credits: {
     used: number;
