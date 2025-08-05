@@ -17,7 +17,7 @@ export class GoogleWebStrategy extends PassportStrategy(
       clientID: configService.get<string>('GOOGLE_CLIENT_ID'),
       clientSecret: configService.get<string>('GOOGLE_CLIENT_SECRET'),
       callbackURL:
-        configService.get<string>('BACKEND_URL') + '/auth/web-google-redirect',
+        configService.get<string>('BACKEND_URL') + '/auth/web/google-redirect',
       scope: ['email', 'profile'],
     });
   }
