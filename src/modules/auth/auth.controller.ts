@@ -1,21 +1,17 @@
-import {
-  Controller,
-  Get,
-  UseGuards,
-  Req,
-  Res,
-  HttpStatus,
-  Query,
-} from '@nestjs/common';
+import { Controller, Get, UseGuards, Req, Res, Query } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { Request, Response } from 'express';
 import { User } from '../../../generated/prisma';
 import { CurrentUser } from '../../common/decorators/user.decorator';
+import { ConfigService } from '@nestjs/config';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly configService: ConfigService,
+  ) {}
 
   @Get('google')
   @UseGuards(AuthGuard('google'))
@@ -34,42 +30,21 @@ export class AuthController {
       const user = req.user as User;
       const loginResult = await this.authService.login(user);
 
-      // For now, always redirect to your Vercel frontend
-      const frontendCallbackUrl = `https://testingui-fza5haf8d-naval1525s-projects.vercel.app/auth/google-redirect?token=${loginResult.access_token}&user=${encodeURIComponent(JSON.stringify(loginResult.user))}`;
-      return res.redirect(frontendCallbackUrl);
-    } catch (error) {
-      // Redirect to frontend with error
-      const errorUrl = `https://testingui-fza5haf8d-naval1525s-projects.vercel.app/auth/google-redirect?error=${encodeURIComponent(error.message)}`;
-      return res.redirect(errorUrl);
-    }
-  }
-
-  // New web-specific endpoints
-  @Get('web-google')
-  @UseGuards(AuthGuard('google-web'))
-  async webGoogleAuth(@Req() req: Request) {}
-
-  @Get('web-google-redirect')
-  @UseGuards(AuthGuard('google-web'))
-  async webGoogleAuthRedirect(@Req() req: Request, @Res() res: Response) {
-    try {
-      const user = req.user as User;
-      const loginResult = await this.authService.login(user);
-
-      // Redirect to frontend with token and user data
+      // Get frontend URL from environment variables
       const frontendUrl =
-        process.env.FRONTEND_URL ||
-        'https://testingui-fza5haf8d-naval1525s-projects.vercel.app';
-      const redirectUrl = `${frontendUrl}/auth/callback?token=${loginResult.access_token}&user=${encodeURIComponent(JSON.stringify(loginResult.user))}`;
+        this.configService.get<string>('FRONTEND_URL') ||
+        'http://localhost:5173';
 
-      res.redirect(redirectUrl);
+      // Redirect to frontend with token - simple approach
+      const redirectUrl = `${frontendUrl}/home?token=${loginResult.access_token}`;
+      return res.redirect(redirectUrl);
     } catch (error) {
       // Redirect to frontend with error
       const frontendUrl =
-        process.env.FRONTEND_URL ||
-        'https://testingui-fza5haf8d-naval1525s-projects.vercel.app';
+        this.configService.get<string>('FRONTEND_URL') ||
+        'http://localhost:5173';
       const errorUrl = `${frontendUrl}/auth/error?message=${encodeURIComponent('Authentication failed')}`;
-      res.redirect(errorUrl);
+      return res.redirect(errorUrl);
     }
   }
 
