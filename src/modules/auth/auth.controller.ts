@@ -1,4 +1,12 @@
-import { Controller, Get, UseGuards, Req, Res, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  UseGuards,
+  Req,
+  Res,
+  Query,
+  HttpStatus,
+} from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { Request, Response } from 'express';
@@ -26,6 +34,41 @@ export class AuthController {
   @Get('google-redirect')
   @UseGuards(AuthGuard('google'))
   async googleAuthRedirect(@Req() req: Request, @Res() res: Response) {
+    try {
+      const user = req.user as User;
+      const loginResult = await this.authService.login(user);
+
+      // Electron app response - returns JSON with custom protocol redirect
+      const redirectUrl = `myapp://auth-callback?token=${loginResult.access_token}&user=${encodeURIComponent(JSON.stringify(loginResult.user))}`;
+
+      res.status(200).json({
+        success: true,
+        message: 'Authentication successful',
+        redirect_url: redirectUrl,
+        ...loginResult,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: 'Authentication failed',
+        error: error.message,
+      });
+    }
+  }
+
+  @Get('web/google')
+  @UseGuards(AuthGuard('google-web'))
+  async webGoogleAuth(
+    @Req() req: Request,
+    @Query('redirect_uri') redirectUri?: string,
+  ) {
+    // The redirect_uri is handled through state parameter in GoogleWebStrategy
+    // Passport will automatically add the state parameter to the OAuth URL
+  }
+
+  @Get('web/google-redirect')
+  @UseGuards(AuthGuard('google-web'))
+  async webGoogleAuthRedirect(@Req() req: Request, @Res() res: Response) {
     try {
       const user = req.user as User;
       const loginResult = await this.authService.login(user);
