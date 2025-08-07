@@ -13,7 +13,8 @@ export const createKlingAgent = () =>
     animation_prompt: string;
     art_style: string;
     imageS3Key: string;
-    uuid: string;
+    segmentId: string;
+    projectId: string;
   }>({
     name: 'Kling 2.1 Master Video Agent',
     instructions:
@@ -27,15 +28,17 @@ export const createKlingAgent = () =>
           animation_prompt: z.string(),
           imageS3Key: z.string(),
           art_style: z.string(),
-          uuid: z.string(),
+          segmentId: z.string(),
+          projectId: z.string(),
         }) as any,
-        execute: async ({ animation_prompt, art_style, imageS3Key, uuid }) => {
+        execute: async ({ animation_prompt, art_style, imageS3Key, segmentId, projectId }) => {
           logger.log('Agent selected Kling 2.1 Master for cinematic content');
           return await generateKlingVideo(
             animation_prompt,
             art_style,
             imageS3Key,
-            uuid,
+            segmentId,
+            projectId,
           );
         },
       }),
@@ -46,10 +49,11 @@ async function generateKlingVideo(
   animation_prompt: string,
   art_style: string,
   imageS3Key: string,
-  uuid: string,
+  segmentId: string,
+  projectId: string,
 ): Promise<VideoGenerationResult> {
   const startTime = Date.now();
-  logger.log(`Starting Kling video generation for user: ${uuid}`);
+  logger.log(`Starting Kling video generation for user: ${segmentId}`);
 
   // Trim animation_prompt to ensure total prompt length stays reasonable (under 1500 characters for Kling)
   const additionalText = `. Art style: ${art_style}`;
@@ -101,7 +105,7 @@ async function generateKlingVideo(
 
     // Upload video to S3
     logger.debug('Uploading Kling video to S3');
-    const s3Key = await uploadVideoToS3(result.data.video.url, uuid);
+    const s3Key = await uploadVideoToS3(result.data.video.url, segmentId, projectId);
     logger.log(`Successfully uploaded Kling video to S3: ${s3Key}`);
 
     const totalTime = Date.now() - startTime;
@@ -109,7 +113,7 @@ async function generateKlingVideo(
       `Kling video generation completed successfully in ${totalTime}ms`,
       {
         s3Key,
-        uuid,
+        segmentId,
       },
     );
 
@@ -122,7 +126,7 @@ async function generateKlingVideo(
     const totalTime = Date.now() - startTime;
     logger.error(`Kling video generation failed after ${totalTime}ms`, {
       error: error.message,
-      uuid,
+      segmentId,
       stack: error.stack,
     });
     throw error;

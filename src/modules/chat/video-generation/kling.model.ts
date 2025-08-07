@@ -8,10 +8,11 @@ import { fal } from '@fal-ai/client';
 const logger = new Logger('Kling Model');
 
 export async function klingVideoGen(
-  uuid: string,
+  segmentId: string,
   animation_prompt: string,
   art_style: string,
   imageS3Key: string,
+  projectId: string,
 ) {
 
   fal.config({
@@ -19,7 +20,7 @@ export async function klingVideoGen(
   });
   
   const startTime = Date.now();
-  logger.log(`Starting Kling video generation for id: ${uuid}`);
+  logger.log(`Starting Kling video generation for id: ${segmentId}`);
 
   const additionalText = `. Art style: ${art_style}`;
   const maxAnimationPromptLength = 1500 - additionalText.length;
@@ -72,7 +73,7 @@ export async function klingVideoGen(
     logger.log(`Kling video URL: ${result.data.video.url}`);
 
     logger.log('Uploading Kling video to S3');
-    const s3Key = await uploadVideoToS3(result.data.video.url, uuid);
+    const s3Key = await uploadVideoToS3(result.data.video.url, segmentId, projectId);
     logger.log(`Successfully uploaded Kling video to S3: ${s3Key}`);
 
     const totalTime = Date.now() - startTime;
@@ -80,7 +81,7 @@ export async function klingVideoGen(
       `Kling video generation completed successfully in ${totalTime}ms`,
       {
         s3Key,
-        uuid,
+        segmentId,
       },
     );
 
@@ -92,7 +93,7 @@ export async function klingVideoGen(
     const totalTime = Date.now() - startTime;
     logger.error(`Kling video generation failed after ${totalTime}ms`, {
       error: error.message,
-      uuid,
+      segmentId,
       stack: error.stack,
     });
 

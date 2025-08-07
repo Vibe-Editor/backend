@@ -15,7 +15,7 @@ export class VideoGenDto {
 
   @IsString()
   @IsNotEmpty()
-  uuid: string;
+  segmentId: string;
 
   @IsString()
   @IsNotEmpty()

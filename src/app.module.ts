@@ -17,6 +17,7 @@ import { CharacterGenModule } from './modules/character-gen/character-gen.module
 import { UploadsModule } from './modules/uploads/uploads.module';
 import { CreditsModule } from './modules/credits/credits.module';
 import { ChatModule } from './modules/chat/chat.module';
+import { AgentModule } from './modules/agent/agent.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { ChatModule } from './modules/chat/chat.module';
     UploadsModule,
     CreditsModule,
     ChatModule,
+    AgentModule,
   ],
   controllers: [AppController],
   providers: [AppService],

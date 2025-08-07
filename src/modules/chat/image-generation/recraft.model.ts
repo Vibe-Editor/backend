@@ -16,9 +16,10 @@ const s3 = new S3Client({
 });
 
 export async function recraftImageGen(
-  uuid: string,
+  segmentId: string,
   visual_prompt: string,
   art_style: string,
+  projectId: string,
 ) {
   let recraftPrompt = `${visual_prompt}. Art style: ${art_style}. Create a realistic, photographic image with no text elements.`;
 
@@ -49,7 +50,7 @@ export async function recraftImageGen(
   );
 
   if (response.data) {
-    const s3Key = `${uuid}/images/${randomUUID()}.png`;
+    const s3Key = `${projectId}/images/${segmentId}/${randomUUID()}.png`;
     logger.log(`Uploading Recraft image to S3 with key: ${s3Key}`);
 
     const imageData = response.data.data[0];

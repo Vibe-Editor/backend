@@ -4,6 +4,7 @@ import {
   BadRequestException,
   OnModuleDestroy,
   InternalServerErrorException,
+  NotFoundException,
 } from '@nestjs/common';
 import { PrismaClient } from '../../../generated/prisma';
 import { CreditService } from '../credits/credit.service';
@@ -21,11 +22,21 @@ export class ChatService implements OnModuleDestroy {
 
   constructor(private readonly creditService: CreditService) {}
 
+  private async validateProject(projectId: string, userId: string): Promise<void> {
+    const project = await this.prisma.project.findFirst({
+      where: { id: projectId, userId },
+    });
+    console.log(projectId, userId);
+    if (!project) {
+      throw new NotFoundException('Project not found or does not belong to user');
+    }
+  }
+
   async chat(chatDto: ChatDto, authenticatedUserId?: string) {
     const {
       model,
       gen_type,
-      uuid,
+      segmentId,
       visual_prompt,
       animation_prompt,
       image_s3_key,
@@ -33,8 +44,11 @@ export class ChatService implements OnModuleDestroy {
       projectId,
     } = chatDto;
 
-    // Use authenticated user ID if available, fallback to uuid for backward compatibility
-    const userId = authenticatedUserId || uuid;
+    // Use authenticated user ID if available, fallback to segmentId for backward compatibility
+    const userId = authenticatedUserId || segmentId;
+
+    // Validate project exists and belongs to user
+    await this.validateProject(projectId, userId);
 
     let creditTransactionId: string | null = null;
     if (gen_type === 'image') {
@@ -45,19 +59,19 @@ export class ChatService implements OnModuleDestroy {
             userId,
             'IMAGE_GENERATION',
             'recraft',
-            uuid,
+            segmentId,
             false,
             `Image generation using recraft-v3 model`,
           );
 
-          const image = await recraftImageGen(uuid, visual_prompt, art_style);
+          const image = await recraftImageGen(segmentId, visual_prompt, art_style, projectId);
 
           // Save to database
           await this.prisma.generatedImage.create({
             data: {
               visualPrompt: visual_prompt,
               artStyle: art_style,
-              uuid: uuid,
+              uuid: segmentId,
               success: true,
               s3Key: image.s3_key,
               model: image.model,
@@ -87,17 +101,17 @@ export class ChatService implements OnModuleDestroy {
                 userId,
                 'IMAGE_GENERATION',
                 'recraft',
-                uuid,
+                segmentId,
                 creditTransactionId,
                 false,
                 `Refund for failed image generation: ${error.message}`,
               );
               logger.log(
-                `Successfully refunded 1 credit for failed recraft generation. User: ${userId}, Operation: ${uuid}`,
+                `Successfully refunded 1 credit for failed recraft generation. User: ${userId}, Operation: ${segmentId}`,
               );
             } catch (refundError) {
               logger.error(
-                `Failed to refund credits for user ${userId}, operation ${uuid}:`,
+                `Failed to refund credits for user ${userId}, operation ${segmentId}:`,
                 refundError,
               );
             }
@@ -105,13 +119,14 @@ export class ChatService implements OnModuleDestroy {
 
           // Log the error for debugging purposes
           logger.error(
-            `Image generation failed for user ${userId}, operation ${uuid}: ${(error as Error).message}`,
+            `Image generation failed for user ${userId}, operation ${segmentId}: ${(error as Error).message}`,
           );
 
           // If it's a known NestJS exception, rethrow it
           if (
             error instanceof BadRequestException ||
-            error instanceof InternalServerErrorException
+            error instanceof InternalServerErrorException ||
+            error instanceof NotFoundException
           ) {
             throw error;
           }
@@ -128,19 +143,19 @@ export class ChatService implements OnModuleDestroy {
             userId,
             'IMAGE_GENERATION',
             'imagen',
-            uuid,
+            segmentId,
             false,
             `Image generation using imagen model`,
           );
 
-          const image = await imagenImageGen(uuid, visual_prompt, art_style);
+          const image = await imagenImageGen(segmentId, visual_prompt, art_style, projectId);
 
           // Save to database
           await this.prisma.generatedImage.create({
             data: {
               visualPrompt: visual_prompt,
               artStyle: art_style,
-              uuid: uuid,
+              uuid: segmentId,
               success: true,
               s3Key: image.s3_key,
               model: image.model,
@@ -170,17 +185,17 @@ export class ChatService implements OnModuleDestroy {
                 userId,
                 'IMAGE_GENERATION',
                 'imagen',
-                uuid,
+                segmentId,
                 creditTransactionId,
                 false,
                 `Refund for failed image generation: ${error.message}`,
               );
               logger.log(
-                `Successfully refunded 2 credits for failed imagen generation. User: ${userId}, Operation: ${uuid}`,
+                `Successfully refunded 2 credits for failed imagen generation. User: ${userId}, Operation: ${segmentId}`,
               );
             } catch (refundError) {
               logger.error(
-                `Failed to refund credits for user ${userId}, operation ${uuid}:`,
+                `Failed to refund credits for user ${userId}, operation ${segmentId}:`,
                 refundError,
               );
             }
@@ -188,13 +203,14 @@ export class ChatService implements OnModuleDestroy {
 
           // Log the error for debugging purposes
           logger.error(
-            `Image generation failed for user ${userId}, operation ${uuid}: ${(error as Error).message}`,
+            `Image generation failed for user ${userId}, operation ${segmentId}: ${(error as Error).message}`,
           );
 
           // If it's a known NestJS exception, rethrow it
           if (
             error instanceof BadRequestException ||
-            error instanceof InternalServerErrorException
+            error instanceof InternalServerErrorException ||
+            error instanceof NotFoundException
           ) {
             throw error;
           }
@@ -219,16 +235,17 @@ export class ChatService implements OnModuleDestroy {
             userId,
             'VIDEO_GENERATION',
             'kling',
-            uuid,
+            segmentId,
             false,
             `Video generation using kling-v2.1-master model`,
           );
 
           const video = await klingVideoGen(
-            uuid,
+            segmentId,
             animation_prompt,
             art_style,
             image_s3_key,
+            projectId,
           );
 
           // Save to database
@@ -237,7 +254,7 @@ export class ChatService implements OnModuleDestroy {
               animationPrompt: animation_prompt,
               artStyle: art_style,
               imageS3Key: image_s3_key,
-              uuid: uuid,
+              uuid: segmentId,
               success: true,
               model: video.model,
               totalVideos: 1,
@@ -274,17 +291,17 @@ export class ChatService implements OnModuleDestroy {
                 userId,
                 'VIDEO_GENERATION',
                 'kling',
-                uuid,
+                segmentId,
                 creditTransactionId,
                 false,
                 `Refund for failed video generation: ${error.message}`,
               );
               logger.log(
-                `Successfully refunded 20 credits for failed kling generation. User: ${userId}, Operation: ${uuid}`,
+                `Successfully refunded 20 credits for failed kling generation. User: ${userId}, Operation: ${segmentId}`,
               );
             } catch (refundError) {
               logger.error(
-                `Failed to refund credits for user ${userId}, operation ${uuid}:`,
+                `Failed to refund credits for user ${userId}, operation ${segmentId}:`,
                 refundError,
               );
             }
@@ -292,13 +309,14 @@ export class ChatService implements OnModuleDestroy {
 
           // Log the error for debugging purposes
           logger.error(
-            `Video generation failed for user ${userId}, operation ${uuid}: ${(error as Error).message}`,
+            `Video generation failed for user ${userId}, operation ${segmentId}: ${(error as Error).message}`,
           );
 
           // If it's a known NestJS exception, rethrow it
           if (
             error instanceof BadRequestException ||
-            error instanceof InternalServerErrorException
+            error instanceof InternalServerErrorException ||
+            error instanceof NotFoundException
           ) {
             throw error;
           }
@@ -315,16 +333,17 @@ export class ChatService implements OnModuleDestroy {
             userId,
             'VIDEO_GENERATION',
             'runwayml',
-            uuid,
+            segmentId,
             false,
             `Video generation using gen4_turbo model`,
           );
 
           const video = await runwayVideoGen(
-            uuid,
+            segmentId,
             animation_prompt,
             art_style,
             image_s3_key,
+            projectId,
           );
 
           // Save to database
@@ -333,7 +352,7 @@ export class ChatService implements OnModuleDestroy {
               animationPrompt: animation_prompt,
               artStyle: art_style,
               imageS3Key: image_s3_key,
-              uuid: uuid,
+              uuid: segmentId,
               success: true,
               model: video.model,
               totalVideos: 1,
@@ -370,17 +389,17 @@ export class ChatService implements OnModuleDestroy {
                 userId,
                 'VIDEO_GENERATION',
                 'runwayml',
-                uuid,
+                segmentId,
                 creditTransactionId,
                 false,
                 `Refund for failed video generation: ${error.message}`,
               );
               logger.log(
-                `Successfully refunded 2.5 credits for failed gen4_turbo generation. User: ${userId}, Operation: ${uuid}`,
+                `Successfully refunded 2.5 credits for failed gen4_turbo generation. User: ${userId}, Operation: ${segmentId}`,
               );
             } catch (refundError) {
               logger.error(
-                `Failed to refund credits for user ${userId}, operation ${uuid}:`,
+                `Failed to refund credits for user ${userId}, operation ${segmentId}:`,
                 refundError,
               );
             }
@@ -388,13 +407,14 @@ export class ChatService implements OnModuleDestroy {
 
           // Log the error for debugging purposes
           logger.error(
-            `Video generation failed for user ${userId}, operation ${uuid}: ${(error as Error).message}`,
+            `Video generation failed for user ${userId}, operation ${segmentId}: ${(error as Error).message}`,
           );
 
           // If it's a known NestJS exception, rethrow it
           if (
             error instanceof BadRequestException ||
-            error instanceof InternalServerErrorException
+            error instanceof InternalServerErrorException ||
+            error instanceof NotFoundException
           ) {
             throw error;
           }

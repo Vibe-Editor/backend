@@ -11,7 +11,7 @@ export class ImageGenDto {
 
   @IsString()
   @IsNotEmpty()
-  uuid: string;
+  segmentId: string;
 
   @IsString()
   @IsNotEmpty()
