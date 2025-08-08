@@ -95,13 +95,14 @@ export class AgentService {
       },
       execute: async (params: ChatParams) => {
         try {
+          this.logger.log(`➡️ [CHAT] POST /chat model=${params.model} gen_type=${params.gen_type} projectId=${params.projectId}`);
           const response = await axios.post(`${this.baseUrl}/chat`, params, {
             headers: {
               'Authorization': `Bearer ${authToken}`,
               'Content-Type': 'application/json',
             },
           });
-
+          this.logger.log(`✅ [CHAT] ${response.status} OK`);
           return response.data;
         } catch (error) {
           this.logger.error(`❌ [CHAT] Error: ${error.message}`);
@@ -133,6 +134,7 @@ export class AgentService {
       needsApproval: true, // Always requires approval
       execute: async ({ script, art_style, segmentId, projectId, userId, model }: ImageGenerationParams) => {
         try {
+          this.logger.log(`➡️ [IMAGE] POST /chat model=${model} projectId=${projectId}`);
           const response = await axios.post(`${this.baseUrl}/chat`, {
             model,
             gen_type: 'image',
@@ -146,7 +148,7 @@ export class AgentService {
               'Content-Type': 'application/json',
             },
           });
-
+          this.logger.log(`✅ [IMAGE] ${response.status} OK`);
           return {
             success: true,
             data: response.data,
@@ -181,13 +183,14 @@ export class AgentService {
       },
       execute: async (params: SegmentationParams) => {
         try {
+          this.logger.log(`➡️ [SEGMENTATION] POST /segmentation projectId=${params.projectId}`);
           const response = await axios.post(`${this.baseUrl}/segmentation`, params, {
             headers: {
               'Authorization': `Bearer ${authToken}`,
               'Content-Type': 'application/json',
             },
           });
-
+          this.logger.log(`✅ [SEGMENTATION] ${response.status} OK`);
           return response.data;
         } catch (error) {
           this.logger.error(`❌ [SEGMENTATION] Error: ${error.message}`);
@@ -216,13 +219,14 @@ export class AgentService {
       },
       execute: async (params: WebInfoParams) => {
         try {
+          this.logger.log(`➡️ [WEB-INFO] POST /get-web-info projectId=${params.projectId}`);
           const response = await axios.post(`${this.baseUrl}/get-web-info`, params, {
             headers: {
               'Authorization': `Bearer ${authToken}`,
               'Content-Type': 'application/json',
             },
           });
-
+          this.logger.log(`✅ [WEB-INFO] ${response.status} OK`);
           return response.data;
         } catch (error) {
           this.logger.error(`❌ [WEB-INFO] Error: ${error.message}`);
@@ -253,13 +257,14 @@ export class AgentService {
       needsApproval: true, // Always requires approval
       execute: async (params: ConceptWriterParams) => {
         try {
+          this.logger.log(`➡️ [CONCEPT-WRITER] POST /concept-writer projectId=${params.projectId}`);
           const response = await axios.post(`${this.baseUrl}/concept-writer`, params, {
             headers: {
               'Authorization': `Bearer ${authToken}`,
               'Content-Type': 'application/json',
             },
           });
-
+          this.logger.log(`✅ [CONCEPT-WRITER] ${response.status} OK`);
           return {
             success: true,
             data: response.data,
@@ -355,6 +360,7 @@ export class AgentService {
     projectId?: string
   ) {
     try {
+      this.logger.log(`🚀 [RUN] start userId=${userId} projectId=${projectId}`);
       streamSubject.next({
         type: 'log',
         data: { message: 'Starting agent run...' },
@@ -373,6 +379,7 @@ export class AgentService {
       });
 
       const result = await run(agent, contextualInput);
+      this.logger.log(`📊 [RUN] interruptions=${result.interruptions?.length || 0}`);
       
       // Handle interruptions (approvals needed)
       if (result.interruptions?.length > 0) {
@@ -392,6 +399,7 @@ export class AgentService {
             };
             
             this.approvalRequests.set(approvalId, approvalRequest);
+            this.logger.log(`⏸️ [APPROVAL] pending id=${approvalId} tool=${interruption.rawItem.name}`);
             
             // Send approval required message to stream
             streamSubject.next({
@@ -410,6 +418,7 @@ export class AgentService {
             
             // After approval, continue with the tool execution
             if (this.approvalRequests.get(approvalId)?.status === 'approved') {
+              this.logger.log(`✅ [APPROVAL] approved id=${approvalId}`);
               streamSubject.next({
                 type: 'log',
                 data: { message: 'Approval received, continuing execution...' },
@@ -425,6 +434,7 @@ export class AgentService {
                 timestamp: new Date()
               });
             } else {
+              this.logger.log(`❌ [APPROVAL] rejected id=${approvalId}`);
               streamSubject.next({
                 type: 'log',
                 data: { message: 'Request was rejected' },
@@ -434,11 +444,13 @@ export class AgentService {
 
             // Clean up
             this.approvalRequests.delete(approvalId);
+            this.logger.log(`🧹 [APPROVAL] cleared id=${approvalId}`);
           }
         }
       }
       
       // Send completion message
+      this.logger.log(`🏁 [RUN] completed`);
       streamSubject.next({
         type: 'completed',
         data: { 
