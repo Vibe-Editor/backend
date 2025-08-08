@@ -62,11 +62,11 @@ export class ImageGenService {
 
   async generateImage(imageGenDto: ImageGenDto, userId: string) {
     // Use projectId from body - no fallback project creation logic
-    const { visual_prompt, art_style, uuid, projectId } = imageGenDto;
+    const { visual_prompt, art_style, segmentId, projectId } = imageGenDto;
     this.logger.log(`Using project ${projectId} for image generation`);
 
     const startTime = Date.now();
-    const operationId = uuid;
+    const operationId = segmentId;
 
     // Enhanced logging for request tracking
     this.logger.log('=== IMAGE GENERATION REQUEST START ===');
@@ -182,7 +182,7 @@ export class ImageGenService {
       const result = await run(triageAgent, [
         {
           role: 'user',
-          content: `Generate an image with prompt: "${visual_prompt}"\n art style: "${art_style}"\n for user: "${uuid}"`,
+          content: `Generate an image with prompt: "${visual_prompt}"\n art style: "${art_style}"\n for user: "${segmentId}"\n projectId: "${projectId}"\n segmentId: "${segmentId}"`,
         },
       ]);
 
@@ -351,7 +351,7 @@ export class ImageGenService {
               model: agentResult.model,
               s3_key: agentResult.s3_key,
               image_size_bytes: agentResult.image_size_bytes,
-              uuid: uuid,
+              uuid: segmentId,
             },
           );
 
@@ -404,7 +404,7 @@ export class ImageGenService {
             data: {
               visualPrompt: visual_prompt,
               artStyle: art_style,
-              uuid: uuid,
+              uuid: segmentId,
               success: true,
               s3Key: agentResult.s3_key,
               model: agentResult.model,
@@ -432,7 +432,7 @@ export class ImageGenService {
               }),
               metadata: {
                 artStyle: art_style,
-                uuid: uuid,
+                uuid: segmentId,
                 savedImageId: savedImage.id,
               },
               projectId,
@@ -474,7 +474,7 @@ export class ImageGenService {
       const totalTime = Date.now() - startTime;
       this.logger.error(`Image generation failed after ${totalTime}ms`, {
         error: error.message,
-        uuid: uuid,
+        uuid: segmentId,
         stack: error.stack,
       });
 

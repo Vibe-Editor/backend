@@ -15,7 +15,8 @@ export const createVeo2Agent = () =>
     animation_prompt: string;
     art_style: string;
     imageS3Key: string;
-    uuid: string;
+    segmentId: string;
+    projectId: string;
   }>({
     name: 'Veo2 Cartoonish Video Agent',
     instructions:
@@ -28,14 +29,16 @@ export const createVeo2Agent = () =>
           animation_prompt: z.string(),
           imageS3Key: z.string(),
           art_style: z.string(),
-          uuid: z.string(),
+          segmentId: z.string(),
+          projectId: z.string(),
         }) as any,
-        execute: async ({ animation_prompt, art_style, imageS3Key, uuid }) => {
+        execute: async ({ animation_prompt, art_style, imageS3Key, segmentId, projectId }) => {
           return await generateVeo2Video(
             animation_prompt,
             art_style,
             imageS3Key,
-            uuid,
+            segmentId,
+            projectId,
           );
         },
       }),
@@ -46,10 +49,11 @@ async function generateVeo2Video(
   animation_prompt: string,
   art_style: string,
   imageS3Key: string,
-  uuid: string,
+  segmentId: string,
+  projectId: string,
 ): Promise<VideoGenerationResult> {
   const startTime = Date.now();
-  logger.log(`Starting Veo2 video generation for user: ${uuid}`);
+  logger.log(`Starting Veo2 video generation for user: ${segmentId}`);
 
   // Trim animation_prompt to ensure total prompt length stays reasonable (under 2000 characters for Veo2)
   const additionalText = ` \n ART_STYLE: ${art_style}`;
@@ -134,18 +138,18 @@ async function generateVeo2Video(
       if (uri) {
         try {
           logger.debug(`Uploading Veo2 video ${i + 1}/${videos.length} to S3`);
-          const s3Key = await uploadVideoToS3(uri, uuid);
+          const s3Key = await uploadVideoToS3(uri, segmentId, projectId);
           s3Keys.push(s3Key);
           logger.log(
             `Successfully uploaded Veo2 video ${i + 1} to S3: ${s3Key}`,
           );
         } catch (error) {
-          logger.error(`Failed to upload Veo2 video ${i + 1}:`, {
-            error: error.message,
-            stack: error.stack,
-            uri,
-            uuid,
-          });
+                      logger.error(`Failed to upload Veo2 video ${i + 1}:`, {
+              error: error.message,
+              stack: error.stack,
+              uri,
+              segmentId,
+            });
         }
       } else {
         logger.warn(`Video ${i + 1} has no URI:`, videos[i]);
@@ -163,7 +167,7 @@ async function generateVeo2Video(
       {
         totalVideos: s3Keys.length,
         s3Keys,
-        uuid,
+        segmentId,
       },
     );
 
@@ -176,7 +180,7 @@ async function generateVeo2Video(
     const totalTime = Date.now() - startTime;
     logger.error(`Veo2 video generation failed after ${totalTime}ms`, {
       error: error.message,
-      uuid,
+      segmentId,
       stack: error.stack,
     });
     throw error;

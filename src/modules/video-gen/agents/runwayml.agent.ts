@@ -14,7 +14,8 @@ export const createRunwayMLAgent = () =>
     animation_prompt: string;
     art_style: string;
     imageS3Key: string;
-    uuid: string;
+    segmentId: string;
+    projectId: string;
   }>({
     name: 'RunwayML Realistic Video Agent',
     instructions:
@@ -28,9 +29,10 @@ export const createRunwayMLAgent = () =>
           animation_prompt: z.string(),
           imageS3Key: z.string(),
           art_style: z.string(),
-          uuid: z.string(),
+          segmentId: z.string(),
+          projectId: z.string(),
         }) as any,
-        execute: async ({ animation_prompt, art_style, imageS3Key, uuid }) => {
+        execute: async ({ animation_prompt, art_style, imageS3Key, segmentId, projectId }) => {
           logger.log(
             'Agent selected RunwayML for realistic/high-quality content',
           );
@@ -38,7 +40,8 @@ export const createRunwayMLAgent = () =>
             animation_prompt,
             art_style,
             imageS3Key,
-            uuid,
+            segmentId,
+            projectId,
           );
         },
       }),
@@ -49,10 +52,11 @@ async function generateRunwayMLVideo(
   animation_prompt: string,
   art_style: string,
   imageS3Key: string,
-  uuid: string,
+  segmentId: string,
+  projectId: string,
 ): Promise<VideoGenerationResult> {
   const startTime = Date.now();
-  logger.log(`Starting RunwayML video generation for user: ${uuid}`);
+  logger.log(`Starting RunwayML video generation for user: ${segmentId}`);
 
   // Trim animation_prompt to ensure total prompt length stays well under 1000 characters (using 950 for safety buffer)
   const additionalText = `. Art style: ${art_style}`;
@@ -127,7 +131,7 @@ async function generateRunwayMLVideo(
           logger.debug(
             `Uploading RunwayML video ${i + 1}/${task.output.length} to S3`,
           );
-          const s3Key = await uploadVideoToS3(videoUrl, uuid);
+          const s3Key = await uploadVideoToS3(videoUrl, segmentId, projectId);
           s3Keys.push(s3Key);
           logger.log(
             `Successfully uploaded RunwayML video ${i + 1} to S3: ${s3Key}`,
@@ -137,7 +141,7 @@ async function generateRunwayMLVideo(
             error: error.message,
             stack: error.stack,
             url: videoUrl,
-            uuid,
+            segmentId,
           });
 
           throw new error();
@@ -158,7 +162,7 @@ async function generateRunwayMLVideo(
       {
         totalVideos: s3Keys.length,
         s3Keys,
-        uuid,
+        segmentId,
       },
     );
 
@@ -171,7 +175,7 @@ async function generateRunwayMLVideo(
     const totalTime = Date.now() - startTime;
     logger.error(`RunwayML video generation failed after ${totalTime}ms`, {
       error: error.message,
-      uuid,
+      segmentId,
       stack: error.stack,
     });
     throw error;

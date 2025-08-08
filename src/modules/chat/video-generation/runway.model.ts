@@ -9,13 +9,14 @@ const logger = new Logger('RunwayML Model');
 const runwayClient = new RunwayML({ apiKey: process.env.RUNWAYML_API_KEY });
 
 export async function runwayVideoGen(
-  uuid: string,
+  segmentId: string,
   animation_prompt: string,
   art_style: string,
   imageS3Key: string,
+  projectId: string,
 ) {
   const startTime = Date.now();
-  logger.log(`Starting RunwayML video generation for user: ${uuid}`);
+  logger.log(`Starting RunwayML video generation for user: ${segmentId}`);
 
   // Trim animation_prompt to ensure total prompt length stays well under 1000 characters (using 950 for safety buffer)
   const additionalText = `. Art style: ${art_style}`;
@@ -89,7 +90,7 @@ export async function runwayVideoGen(
     logger.log(`RunwayML video URL: ${videoUrl}`);
 
     logger.debug('Uploading RunwayML video to S3');
-    const s3Key = await uploadVideoToS3(videoUrl, uuid);
+    const s3Key = await uploadVideoToS3(videoUrl, segmentId, projectId);
     logger.log(`Successfully uploaded RunwayML video to S3: ${s3Key}`);
 
     const totalTime = Date.now() - startTime;
@@ -97,7 +98,7 @@ export async function runwayVideoGen(
       `RunwayML video generation completed successfully in ${totalTime}ms`,
       {
         s3Key,
-        uuid,
+        segmentId,
       },
     );
 
@@ -109,7 +110,7 @@ export async function runwayVideoGen(
     const totalTime = Date.now() - startTime;
     logger.error(`RunwayML video generation failed after ${totalTime}ms`, {
       error: error.message,
-      uuid,
+      segmentId,
       stack: error.stack,
     });
     throw error;

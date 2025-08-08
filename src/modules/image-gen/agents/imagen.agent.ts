@@ -25,7 +25,8 @@ export const createImagenAgent = () =>
   new Agent<{
     visual_prompt: string;
     art_style: string;
-    uuid: string;
+    segmentId: string;
+    projectId: string;
   }>({
     name: 'Imagen Text-Based Image Agent',
     instructions: `You are an image generation agent that uses Google's Imagen model. 
@@ -43,12 +44,13 @@ You are perfect for images containing text, logos, signs, artistic styles, and c
         parameters: z.object({
           visual_prompt: z.string(),
           art_style: z.string(),
-          uuid: z.string(),
+          segmentId: z.string(),
+          projectId: z.string(),
         }) as any,
-        execute: async ({ visual_prompt, art_style, uuid }) => {
+        execute: async ({ visual_prompt, art_style, segmentId, projectId }) => {
           logger.log('Agent selected Imagen for text-based/artistic content');
           try {
-            return await generateImagenImage(visual_prompt, art_style, uuid);
+            return await generateImagenImage(visual_prompt, art_style, segmentId, projectId);
           } catch (error) {
             logger.error('Imagen image generation failed:', error);
             throw new Error(`Imagen image generation failed: ${error.message}`);
@@ -61,10 +63,11 @@ You are perfect for images containing text, logos, signs, artistic styles, and c
 async function generateImagenImage(
   visual_prompt: string,
   art_style: string,
-  uuid: string,
+  segmentId: string,
+  projectId: string,
 ): Promise<ImageGenerationResult> {
   const startTime = Date.now();
-  logger.log(`Starting Imagen image generation for user: ${uuid}`);
+  logger.log(`Starting Imagen image generation for user: ${segmentId}`);
 
   try {
     // Trim visual_prompt to ensure total prompt length stays reasonable (under 2000 characters)
@@ -83,7 +86,7 @@ async function generateImagenImage(
 
     // Enhanced logging - log the exact request being sent
     logger.log('=== IMAGEN API REQUEST START ===');
-    logger.log(`Request UUID: ${uuid}`);
+    logger.log(`Request UUID: ${segmentId}`);
     logger.log(`Model: imagen-3.0-generate-002`);
     logger.log(`Prompt length: ${finalPrompt.length} characters`);
     logger.log(`Full prompt: ${finalPrompt}`);
@@ -102,7 +105,7 @@ async function generateImagenImage(
     } catch (apiError) {
       // Enhanced error logging for API failures
       logger.error('=== IMAGEN API ERROR START ===');
-      logger.error(`Request UUID: ${uuid}`);
+      logger.error(`Request UUID: ${segmentId}`);
       logger.error(`Error type: ${apiError.constructor.name}`);
       logger.error(`Error message: ${apiError.message}`);
       logger.error(`Error stack: ${apiError.stack}`);
@@ -134,7 +137,7 @@ async function generateImagenImage(
 
     // Enhanced response logging - log the complete response structure
     logger.log('=== IMAGEN API RESPONSE START ===');
-    logger.log(`Request UUID: ${uuid}`);
+    logger.log(`Request UUID: ${segmentId}`);
 
     // Log response metadata
     logger.log(`Response type: ${typeof response}`);
@@ -217,7 +220,7 @@ async function generateImagenImage(
       responseData.generatedImages.length === 0
     ) {
       logger.error('=== IMAGEN GENERATION FAILURE ANALYSIS START ===');
-      logger.error(`Request UUID: ${uuid}`);
+      logger.error(`Request UUID: ${segmentId}`);
       logger.error(`Reason: No images generated from Imagen API`);
       logger.error(`generatedImages exists: ${!!responseData.generatedImages}`);
       logger.error(
@@ -234,7 +237,7 @@ async function generateImagenImage(
     const generatedImage = responseData.generatedImages[0].image;
     if (!generatedImage.imageBytes) {
       logger.error('=== IMAGEN IMAGE DATA FAILURE START ===');
-      logger.error(`Request UUID: ${uuid}`);
+      logger.error(`Request UUID: ${segmentId}`);
       logger.error(`Reason: Empty image data from Imagen API`);
       logger.error(
         `generatedImage keys: [${Object.keys(generatedImage || {}).join(', ')}]`,
@@ -256,7 +259,7 @@ async function generateImagenImage(
     }
 
     // Upload to S3
-    const s3Key = `${uuid}/images/${randomUUID()}.png`;
+    const s3Key = `${projectId}/images/${segmentId}/${randomUUID()}.png`;
     logger.log(`Uploading Imagen image to S3 with key: ${s3Key}`);
 
     const command = new PutObjectCommand({
@@ -275,7 +278,7 @@ async function generateImagenImage(
       {
         s3_key: s3Key,
         image_size_bytes: imageBuffer.length,
-        uuid,
+        segmentId,
       },
     );
 
@@ -288,7 +291,7 @@ async function generateImagenImage(
     const totalTime = Date.now() - startTime;
     logger.error(`Imagen image generation failed after ${totalTime}ms`, {
       error: error.message,
-      uuid,
+      segmentId,
       stack: error.stack,
     });
     throw error;

@@ -23,7 +23,8 @@ export const createRecraftAgent = () =>
   new Agent<{
     visual_prompt: string;
     art_style: string;
-    uuid: string;
+    segmentId: string;
+    projectId: string;
   }>({
     name: 'Recraft Realistic Image Agent',
     instructions: `You are an image generation agent that uses the Recraft AI model.
@@ -40,14 +41,15 @@ You are perfect for realistic scenes, landscapes, portraits, objects without tex
         parameters: z.object({
           visual_prompt: z.string(),
           art_style: z.string(),
-          uuid: z.string(),
+          segmentId: z.string(),
+          projectId: z.string(),
         }) as any,
-        execute: async ({ visual_prompt, art_style, uuid }) => {
+        execute: async ({ visual_prompt, art_style, segmentId, projectId }) => {
           logger.log(
             'Agent selected Recraft for realistic content without text',
           );
           try {
-            return await generateRecraftImage(visual_prompt, art_style, uuid);
+            return await generateRecraftImage(visual_prompt, art_style, segmentId, projectId);
           } catch (error) {
             logger.error('Recraft image generation failed:', error);
             throw new Error(
@@ -62,10 +64,11 @@ You are perfect for realistic scenes, landscapes, portraits, objects without tex
 async function generateRecraftImage(
   visual_prompt: string,
   art_style: string,
-  uuid: string,
+  segmentId: string,
+  projectId: string,
 ): Promise<ImageGenerationResult> {
   const startTime = Date.now();
-  logger.log(`Starting Recraft image generation for user: ${uuid}`);
+  logger.log(`Starting Recraft image generation for user: ${segmentId}`);
 
   try {
     // Trim visual_prompt to ensure total prompt length stays well under 1000 characters (using 950 for safety buffer)
@@ -124,7 +127,7 @@ async function generateRecraftImage(
     try {
       // Enhanced logging - log the exact request being sent
       logger.log('=== RECRAFT API REQUEST START ===');
-      logger.log(`Request UUID: ${uuid}`);
+      logger.log(`Request UUID: ${segmentId}`);
       logger.log(`Model: realistic_image`);
       logger.log(`Prompt length: ${recraftPrompt.length} characters`);
       logger.log(`Full prompt: ${recraftPrompt}`);
@@ -155,7 +158,7 @@ async function generateRecraftImage(
 
       // Enhanced response logging - log the complete response structure
       logger.log('=== RECRAFT API RESPONSE START ===');
-      logger.log(`Request UUID: ${uuid}`);
+      logger.log(`Request UUID: ${segmentId}`);
       logger.log(`HTTP Status: ${response.status}`);
       logger.log(`HTTP Status Text: ${response.statusText}`);
 
@@ -205,7 +208,7 @@ async function generateRecraftImage(
     } catch (axiosError) {
       // Enhanced error logging for API failures
       logger.error('=== RECRAFT API ERROR START ===');
-      logger.error(`Request UUID: ${uuid}`);
+      logger.error(`Request UUID: ${segmentId}`);
       logger.error(`Error type: ${axiosError.constructor.name}`);
       logger.error(`Error message: ${axiosError.message}`);
       logger.error(`Error code: ${axiosError.code || 'N/A'}`);
@@ -263,7 +266,7 @@ async function generateRecraftImage(
 
     // Enhanced validation logging
     logger.log('=== RECRAFT RESPONSE VALIDATION START ===');
-    logger.log(`Request UUID: ${uuid}`);
+    logger.log(`Request UUID: ${segmentId}`);
     logger.log(`Response.data exists: ${!!response.data}`);
     logger.log(`Response.data.data exists: ${!!response.data?.data}`);
     logger.log(
@@ -290,7 +293,7 @@ async function generateRecraftImage(
       response.data.data.length === 0
     ) {
       logger.error('=== RECRAFT GENERATION FAILURE ANALYSIS START ===');
-      logger.error(`Request UUID: ${uuid}`);
+      logger.error(`Request UUID: ${segmentId}`);
       logger.error(`Reason: Recraft generation failed - no images returned`);
       logger.error(`response.data exists: ${!!response.data}`);
       logger.error(`response.data.data exists: ${!!response.data?.data}`);
@@ -329,7 +332,7 @@ async function generateRecraftImage(
     }
 
     // Upload to S3
-    const s3Key = `${uuid}/images/${randomUUID()}.png`;
+    const s3Key = `${projectId}/images/${segmentId}/${randomUUID()}.png`;
     logger.log(`Uploading Recraft image to S3 with key: ${s3Key}`);
 
     const command = new PutObjectCommand({
@@ -348,7 +351,7 @@ async function generateRecraftImage(
       {
         s3_key: s3Key,
         image_size_bytes: imageBuffer.length,
-        uuid,
+        segmentId,
       },
     );
 
@@ -361,7 +364,7 @@ async function generateRecraftImage(
     const totalTime = Date.now() - startTime;
     logger.error(`Recraft image generation failed after ${totalTime}ms`, {
       error: error.message,
-      uuid,
+      segmentId,
       stack: error.stack,
     });
     throw error;

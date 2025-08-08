@@ -30,7 +30,7 @@ export class ChatDto {
 
   @IsString()
   @IsNotEmpty()
-  uuid: string;
+  segmentId: string;
 
   @IsString()
   @IsNotEmpty()

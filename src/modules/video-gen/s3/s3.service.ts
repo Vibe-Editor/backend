@@ -59,7 +59,8 @@ export async function getImageFromS3AsBase64(s3Key: string): Promise<string> {
 
 export async function uploadVideoToS3(
   videoUri: string,
-  uuid: string,
+  segmentId: string,
+  projectId: string,
 ): Promise<string> {
   const startTime = Date.now();
   logger.debug(`Starting video download from URI: ${videoUri}`);
@@ -84,7 +85,7 @@ export async function uploadVideoToS3(
     );
 
     // Generate S3 key
-    const s3Key = `${uuid}/videos/${randomUUID()}.mp4`;
+    const s3Key = `${projectId}/videos/${segmentId}/${randomUUID()}.mp4`;
     logger.debug(`Uploading video to S3 with key: ${s3Key}`);
 
     // Upload to S3
@@ -105,7 +106,7 @@ export async function uploadVideoToS3(
     const totalTime = Date.now() - startTime;
     logger.error(`Failed to upload video to S3 after ${totalTime}ms`, {
       videoUri,
-      uuid,
+      segmentId,
       error: error.message,
       responseStatus: error.response?.status,
       responseData: error.response?.data,

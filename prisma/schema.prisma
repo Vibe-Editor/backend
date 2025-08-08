@@ -199,10 +199,10 @@ model VideoSegment {
   visual              String
   narration           String
   animation           String
-  videoSegmentationId String
+  videoSegmentationId String?
   createdAt           DateTime @default(now())
 
-  videoSegmentation VideoSegmentation @relation(fields: [videoSegmentationId], references: [id], onDelete: Cascade)
+  videoSegmentation VideoSegmentation? @relation(fields: [videoSegmentationId], references: [id], onDelete: Cascade)
 }
 
 model GeneratedImage {

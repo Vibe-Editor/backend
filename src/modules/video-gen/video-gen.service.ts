@@ -61,12 +61,12 @@ export class VideoGenService {
 
   async generateVideo(videoGenDto: VideoGenDto, userId: string) {
     // Use projectId from body - no fallback project creation logic
-    const { animation_prompt, art_style, imageS3Key, uuid, projectId } =
+    const { animation_prompt, art_style, imageS3Key, segmentId, projectId } =
       videoGenDto;
     this.logger.log(`Using project ${projectId} for video generation`);
 
     const startTime = Date.now();
-    this.logger.log(`Starting video generation request for user: ${uuid}`);
+    this.logger.log(`Starting video generation request for user: ${segmentId}`);
 
     const Veo2Agent = createVeo2Agent();
     const RunwayMLAgent = createRunwayMLAgent();
@@ -118,32 +118,32 @@ export class VideoGenService {
     let modelUsed: string | null = null;
 
     try {
-      if (!animation_prompt || !imageS3Key || !uuid) {
+      if (!animation_prompt || !imageS3Key || !segmentId) {
         this.logger.error('Missing required fields in request', {
           hasPrompt: !!animation_prompt,
           hasImageS3Key: !!imageS3Key,
-          hasUuid: !!uuid,
+          hasSegmentId: !!segmentId,
         });
         throw new BadRequestException(
-          'Missing required fields: animation_prompt, imageS3Key, and uuid are required',
+          'Missing required fields: animation_prompt, imageS3Key, and segmentId are required',
         );
       }
 
       // ===== ATOMIC CREDIT DEDUCTION =====
-      this.logger.log(`Deducting credits for video generation [${uuid}]`);
+      this.logger.log(`Deducting credits for video generation [${segmentId}]`);
 
       // Deduct credits for most expensive model upfront (prevents race conditions)
       creditTransactionId = await this.creditService.deductCredits(
         userId,
         'VIDEO_GENERATION',
         'veo2', // Deduct for most expensive model upfront
-        uuid,
+        segmentId,
         false,
-        `Video generation - upfront deduction for ${uuid}`,
+        `Video generation - upfront deduction for ${segmentId}`,
       );
 
       this.logger.log(
-        `Successfully deducted 25 credits upfront for video generation. Transaction ID: ${creditTransactionId} [${uuid}]`,
+        `Successfully deducted 25 credits upfront for video generation. Transaction ID: ${creditTransactionId} [${segmentId}]`,
       );
       // ===== END CREDIT DEDUCTION =====
 
@@ -151,7 +151,7 @@ export class VideoGenService {
       const result = await run(triageAgent, [
         {
           role: 'user',
-          content: `Generate a video with prompt: "${animation_prompt}"\n art style: "${art_style}"\n using image S3 key: "${imageS3Key}"\n for user: "${uuid}"`,
+          content: `Generate a video with prompt: "${animation_prompt}"\n art style: "${art_style}"\n using image S3 key: "${imageS3Key}"\n for user: "${segmentId}"\n projectId: "${projectId}"\n segmentId: "${segmentId}"`,
         },
       ]);
 
@@ -198,13 +198,13 @@ export class VideoGenService {
               model: agentResult.model,
               totalVideos: agentResult.totalVideos,
               s3Keys: agentResult.s3Keys,
-              uuid: uuid,
+              uuid: segmentId,
             },
           );
 
           // ===== CREDIT ADJUSTMENT (REFUND EXCESS) =====
           this.logger.log(
-            `Adjusting credits for successful video generation [${uuid}]`,
+            `Adjusting credits for successful video generation [${segmentId}]`,
           );
 
           let actualCreditsUsed: number;
@@ -252,16 +252,16 @@ export class VideoGenService {
               );
 
               this.logger.log(
-                `Refunded ${refundAmount} excess credits. Actual usage: ${actualCreditsUsed} credits for ${modelUsed} [${uuid}]`,
+                `Refunded ${refundAmount} excess credits. Actual usage: ${actualCreditsUsed} credits for ${modelUsed} [${segmentId}]`,
               );
             } else {
               this.logger.log(
-                `No refund needed. Used ${actualCreditsUsed} credits for ${modelUsed} [${uuid}]`,
+                `No refund needed. Used ${actualCreditsUsed} credits for ${modelUsed} [${segmentId}]`,
               );
             }
           } catch (creditError) {
             this.logger.error(
-              `Failed to adjust credits after successful video generation [${uuid}]:`,
+              `Failed to adjust credits after successful video generation [${segmentId}]:`,
               creditError,
             );
             // Note: We still continue and save the video since generation was successful
@@ -275,7 +275,7 @@ export class VideoGenService {
               animationPrompt: animation_prompt,
               artStyle: art_style,
               imageS3Key: imageS3Key,
-              uuid: uuid,
+              uuid: segmentId,
               success: true,
               model: agentResult.model,
               totalVideos: agentResult.totalVideos,
@@ -312,7 +312,7 @@ export class VideoGenService {
               metadata: {
                 artStyle: art_style,
                 imageS3Key: imageS3Key,
-                uuid: uuid,
+                uuid: segmentId,
                 savedVideoId: savedVideo.id,
                 savedVideoFileIds: savedVideoFiles.map((f) => f.id),
               },
@@ -369,7 +369,7 @@ export class VideoGenService {
       const totalTime = Date.now() - startTime;
       this.logger.error(`Video generation failed after ${totalTime}ms`, {
         error: error.message,
-        uuid: uuid,
+        uuid: segmentId,
         stack: error.stack,
       });
 
@@ -379,14 +379,14 @@ export class VideoGenService {
           userId,
           25, // We deducted 25 credits upfront for veo2 pricing
           'REFUND',
-          `Video generation failed - refunding pre-deducted credits [${uuid}]`,
+          `Video generation failed - refunding pre-deducted credits [${segmentId}]`,
         );
         this.logger.log(
-          `Refunded 25 credits due to failed video generation [${uuid}]`,
+          `Refunded 25 credits due to failed video generation [${segmentId}]`,
         );
       } catch (refundError) {
         this.logger.error(
-          `Failed to refund credits after video generation failure [${uuid}]:`,
+          `Failed to refund credits after video generation failure [${segmentId}]:`,
           refundError,
         );
         // This is a critical error - user paid but got no service
@@ -399,7 +399,7 @@ export class VideoGenService {
             animationPrompt: animation_prompt,
             artStyle: art_style,
             imageS3Key: imageS3Key,
-            uuid: uuid,
+            uuid: segmentId,
             success: false,
             model: 'failed',
             projectId,
