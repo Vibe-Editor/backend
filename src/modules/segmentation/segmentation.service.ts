@@ -42,26 +42,28 @@ export class SegmentationService {
     animationPrompt: string;
     concept: string;
     negativePrompt: string;
+    model: string;
   }): Promise<{
     narration: string;
     visual: string;
     animation: string;
     artStyle: string;
+    model: string;
   }> {
-    const { narrationPrompt, visualPrompt, animationPrompt } = options;
+    const { narrationPrompt, visualPrompt, animationPrompt, model } = options;
 
     const [animationRes, narrationRes, artStyleRes] =
       await Promise.all([
         this.genAI.models.generateContent({
-          model: 'gemini-2.5-pro-preview-06-05',
+          model,
           contents: animationPrompt,
         }),
         this.genAI.models.generateContent({
-          model: 'gemini-2.5-pro-preview-06-05',
+          model,
           contents: narrationPrompt,
         }),
         this.genAI.models.generateContent({
-          model: 'gemini-2.5-pro-preview-06-05',
+          model,
           contents: `VISUAL PROMPT: ${visualPrompt} \n ANIMATION PROMPT: ${animationPrompt}. \n Your task is to generate a art style prompt using the visual prompt and animation prompt. This is to maintain consistency in the visual and animation style. If there's a person involved in the visual, make sure to mention the looks of the person in the art style prompt.
         
         Example Style Prompt for a face wash ad that is minimal:
@@ -90,9 +92,10 @@ export class SegmentationService {
       artStyle: artStyle,
       concept: options.concept || '',
       negativePrompt: options.negativePrompt || '',
+      model,
     });
 
-    return { narration, visual, animation, artStyle };
+    return { narration, visual, animation, artStyle, model: options.model };
   }
 
   private async generateVisualScriptWithDirectorBrain(options: {
@@ -101,12 +104,13 @@ export class SegmentationService {
     artStyle: string;
     concept: string;
     negativePrompt: string;
+    model: string;
   }): Promise<string> {
-    const { animationPrompt, userPrompt, artStyle, concept, negativePrompt } = options;
+    const { animationPrompt, userPrompt, artStyle, concept, negativePrompt, model } = options;
 
     try {
       const response = await this.genAI.models.generateContent({
-        model: 'gemini-2.5-pro-preview-06-05',
+        model,
         contents: `You are the **Director Brain 'Micro' Spec** model. Your task is to generate a detailed visual prompt string that incorporates cinematographic principles and contextual storytelling.
 
 ### Core Operating Principles
@@ -233,6 +237,7 @@ Generate the visual prompt:`,
       artStyle: artStyle,
       concept: concept,
       negativePrompt: negativePrompt,
+      model: 'gemini-2.5-pro-preview-06-05',
     });
 
     return { narration, visual, animation, artStyle };
@@ -244,6 +249,7 @@ Generate the visual prompt:`,
     animation: string;
     artStyle: string;
     negative_prompt: string;
+    model: string;
   }): Promise<{ segments: TypeSegment[]; artStyle: string }> {
     const makeSegmentationPrompt = (
       scriptText: string,
@@ -306,7 +312,7 @@ Generate the visual prompt:`,
 
     const [animationSegRes, narrationSegRes, visualSegRes] = await Promise.all([
       await this.genAI.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: script.model || 'gemini-2.5-flash',
         contents: makeSegmentationPrompt(
           script.narration,
           'narration',
@@ -328,7 +334,7 @@ Generate the visual prompt:`,
       }),
 
       await this.genAI.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: script.model || 'gemini-2.5-flash',
         contents: makeSegmentationPrompt(
           script.visual,
           'visual',
@@ -350,7 +356,7 @@ Generate the visual prompt:`,
       }),
 
       await this.genAI.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: script.model || 'gemini-2.5-flash',
         contents: makeSegmentationPrompt(
           script.animation,
           'animation',
@@ -432,6 +438,12 @@ Generate the visual prompt:`,
     );
     // ===== END CREDIT DEDUCTION =====
 
+    // Determine Gemini model variant based on user input (default to pro)
+    const geminiModel =
+      segmentationDto.model === 'flash'
+        ? 'gemini-2.5-flash'
+        : 'gemini-2.5-pro-preview-06-05';
+
     const createGeminiAgent = () =>
       new Agent<{ prompt: string; negative_prompt: string }>({
         name: 'Gemini Script Generation Agent',
@@ -458,8 +470,9 @@ Generate the visual prompt:`,
                 visualPrompt: `Generate a visual concept for a video about: "${prompt}". Create descriptions for 5 distinct visual segments, each representing a single, cohesive image concept. Each image should be visually compelling and support the overall narrative. Focus on visual composition and storytelling.`,
                 concept: concept,
                 negativePrompt: negative_prompt,
+                model: geminiModel,
               });
-              return { script, model: 'gemini-2.5-pro' };
+              return { script, model: geminiModel };
             },
           }),
         ],
@@ -580,6 +593,7 @@ Generate the visual prompt:`,
           const segmentedScript = await this.segmentGeneratedScript({
             ...agentResult.script,
             negative_prompt: segmentationDto.negative_prompt,
+            model: agentResult.model,
           });
 
           // Save to database

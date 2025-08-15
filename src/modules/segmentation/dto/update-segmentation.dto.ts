@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsIn } from 'class-validator';
 
 export class UpdateSegmentationDto {
   @IsString()
@@ -18,4 +18,9 @@ export class UpdateSegmentationDto {
   @IsString()
   @IsOptional()
   projectId?: string;
+
+  @IsString()
+  @IsOptional()
+  @IsIn(['pro', 'flash'])
+  model?: 'pro' | 'flash';
 }
