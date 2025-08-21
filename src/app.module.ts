@@ -18,6 +18,7 @@ import { UploadsModule } from './modules/uploads/uploads.module';
 import { CreditsModule } from './modules/credits/credits.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { AgentModule } from './modules/agent/agent.module';
+import { TestStreamingModule } from './modules/test-streaming/test-streaming.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { AgentModule } from './modules/agent/agent.module';
     CreditsModule,
     ChatModule,
     AgentModule,
+    TestStreamingModule
   ],
   controllers: [AppController],
   providers: [AppService],
