@@ -76,10 +76,14 @@ export class AgentController {
     @CurrentUser('id') userId: string,
   ): Promise<AgentRunResponseDto> {
     try {
+
+      const { approvalId, approved, ...additionalData } = approvalResponseDto;
+
       const result = await this.agentService.handleApproval(
-        approvalResponseDto.approvalId,
-        approvalResponseDto.approved,
+        approvalId,
+        approved,
         userId,
+        additionalData
       );
 
       return result;
