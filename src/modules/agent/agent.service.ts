@@ -63,6 +63,35 @@ interface ConceptWriterParams {
   userId: string;
 }
 
+interface ImageGenerationReqParam {
+  id: string;
+  visual_prompt: string;
+  art_style: string;
+  projectId: string;
+}
+
+interface ImageGenerationParsedArgs {
+
+  segments: [];
+  art_style: string;
+  projectId: string;
+  model: string;
+
+}
+
+interface VideoParamSegment {
+  animation_prompt: string;
+  imageS3Key: string;
+  segmentId: string;
+}
+
+interface VideoGenerationParams {
+
+  segment: VideoParamSegment[];
+  projectId: string;
+  art_style: string;
+}
+
 @Injectable()
 export class AgentService {
   private readonly logger = new Logger(AgentService.name);
@@ -112,6 +141,62 @@ export class AgentService {
     });
   }
 
+  // Video Generation Tool
+  private createVideoGenerationTool(authToken?: string) {
+    return tool({
+      name: 'generate_video_with_approval',
+      description: 'Generate a video after getting user approval for the animation prompt and image',
+      // @ts-ignore
+      parameters: {
+        type: 'object',
+        properties: {
+          segments: {
+            type: 'array',
+            description: 'Array of segments with animation prompts and image data',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', description: 'Segment ID' },
+                animation_prompt: { type: 'string', description: 'Animation prompt for the segment' },
+                imageS3Key: { type: 'string', description: 'S3 key of the image to animate' }
+              },
+              required: ['id', 'animation_prompt', 'imageS3Key'],
+              additionalProperties: false
+            }
+          },
+          art_style: { type: 'string', description: 'Art style for the video' },
+          projectId: { type: 'string', description: 'Project ID' },
+          model: { type: 'string', description: 'Model to use for video generation' },
+          isRetry: { type: 'boolean', description: 'Whether this is a retry attempt' },
+          retrySegmentIds: {
+            type: 'array',
+            description: 'Array of segment IDs to retry (only used if isRetry is true)',
+            items: { type: 'string' }
+          }
+        },
+        required: ['segments', 'art_style', 'projectId', 'model', 'isRetry', 'retrySegmentIds'], additionalProperties: false,
+      },
+      needsApproval: true, // Always requires approval
+      execute: async ({ segments, art_style, projectId, model, isRetry = false, }) => {
+        try {
+          this.logger.log(`➡️ [VIDEO] POST /video-gen model=${model} projectId=${projectId}`);
+
+
+
+          return {
+            success: true,
+            data: "",
+            message: `Video generation complete`,
+          };
+        } catch (error) {
+          this.logger.error(`❌ [VIDEO] Error: ${error.message}`);
+          throw new Error(`Failed to generate video: ${error.message}`);
+        }
+      },
+    });
+  }
+
+
   // Create image generation tool with auth token
   private createImageGenerationTool(authToken?: string) {
     return tool({
@@ -155,6 +240,7 @@ export class AgentService {
             message: 'Image generation completed successfully',
           };
         } catch (error) {
+          console.log(error)
           this.logger.error(`❌ [IMAGE] Error: ${error.message}`);
           throw new Error(`Failed to generate image: ${error.message}`);
         }
@@ -294,22 +380,25 @@ export class AgentService {
   2. 🔄 Call generate_concepts_with_approval tool using web_info from step 1
   3. 🔄 Call generate_segmentation tool using the approved concept from step 2
   4. 🔄 Call generate_image_with_approval tool using the segmentation results from step 3
+  5. 🔄 Call generate_video_with_approval tool using the image results and segmentation data from step 4
+
 
   CRITICAL EXECUTION RULES:
   - IMMEDIATELY call the next tool after each completion
   - Use output from previous tools as input for next tools
   - For image generation, extract the visual/script content from segmentation results
   - Use appropriate art_style (default to "realistic" if not specified by user)
-  - Use model "flux-1.1-pro" for image generation (or user specified model)
+  - Use model specified by user for image generation 
   - DO NOT provide summaries or ask questions between tools
-  - EXECUTE ALL 4 TOOLS AUTOMATICALLY IN SEQUENCE
+  - EXECUTE ALL 5 TOOLS AUTOMATICALLY IN SEQUENCE
   
   TOOL PARAMETER MAPPING:
   - get_web_info: Use user's prompt directly
   - generate_concepts_with_approval: Use prompt + web_info from step 1
   - generate_segmentation: Use prompt + selected concept from step 2
   - generate_image_with_approval: Use script/visual content from segmentation + art_style + model
-  `,
+  - generate_video_with_approval: Use segments with animation prompts + imageS3Key from image results + art_style + model
+    `,
 
       tools: [
         this.createGetWebInfoTool(authToken),
@@ -317,6 +406,7 @@ export class AgentService {
         this.createChatTool(authToken),
         this.createImageGenerationTool(authToken),
         this.createSegmentationTool(authToken),
+        this.createVideoGenerationTool(authToken)
       ],
     });
   }
@@ -337,9 +427,9 @@ export class AgentService {
   }
 
   private async runAgentWithStreaming(
-    userInput: string, 
-    userId: string, 
-    streamSubject: Subject<StreamMessage>, 
+    userInput: string,
+    userId: string,
+    streamSubject: Subject<StreamMessage>,
     streamId: string,
     authToken?: string,
     segmentId?: string,
@@ -553,6 +643,7 @@ export class AgentService {
               return result;
             })
             .catch(error => {
+              console.log(error)
               const result = {
                 segmentId: segment.id,
                 status: 'failed',
@@ -618,6 +709,127 @@ export class AgentService {
         };
       }
 
+      if (toolName === 'generate_video_with_approval') {
+        const parsedArgs = typeof args === 'string' ? JSON.parse(args) : args;
+        const { segments, art_style, projectId, model, isRetry = false, retrySegmentIds = [] } = parsedArgs;
+
+        console.log(segments, art_style, projectId)
+
+        await new Promise(resolve => setTimeout(resolve, 5000));
+
+
+        // Determine which segments to process
+        const segmentsToProcess = isRetry
+          ? segments.filter(seg => retrySegmentIds.includes(seg.id))
+          : segments;
+
+        const totalSegments = segmentsToProcess.length;
+        const results = [];
+        let successCount = 0;
+        let failureCount = 0;
+
+        streamSubject.next({
+          type: 'log',
+          data: {
+            message: isRetry
+              ? `Retrying video generation for ${totalSegments} segments...`
+              : `Generating videos for ${totalSegments} segments...`
+          },
+          timestamp: new Date()
+        });
+
+        if (!authToken) {
+          throw new Error('Authentication token is missing from approval request');
+        }
+
+        for (let i = 0; i < segmentsToProcess.length; i++) {
+          const segment = segmentsToProcess[i];
+
+          try {
+            const response = await axios.post(`${this.baseUrl}/chat`, {
+              gen_type: "video",
+              animation_prompt: segment.animation_prompt,
+              art_style: art_style,
+              model: model,
+              image_s3_key: segment.imageS3Key,
+              segmentId: segment.id,
+              projectId: projectId,
+            }, {
+              headers: {
+                'Authorization': `Bearer ${authToken}`,
+                'Content-Type': 'application/json',
+              },
+            });
+
+            console.log("VIDEO RESPONSE DATA IS HERE", response.data);
+            const result = {
+              segmentId: segment.id,
+              status: 'success',
+              videoData: response.data
+            };
+
+            results.push(result);
+            successCount++;
+
+            // Stream success immediately when this segment completes
+            streamSubject.next({
+              type: 'log',
+              data: {
+                segmentId: segment.id,
+                message: `🎬 Segment ${segment.id} video completed successfully`,
+                VideoData: response.data
+              },
+              timestamp: new Date()
+            });
+
+          } catch (error) {
+            console.log(error);
+            const result = {
+              segmentId: segment.id,
+              status: 'failed',
+              error: error.message
+            };
+
+            results.push(result);
+            failureCount++;
+
+            // Stream failure immediately when this segment fails
+            streamSubject.next({
+              type: 'log',
+              data: {
+                message: `❌ Segment ${segment.id} video failed: ${error.message}`
+              },
+              timestamp: new Date()
+            });
+
+            this.logger.error(`❌ [VIDEO] Segment ${segment.id} failed: ${error.message}`);
+          }
+
+          // Wait 10 seconds before next call (except for the last one)
+          if (i < segmentsToProcess.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 10000));
+          }
+        }
+
+        const finalMessage = `Video generation ${isRetry ? 'retry' : ''} completed: ${successCount} success, ${failureCount} failed`;
+
+        streamSubject.next({
+          type: 'log',
+          data: { message: finalMessage },
+          timestamp: new Date()
+        });
+
+        return {
+          success: failureCount === 0,
+          totalSegments,
+          successCount,
+          failureCount,
+          results,
+          isRetry,
+          message: finalMessage,
+        };
+      }
+
       if (toolName === 'generate_concepts_with_approval') {
         const parsedArgs = typeof args === 'string' ? JSON.parse(args) : args;
         const { prompt, web_info, projectId, userId } = parsedArgs;
@@ -654,7 +866,7 @@ export class AgentService {
 
       if (toolName === 'generate_segmentation') {
         const parsedArgs = typeof args === 'string' ? JSON.parse(args) : args;
-        const { prompt, concept, negative_prompt, projectId, userId } = parsedArgs;
+        const { prompt, concept, negative_prompt, projectId, model } = parsedArgs;
         // console.log({ "prompt": prompt, "concept": concept, "negative_prompt": negative_prompt, "projectId": projectId })
 
         streamSubject.next({
@@ -676,7 +888,7 @@ export class AgentService {
             concept,
             negative_prompt,
             projectId,
-            userId
+            model
           }, {
             headers: {
               'Authorization': `Bearer ${authToken}`,
@@ -744,14 +956,14 @@ export class AgentService {
   cleanupOldApprovals(maxAgeHours: number = 24): void {
     const cutoffTime = new Date(Date.now() - maxAgeHours * 60 * 60 * 1000);
     let cleanedCount = 0;
-    
+
     for (const [id, request] of this.approvalRequests.entries()) {
       if (request.timestamp < cutoffTime) {
         this.approvalRequests.delete(id);
         cleanedCount++;
       }
     }
-    
+
     this.logger.log(`🧹 [CLEANUP] Removed ${cleanedCount} old approval requests`);
   }
 
