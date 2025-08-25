@@ -482,37 +482,6 @@ Generate the visual prompt:`,
           throw new BadRequestException('Invalid model specified. Choose either "gemini" or "openai".');
         }
 
-        // const geminiParseRes = await this.genAI.models.generateContent({
-        //   model: 'gemini-2.0-flash-exp',
-        //   contents: `Parse this entire agent conversation output and extract the script, style, and model information. Return a JSON object with "script" (containing "narration", "visual", and "animation" fields), "artStyle", and "model" (the AI model used for script generation).
-
-        //   Full agent output:
-        //   ${JSON.stringify(script, null, 2)}`,
-        //   config: {
-        //     responseMimeType: 'application/json',
-        //     responseSchema: {
-        //       type: 'object',
-        //       properties: {
-        //         script: {
-        //           type: 'object',
-        //           properties: {
-        //             narration: { type: 'string' },
-        //             visual: { type: 'string' },
-        //             animation: { type: 'string' },
-        //           },
-        //           required: ['narration', 'visual', 'animation'],
-        //         },
-        //         artStyle: { type: 'string' },
-        //         model: { type: 'string' },
-        //       },
-        //       required: ['script', 'artStyle', 'model'],
-        //     },
-        //   },
-        // } as any);
-
-          // const agentResult = JSON.parse(geminiParseRes.text);
-          // console.log(agentResult);
-
           // Segment the generated script
 
           const segmentedScript = await this.segmentGeneratedScript({
