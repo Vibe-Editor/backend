@@ -715,8 +715,6 @@ export class AgentService {
 
         console.log(segments, art_style, projectId)
 
-        await new Promise(resolve => setTimeout(resolve, 5000));
-
 
         // Determine which segments to process
         const segmentsToProcess = isRetry
@@ -805,10 +803,6 @@ export class AgentService {
             this.logger.error(`❌ [VIDEO] Segment ${segment.id} failed: ${error.message}`);
           }
 
-          // Wait 10 seconds before next call (except for the last one)
-          if (i < segmentsToProcess.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 10000));
-          }
         }
 
         const finalMessage = `Video generation ${isRetry ? 'retry' : ''} completed: ${successCount} success, ${failureCount} failed`;
@@ -866,7 +860,7 @@ export class AgentService {
 
       if (toolName === 'generate_segmentation') {
         const parsedArgs = typeof args === 'string' ? JSON.parse(args) : args;
-        const { prompt, concept, negative_prompt, projectId, model } = parsedArgs;
+        const { prompt,concept_id, concept, negative_prompt, projectId, model } = parsedArgs;
         // console.log({ "prompt": prompt, "concept": concept, "negative_prompt": negative_prompt, "projectId": projectId })
 
         streamSubject.next({
@@ -901,6 +895,7 @@ export class AgentService {
           return {
             success: true,
             data: response.data,
+            concept_id,
             message: 'Script segmentation completed successfully',
           };
         } catch (error) {
