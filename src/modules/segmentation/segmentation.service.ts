@@ -8,8 +8,6 @@ import {
 import { GoogleGenAI } from '@google/genai';
 import { SegmentationDto } from './dto/segmentation.dto';
 import { TypeSegment } from './segment.interface';
-import { Agent, tool, handoff, run } from '@openai/agents';
-import { z } from 'zod';
 import OpenAI from 'openai';
 import { ProjectHelperService } from '../../common/services/project-helper.service';
 import { PrismaClient } from '../../../generated/prisma';
@@ -444,156 +442,83 @@ Generate the visual prompt:`,
         ? 'gemini-2.5-flash'
         : 'gemini-2.5-pro-preview-06-05';
 
-    const createGeminiAgent = () =>
-      new Agent<{ prompt: string; negative_prompt: string }>({
-        name: 'Gemini Script Generation Agent',
-        instructions:
-          'You create high-quality scripts using Gemini 2.5 Pro model. You excel at creative content generation, detailed analysis, and comprehensive script development.',
-        tools: [
-          tool({
-            name: 'generate_script_with_gemini',
-            description: 'Generate script using Gemini 2.5 Pro model.',
-            parameters: z.object({
-              prompt: z.string(),
-              negative_prompt: z.string(),
-            }) as any,
-            execute: async ({ prompt, negative_prompt }) => {
-              // Extract concept from the original user message
-              const conceptMatch = prompt.match(/CONCEPT: (.+?)(?:\n|$)/);
-              const concept = conceptMatch ? conceptMatch[1].trim() : '';
-              
-              const script = await this.generateScriptWithGemini({
-                animationPrompt: `Create an animation sequence for a video about: "${prompt}". The animation should be engaging and well-paced. Structure the animation into exactly 5 parts that flow naturally. Include specific animation cues and transitions. Focus on the animation flow and visual storytelling.`,
-
-                narrationPrompt: `Write a voiceover script for a video about: "${prompt}". The script should be engaging, clear, and well-structured. Structure the script into exactly 5 distinct segments. Each segment should be standalone and flow naturally into the next. Focus on clear, compelling narration.`,
-
-                visualPrompt: `Generate a visual concept for a video about: "${prompt}". Create descriptions for 5 distinct visual segments, each representing a single, cohesive image concept. Each image should be visually compelling and support the overall narrative. Focus on visual composition and storytelling.`,
-                concept: concept,
-                negativePrompt: negative_prompt,
-                model: geminiModel,
-              });
-              return { script, model: geminiModel };
-            },
-          }),
-        ],
-      });
-
-    const createOpenAIAgent = () =>
-      new Agent<{ prompt: string; negative_prompt: string }>({
-        name: 'OpenAI Script Generation Agent',
-        instructions:
-          'You create high-quality scripts using OpenAI GPT-4o model. You excel at natural language processing, creative writing, and structured content generation.',
-        tools: [
-          tool({
-            name: 'generate_script_with_openai',
-            description: 'Generate script using OpenAI GPT-4o model.',
-            parameters: z.object({
-              prompt: z.string(),
-              negative_prompt: z.string(),
-            }) as any,
-            execute: async ({ prompt, negative_prompt }) => {
-              // Extract concept from the original user message
-              const conceptMatch = prompt.match(/CONCEPT: (.+?)(?:\n|$)/);
-              const concept = conceptMatch ? conceptMatch[1].trim() : '';
-              
-              const script = await this.generateScriptWithOpenAI({
-                animationPrompt: `Create an animation sequence for a video about: "${prompt}". The animation should be engaging and well-paced. Structure the animation into exactly 5 parts that flow naturally. Include specific animation cues and transitions. Focus on the animation flow and visual storytelling.`,
-
-                narrationPrompt: `Write a voiceover script for a video about: "${prompt}". The script should be engaging, clear, and well-structured. Structure the script into exactly 5 distinct segments. Each segment should be standalone and flow naturally into the next. Focus on clear, compelling narration.`,
-
-                visualPrompt: `Generate a visual concept for a video about: "${prompt}". Create descriptions for 5 distinct visual segments, each representing a single, cohesive image concept. Each image should be visually compelling and support the overall narrative. Focus on visual composition and storytelling.`,
-                concept: concept,
-                negativePrompt: negative_prompt,
-              });
-              return { script, model: 'gpt-4o' };
-            },
-          }),
-        ],
-      });
-
-    const GeminiAgent = createGeminiAgent();
-    const OpenAIAgent = createOpenAIAgent();
-
-    const triageAgent = Agent.create({
-      name: 'Script Generation Triage Agent',
-      model: 'gpt-4o-mini',
-      instructions: `
-      You are a script generation assistant that decides which AI model to use based on the prompt characteristics and requirements.
-      
-      Use Gemini 2.5 Pro for:
-      - Creative and artistic content
-      - Complex visual descriptions
-      - Detailed narrative development
-      - Multi-layered storytelling
-      - Content requiring deep contextual understanding
-      
-      Use OpenAI GPT-4o for:
-      - Technical or professional content
-      - Structured information delivery
-      - Clear, concise communication
-      - Business or educational content
-      - Content requiring precise language
-      
-      Analyze the prompt and choose the appropriate model, then hand off to the corresponding agent.`,
-      handoffs: [
-        handoff(GeminiAgent, {
-          toolNameOverride: 'use_gemini_agent',
-          toolDescriptionOverride:
-            'Send to Gemini agent for creative/artistic content.',
-        }),
-        handoff(OpenAIAgent, {
-          toolNameOverride: 'use_openai_agent',
-          toolDescriptionOverride:
-            'Send to OpenAI agent for technical/professional content.',
-        }),
-      ],
-    });
 
     try {
-      const result = await run(triageAgent, [
-        {
-          role: 'user',
-          content: `PROMPT: ${segmentationDto.prompt} \n CONCEPT: ${segmentationDto.concept} \n NEGATIVE PROMPT: ${segmentationDto.negative_prompt}`,
-        },
-      ]);
 
       try {
-        const geminiParseRes = await this.genAI.models.generateContent({
-          model: 'gemini-2.0-flash-exp',
-          contents: `Parse this entire agent conversation output and extract the script, style, and model information. Return a JSON object with "script" (containing "narration", "visual", and "animation" fields), "artStyle", and "model" (the AI model used for script generation).
 
-          Full agent output:
-          ${JSON.stringify(result.output, null, 2)}`,
-          config: {
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: 'object',
-              properties: {
-                script: {
-                  type: 'object',
-                  properties: {
-                    narration: { type: 'string' },
-                    visual: { type: 'string' },
-                    animation: { type: 'string' },
-                  },
-                  required: ['narration', 'visual', 'animation'],
-                },
-                artStyle: { type: 'string' },
-                model: { type: 'string' },
-              },
-              required: ['script', 'artStyle', 'model'],
-            },
-          },
-        } as any);
+        let script: {
+          narration: string;
+          visual: string;
+          animation: string;
+          artStyle: string;
+        };
+        let modelUsed: string;
 
-        const agentResult = JSON.parse(geminiParseRes.text);
-        console.log(agentResult);
+        // Extract concept from the prompt
+        const concept = segmentationDto.concept || '';
 
-        if (agentResult?.script && agentResult?.artStyle) {
+        // Generate script based on selected model
+        if (segmentationDto.model === 'gemini') {
+          script = await this.generateScriptWithGemini({
+            animationPrompt: `Create an animation sequence for a video about: "${segmentationDto.prompt}". The animation should be engaging and well-paced. Structure the animation into exactly 5 parts that flow naturally. Include specific animation cues and transitions. Focus on the animation flow and visual storytelling.`,
+            narrationPrompt: `Write a voiceover script for a video about: "${segmentationDto.prompt}". The script should be engaging, clear, and well-structured. Structure the script into exactly 5 distinct segments. Each segment should be standalone and flow naturally into the next. Focus on clear, compelling narration.`,
+            visualPrompt: `Generate a visual concept for a video about: "${segmentationDto.prompt}". Create descriptions for 5 distinct visual segments, each representing a single, cohesive image concept. Each image should be visually compelling and support the overall narrative. Focus on visual composition and storytelling.`,
+            concept: concept,
+            negativePrompt: segmentationDto.negative_prompt,
+            model: geminiModel,
+          });
+          modelUsed = 'gemini-2.5-pro';
+        } else if (segmentationDto.model === 'openai') {
+          script = await this.generateScriptWithOpenAI({
+            animationPrompt: `Create an animation sequence for a video about: "${segmentationDto.prompt}". The animation should be engaging and well-paced. Structure the animation into exactly 5 parts that flow naturally. Include specific animation cues and transitions. Focus on the animation flow and visual storytelling.`,
+            narrationPrompt: `Write a voiceover script for a video about: "${segmentationDto.prompt}". The script should be engaging, clear, and well-structured. Structure the script into exactly 5 distinct segments. Each segment should be standalone and flow naturally into the next. Focus on clear, compelling narration.`,
+            visualPrompt: `Generate a visual concept for a video about: "${segmentationDto.prompt}". Create descriptions for 5 distinct visual segments, each representing a single, cohesive image concept. Each image should be visually compelling and support the overall narrative. Focus on visual composition and storytelling.`,
+            concept: concept,
+            negativePrompt: segmentationDto.negative_prompt,
+          });
+          modelUsed = 'gpt-4o';
+        } else {
+          throw new BadRequestException('Invalid model specified. Choose either "gemini" or "openai".');
+        }
+
+        // const geminiParseRes = await this.genAI.models.generateContent({
+        //   model: 'gemini-2.0-flash-exp',
+        //   contents: `Parse this entire agent conversation output and extract the script, style, and model information. Return a JSON object with "script" (containing "narration", "visual", and "animation" fields), "artStyle", and "model" (the AI model used for script generation).
+
+        //   Full agent output:
+        //   ${JSON.stringify(script, null, 2)}`,
+        //   config: {
+        //     responseMimeType: 'application/json',
+        //     responseSchema: {
+        //       type: 'object',
+        //       properties: {
+        //         script: {
+        //           type: 'object',
+        //           properties: {
+        //             narration: { type: 'string' },
+        //             visual: { type: 'string' },
+        //             animation: { type: 'string' },
+        //           },
+        //           required: ['narration', 'visual', 'animation'],
+        //         },
+        //         artStyle: { type: 'string' },
+        //         model: { type: 'string' },
+        //       },
+        //       required: ['script', 'artStyle', 'model'],
+        //     },
+        //   },
+        // } as any);
+
+          // const agentResult = JSON.parse(geminiParseRes.text);
+          // console.log(agentResult);
+
+          // Segment the generated script
+
           const segmentedScript = await this.segmentGeneratedScript({
-            ...agentResult.script,
+            ...script,
             negative_prompt: segmentationDto.negative_prompt,
-            model: agentResult.model,
+            model: modelUsed,
           });
 
           // Save to database
@@ -603,8 +528,8 @@ Generate the visual prompt:`,
               prompt: segmentationDto.prompt,
               concept: segmentationDto.concept,
               negativePrompt: segmentationDto.negative_prompt,
-              artStyle: agentResult.artStyle,
-              model: agentResult.model,
+              artStyle: script.artStyle,
+              model: modelUsed,
               projectId,
               userId,
               // Add credit tracking
@@ -635,8 +560,8 @@ Generate the visual prompt:`,
               userInput: segmentationDto.prompt,
               response: JSON.stringify({
                 segments: segmentedScript.segments,
-                artStyle: agentResult.artStyle,
-                model: agentResult.model,
+                artStyle: script.artStyle,
+                model: modelUsed,
               }),
               metadata: {
                 concept: segmentationDto.concept,
@@ -659,14 +584,13 @@ Generate the visual prompt:`,
 
           return {
             segments: segmentedScript.segments,
-            artStyle: agentResult.artStyle,
-            model: agentResult.model,
+            artStyle: script.artStyle,
+            model: modelUsed,
             credits: {
               used: 3, // Segmentation uses fixed pricing
               balance: newBalance.toNumber(),
             },
           };
-        }
       } catch (parseError) {
         console.error('Failed to parse agent result with Gemini:', parseError);
       }
@@ -739,8 +663,7 @@ Generate the visual prompt:`,
       });
 
       console.log(
-        `Retrieved ${segmentations.length} video segmentations for user ${userId}${
-          projectId ? ` in project ${projectId}` : ''
+        `Retrieved ${segmentations.length} video segmentations for user ${userId}${projectId ? ` in project ${projectId}` : ''
         }`,
       );
 
