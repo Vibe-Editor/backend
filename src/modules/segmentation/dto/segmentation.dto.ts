@@ -18,7 +18,6 @@ export class SegmentationDto {
   projectId?: string;
 
   @IsString()
-  @IsOptional()
-  @IsIn(['pro', 'flash' , 'openai', 'gemini'])
-  model?: 'pro' | 'flash' | 'openai' | 'gemini';
+  @IsIn(['pro', 'flash' , 'openai' ])
+  model: 'pro' | 'flash' | 'openai' ;
 }
