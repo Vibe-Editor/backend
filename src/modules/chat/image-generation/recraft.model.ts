@@ -15,12 +15,31 @@ const s3 = new S3Client({
   },
 });
 
+const RECRAFT_PRESETS = {
+  realistic: { style: 'realistic_image', substyle: 'natural_light' },
+  cinematic: { style: 'realistic_image', substyle: 'hdr' },
+  artistic: { style: 'digital_illustration', substyle: 'hand_drawn' },
+  corporate: { style: 'realistic_image', substyle: 'enterprise' },
+  vintage: { style: 'realistic_image', substyle: 'retro_realism' },
+  modern: { style: 'vector_illustration', substyle: 'vivid_shapes' },
+  creative: { style: 'digital_illustration', substyle: 'pop_art' },
+  brand: { style: 'logo_raster', substyle: 'emblem_vintage' }
+};
+
+export function getRecraftStyle(preset: string) {
+  return RECRAFT_PRESETS[preset] || { style: 'realistic_image', substyle: 'natural_light' };
+}
+
 export async function recraftImageGen(
   segmentId: string,
   visual_prompt: string,
   art_style: string,
   projectId: string,
 ) {
+
+    // Get style config using art_style as key
+  const styleConfig = getRecraftStyle(art_style);
+
   let recraftPrompt = `${visual_prompt}. Art style: ${art_style}. Create a realistic, photographic image with no text elements.`;
 
   if (recraftPrompt.length > 950) {
@@ -37,8 +56,9 @@ export async function recraftImageGen(
     'https://external.api.recraft.ai/v1/images/generations',
     {
       prompt: recraftPrompt,
-      style: 'realistic_image',
-      size: '1024x1024',
+      style: styleConfig.style,        // Dynamic from preset
+      substyle: styleConfig.substyle, 
+      size: '1820x1024',
       n: 1,
     },
     {
