@@ -436,9 +436,13 @@ Generate the visual prompt:`,
     );
     // ===== END CREDIT DEDUCTION =====
 
+    // Determine Gemini model variant (default to flash if not provided)
+    const selectedModel = segmentationDto.model || 'flash';
+
+
     // Determine Gemini model variant based on user input (default to pro)
     const geminiModel =
-      segmentationDto.model === 'flash'
+      selectedModel === 'flash'
         ? 'gemini-2.5-flash'
         : 'gemini-2.5-pro-preview-06-05';
 
@@ -459,7 +463,7 @@ Generate the visual prompt:`,
         const concept = segmentationDto.concept || '';
 
         // Generate script based on selected model
-        if (segmentationDto.model === 'flash') {
+        if (selectedModel === 'flash') {
           script = await this.generateScriptWithGemini({
             animationPrompt: `Create an animation sequence for a video about: "${segmentationDto.prompt}". The animation should be engaging and well-paced. Structure the animation into exactly 5 parts that flow naturally. Include specific animation cues and transitions. Focus on the animation flow and visual storytelling.`,
             narrationPrompt: `Write a voiceover script for a video about: "${segmentationDto.prompt}". The script should be engaging, clear, and well-structured. Structure the script into exactly 5 distinct segments. Each segment should be standalone and flow naturally into the next. Focus on clear, compelling narration.`,
@@ -469,7 +473,7 @@ Generate the visual prompt:`,
             model: geminiModel,
           });
           modelUsed = 'gemini-2.5-pro';
-        } else if (segmentationDto.model === 'openai') {
+        } else if (selectedModel === 'openai') {
           script = await this.generateScriptWithOpenAI({
             animationPrompt: `Create an animation sequence for a video about: "${segmentationDto.prompt}". The animation should be engaging and well-paced. Structure the animation into exactly 5 parts that flow naturally. Include specific animation cues and transitions. Focus on the animation flow and visual storytelling.`,
             narrationPrompt: `Write a voiceover script for a video about: "${segmentationDto.prompt}". The script should be engaging, clear, and well-structured. Structure the script into exactly 5 distinct segments. Each segment should be standalone and flow naturally into the next. Focus on clear, compelling narration.`,
