@@ -1,7 +1,4 @@
-/**
- * Root Controller
- * Define your app's root endpoints here
- */
+
 import { Controller, Get } from '@nestjs/common';
 import { AppService } from './app.service';
 
