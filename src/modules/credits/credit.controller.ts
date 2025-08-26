@@ -11,6 +11,7 @@ import {
 import { CreditService } from './credit.service';
 import { CreditTransactionType } from '../../../generated/prisma';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import Stripe from 'stripe';
 
 interface AddCreditsDto {
   userId: string;
@@ -19,10 +20,24 @@ interface AddCreditsDto {
   description?: string;
 }
 
+interface CreateCheckoutSessionDto {
+  planType: string;
+  email?: string;
+  userId: string;
+  credits: number;
+  amount: number; // in dollars
+}
+
 @Controller('credits')
 @UseGuards(JwtAuthGuard)
 export class CreditController {
-  constructor(private readonly creditService: CreditService) {}
+  private stripe: Stripe;
+
+  constructor(private readonly creditService: CreditService) {
+    this.stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+      apiVersion: '2025-07-30.basil',
+    });
+  }
 
   /**
    * Get user's credit balance
@@ -134,7 +149,7 @@ export class CreditController {
    * Get current pricing information
    */
   @Get('pricing')
-  async getPricing() {
+  getPricing() {
     const pricing = this.creditService.getPricingInfo();
     return {
       pricing,
@@ -174,6 +189,161 @@ export class CreditController {
       transactionId,
       newBalance: newBalance.toNumber(),
       message: 'Credits deducted successfully',
+    };
+  }
+
+  /**
+   * Create Stripe checkout session
+   */
+  @Post('create-checkout-session')
+  async createCheckoutSession(
+    @Body() createSessionDto: CreateCheckoutSessionDto,
+  ) {
+    try {
+      const baseUrl = 'http://localhost:9825';
+
+      const session = await this.stripe.checkout.sessions.create({
+        mode: 'payment',
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            price_data: {
+              currency: 'usd',
+              product_data: {
+                name: `${createSessionDto.credits.toLocaleString()} AI Credits`,
+                description: `${createSessionDto.planType} Plan - AI Video Generation Credits`,
+              },
+              unit_amount: createSessionDto.amount * 100, // Convert to cents
+            },
+            quantity: 1,
+          },
+        ],
+        customer_email: createSessionDto.email,
+        metadata: {
+          userId: createSessionDto.userId,
+          planType: createSessionDto.planType,
+          credits: createSessionDto.credits.toString(),
+        },
+        success_url: `${baseUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}?canceled=true`,
+      });
+
+      return {
+        url: session.url,
+        sessionId: session.id,
+      };
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      throw new Error(`Failed to create checkout session: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * Verify Stripe session
+   */
+  @Get('verify-session')
+  async verifySession(@Query('session_id') sessionId: string) {
+    try {
+      const session = await this.stripe.checkout.sessions.retrieve(sessionId);
+
+      const verified = session.payment_status === 'paid';
+
+      // If verified and not already processed, add credits
+      if (verified && session.metadata) {
+        const userId = session.metadata.userId;
+        const credits = parseInt(session.metadata.credits || '0');
+        const planType = session.metadata.planType;
+
+        if (userId && credits > 0) {
+          // Check if already processed to avoid double-crediting
+          // You might want to store session IDs in a processed sessions table
+          await this.creditService.addCredits(
+            userId,
+            credits,
+            CreditTransactionType.PURCHASE,
+            `Stripe checkout - Plan: ${planType}, Session: ${sessionId}`,
+          );
+        }
+      }
+
+      return {
+        verified,
+        session: {
+          id: session.id,
+          payment_status: session.payment_status,
+          customer_email: session.customer_email,
+          amount_total: session.amount_total,
+          metadata: session.metadata,
+        },
+      };
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      return {
+        verified: false,
+        error: errorMessage,
+      };
+    }
+  }
+
+  /**
+   * Get Stripe session details
+   */
+  @Get('stripe-session-details')
+  async getSessionDetails(@Query('session_id') sessionId: string) {
+    try {
+      const session = await this.stripe.checkout.sessions.retrieve(sessionId, {
+        expand: ['line_items'],
+      });
+
+      return {
+        session: {
+          id: session.id,
+          payment_status: session.payment_status,
+          customer_email: session.customer_email,
+          amount_total: session.amount_total,
+          amount_subtotal: session.amount_subtotal,
+          currency: session.currency,
+          created: session.created,
+          metadata: session.metadata,
+          line_items: session.line_items,
+        },
+      };
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      throw new Error(`Failed to retrieve session details: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * Add credits after successful payment (simple endpoint)
+   */
+  @Post('purchase')
+  async addPurchaseCredits(
+    @Body()
+    purchaseDto: {
+      userId: string;
+      credits: number;
+      paymentId?: string;
+    },
+  ) {
+    const transactionId = await this.creditService.addCredits(
+      purchaseDto.userId,
+      purchaseDto.credits,
+      CreditTransactionType.PURCHASE,
+      `Credit purchase via Stripe - Payment ID: ${purchaseDto.paymentId || 'N/A'}`,
+    );
+
+    const newBalance = await this.creditService.getUserBalance(
+      purchaseDto.userId,
+    );
+
+    return {
+      transactionId,
+      newBalance: newBalance.toNumber(),
+      message: `Successfully added ${purchaseDto.credits} credits`,
     };
   }
 }
