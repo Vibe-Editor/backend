@@ -34,6 +34,7 @@ export class CreditController {
   private stripe: Stripe;
 
   constructor(private readonly creditService: CreditService) {
+
     // Use environment variable or fallback dummy key to prevent crashes
     const stripeKey = process.env.STRIPE_SECRET_KEY || 'sk_test_dummy_key_for_initialization';
     
@@ -50,6 +51,7 @@ export class CreditController {
     });
     
     console.log('✅ Stripe initialized successfully');
+
   }
 
   /**
@@ -162,7 +164,7 @@ export class CreditController {
    * Get current pricing information
    */
   @Get('pricing')
-  async getPricing() {
+  getPricing() {
     const pricing = this.creditService.getPricingInfo();
     return {
       pricing,
@@ -212,6 +214,7 @@ export class CreditController {
   async createCheckoutSession(
     @Body() createSessionDto: CreateCheckoutSessionDto,
   ) {
+
     console.log('🛒 Creating checkout session for:', createSessionDto);
     
     // Check if we have a real Stripe key
@@ -230,6 +233,7 @@ export class CreditController {
         userId: createSessionDto.userId,
         email: createSessionDto.email
       });
+
 
       const session = await this.stripe.checkout.sessions.create({
         mode: 'payment',
@@ -257,11 +261,13 @@ export class CreditController {
         cancel_url: `${baseUrl}?canceled=true`,
       });
 
+
       console.log('✅ Stripe session created successfully:', {
         sessionId: session.id,
         url: session.url,
         amount: session.amount_total
       });
+
 
       return {
         url: session.url,
@@ -270,7 +276,9 @@ export class CreditController {
     } catch (error: unknown) {
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
+
       console.error('❌ Failed to create checkout session:', error);
+
       throw new Error(`Failed to create checkout session: ${errorMessage}`);
     }
   }
@@ -349,9 +357,45 @@ export class CreditController {
     } catch (error: unknown) {
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
+
       return {
         error: errorMessage,
       };
     }
   }
+
+      throw new Error(`Failed to retrieve session details: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * Add credits after successful payment (simple endpoint)
+   */
+  @Post('purchase')
+  async addPurchaseCredits(
+    @Body()
+    purchaseDto: {
+      userId: string;
+      credits: number;
+      paymentId?: string;
+    },
+  ) {
+    const transactionId = await this.creditService.addCredits(
+      purchaseDto.userId,
+      purchaseDto.credits,
+      CreditTransactionType.PURCHASE,
+      `Credit purchase via Stripe - Payment ID: ${purchaseDto.paymentId || 'N/A'}`,
+    );
+
+    const newBalance = await this.creditService.getUserBalance(
+      purchaseDto.userId,
+    );
+
+    return {
+      transactionId,
+      newBalance: newBalance.toNumber(),
+      message: `Successfully added ${purchaseDto.credits} credits`,
+    };
+  }
+
 }
