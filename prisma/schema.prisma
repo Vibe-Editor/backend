@@ -203,6 +203,7 @@ model VideoSegment {
   createdAt           DateTime @default(now())
 
   videoSegmentation VideoSegmentation? @relation(fields: [videoSegmentationId], references: [id], onDelete: Cascade)
+  GeneratedImage    GeneratedImage[]
 }
 
 model GeneratedImage {
@@ -218,13 +219,15 @@ model GeneratedImage {
   projectId      String?
   userId         String
   createdAt      DateTime @default(now())
+  videoSegmentId String?
 
   creditsUsed         Decimal? @db.Decimal(8, 2)
   creditTransactionId String?
   isRefunded          Boolean  @default(false)
 
-  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  videoSegment VideoSegment? @relation(fields: [videoSegmentId], references: [id], onDelete: Cascade)
+  project      Project?      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model GeneratedVideo {

@@ -52,8 +52,10 @@ export class ChatService implements OnModuleDestroy {
 
     let creditTransactionId: string | null = null;
     if (gen_type === 'image') {
+      // console.log("RECEIVED THE REQ FOR IMAGE")
       if (model === 'recraft-v3') {
         try {
+          // console.log("GENERATION THE IMAGE")
           // Deduct credits before generation
           creditTransactionId = await this.creditService.deductCredits(
             userId,
@@ -79,6 +81,7 @@ export class ChatService implements OnModuleDestroy {
               projectId: projectId,
               userId: userId,
               creditsUsed: 1,
+              videoSegmentId : segmentId,
               creditTransactionId: creditTransactionId,
             },
           });
@@ -94,6 +97,7 @@ export class ChatService implements OnModuleDestroy {
             },
           };
         } catch (error) {
+          console.log(error)
           // Refund credits if they were deducted
           if (creditTransactionId) {
             try {
@@ -284,6 +288,7 @@ export class ChatService implements OnModuleDestroy {
             },
           };
         } catch (error) {
+          console.log(error)
           // Refund credits if they were deducted
           if (creditTransactionId) {
             try {
