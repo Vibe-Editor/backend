@@ -11,6 +11,7 @@ import {
 import { CreditService } from './credit.service';
 import { CreditTransactionType } from '../../../generated/prisma';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import Stripe from 'stripe';
 
 interface AddCreditsDto {
   userId: string;
@@ -19,10 +20,37 @@ interface AddCreditsDto {
   description?: string;
 }
 
+interface CreateCheckoutSessionDto {
+  planType: string;
+  email?: string;
+  userId: string;
+  credits: number;
+  amount: number; // in dollars
+}
+
 @Controller('credits')
 @UseGuards(JwtAuthGuard)
 export class CreditController {
-  constructor(private readonly creditService: CreditService) {}
+  private stripe: Stripe;
+
+  constructor(private readonly creditService: CreditService) {
+    // Use environment variable or fallback dummy key to prevent crashes
+    const stripeKey = process.env.STRIPE_SECRET_KEY || 'sk_test_dummy_key_for_initialization';
+    
+    console.log('🔧 Initializing Stripe with key:', stripeKey.substring(0, 20) + '...');
+    
+    if (!process.env.STRIPE_SECRET_KEY) {
+      console.log('⚠️ STRIPE_SECRET_KEY environment variable is not set, using dummy key');
+    } else {
+      console.log('✅ Using STRIPE_SECRET_KEY from environment');
+    }
+    
+    this.stripe = new Stripe(stripeKey, {
+      apiVersion: '2025-07-30.basil',
+    });
+    
+    console.log('✅ Stripe initialized successfully');
+  }
 
   /**
    * Get user's credit balance
@@ -175,5 +203,155 @@ export class CreditController {
       newBalance: newBalance.toNumber(),
       message: 'Credits deducted successfully',
     };
+  }
+
+  /**
+   * Create Stripe checkout session
+   */
+  @Post('create_checkout_session')
+  async createCheckoutSession(
+    @Body() createSessionDto: CreateCheckoutSessionDto,
+  ) {
+    console.log('🛒 Creating checkout session for:', createSessionDto);
+    
+    // Check if we have a real Stripe key
+    if (!process.env.STRIPE_SECRET_KEY) {
+      throw new Error('Stripe is not configured. Please add your Stripe SECRET KEY (starts with sk_test_ or sk_live_) to environment variables as STRIPE_SECRET_KEY.');
+    }
+    
+    try {
+      const baseUrl = 'http://localhost:9825';
+      console.log('🔗 Using base URL:', baseUrl);
+
+      console.log('💳 Creating Stripe session with params:', {
+        credits: createSessionDto.credits,
+        amount: createSessionDto.amount,
+        planType: createSessionDto.planType,
+        userId: createSessionDto.userId,
+        email: createSessionDto.email
+      });
+
+      const session = await this.stripe.checkout.sessions.create({
+        mode: 'payment',
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            price_data: {
+              currency: 'usd',
+              product_data: {
+                name: `${createSessionDto.credits.toLocaleString()} AI Credits`,
+                description: `${createSessionDto.planType} Plan - AI Video Generation Credits`,
+              },
+              unit_amount: createSessionDto.amount * 100, // Convert to cents
+            },
+            quantity: 1,
+          },
+        ],
+        customer_email: createSessionDto.email,
+        metadata: {
+          userId: createSessionDto.userId,
+          planType: createSessionDto.planType,
+          credits: createSessionDto.credits.toString(),
+        },
+        success_url: `${baseUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}?canceled=true`,
+      });
+
+      console.log('✅ Stripe session created successfully:', {
+        sessionId: session.id,
+        url: session.url,
+        amount: session.amount_total
+      });
+
+      return {
+        url: session.url,
+        sessionId: session.id,
+      };
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      console.error('❌ Failed to create checkout session:', error);
+      throw new Error(`Failed to create checkout session: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * Verify Stripe session
+   */
+  @Get('verify-session')
+  async verifySession(@Query('session_id') sessionId: string) {
+    try {
+      const session = await this.stripe.checkout.sessions.retrieve(sessionId);
+
+      const verified = session.payment_status === 'paid';
+
+      // If verified and not already processed, add credits
+      if (verified && session.metadata) {
+        const userId = session.metadata.userId;
+        const credits = parseInt(session.metadata.credits || '0');
+        const planType = session.metadata.planType;
+
+        if (userId && credits > 0) {
+          // Check if already processed to avoid double-crediting
+          // You might want to store session IDs in a processed sessions table
+          await this.creditService.addCredits(
+            userId,
+            credits,
+            CreditTransactionType.PURCHASE,
+            `Stripe checkout - Plan: ${planType}, Session: ${sessionId}`,
+          );
+        }
+      }
+
+      return {
+        verified,
+        session: {
+          id: session.id,
+          payment_status: session.payment_status,
+          customer_email: session.customer_email,
+          amount_total: session.amount_total,
+          metadata: session.metadata,
+        },
+      };
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      return {
+        verified: false,
+        error: errorMessage,
+      };
+    }
+  }
+
+  /**
+   * Get Stripe session details
+   */
+  @Get('stripe-session-details')
+  async getSessionDetails(@Query('session_id') sessionId: string) {
+    try {
+      const session = await this.stripe.checkout.sessions.retrieve(sessionId, {
+        expand: ['line_items'],
+      });
+
+      return {
+        session: {
+          id: session.id,
+          payment_status: session.payment_status,
+          customer_email: session.customer_email,
+          amount_total: session.amount_total,
+          amount_subtotal: session.amount_subtotal,
+          currency: session.currency,
+          created: session.created,
+          metadata: session.metadata,
+          line_items: session.line_items,
+        },
+      };
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      return {
+        error: errorMessage,
+      };
+    }
   }
 }
