@@ -195,7 +195,7 @@ export class CreditController {
   /**
    * Create Stripe checkout session
    */
-  @Post('create-checkout-session')
+  @Post('create_checkout_session')
   async createCheckoutSession(
     @Body() createSessionDto: CreateCheckoutSessionDto,
   ) {
