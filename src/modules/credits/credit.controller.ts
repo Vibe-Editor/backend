@@ -26,6 +26,8 @@ interface CreateCheckoutSessionDto {
   userId: string;
   credits: number;
   amount: number; // in dollars
+  clientType?: 'web' | 'electron'; // Added to distinguish client type
+  baseUrl?: string; // Allow client to specify its own base URL
 }
 
 @Controller('credits')
@@ -228,8 +230,25 @@ export class CreditController {
     }
 
     try {
-      const baseUrl = 'http://localhost:9825';
-      console.log('🔗 Using base URL:', baseUrl);
+      // Determine the appropriate redirect URLs based on client type
+      let successUrl: string;
+      let cancelUrl: string;
+
+      if (createSessionDto.clientType === 'electron') {
+        // For Electron, use custom protocol URLs that will never try to load real pages
+        successUrl =
+          'usuals://payment-success?session_id={CHECKOUT_SESSION_ID}';
+        cancelUrl = 'usuals://payment-cancel?canceled=true';
+        console.log('🖥️ Using Electron custom protocol URLs');
+      } else {
+        // For web, redirect back to the main page with payment result params
+        const baseUrl = createSessionDto.baseUrl || 'http://localhost:3000';
+        successUrl = `${baseUrl}?payment=success&session_id={CHECKOUT_SESSION_ID}`;
+        cancelUrl = `${baseUrl}?payment=canceled&canceled=true`;
+        console.log('🌐 Using web redirect URLs with base:', baseUrl);
+      }
+
+      console.log('🔗 Redirect URLs:', { successUrl, cancelUrl });
 
       console.log('💳 Creating Stripe session with params:', {
         credits: createSessionDto.credits,
@@ -237,6 +256,7 @@ export class CreditController {
         planType: createSessionDto.planType,
         userId: createSessionDto.userId,
         email: createSessionDto.email,
+        clientType: createSessionDto.clientType,
       });
 
       const session = await this.stripe.checkout.sessions.create({
@@ -261,8 +281,8 @@ export class CreditController {
           planType: createSessionDto.planType,
           credits: createSessionDto.credits.toString(),
         },
-        success_url: `${baseUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${baseUrl}?canceled=true`,
+        success_url: successUrl,
+        cancel_url: cancelUrl,
       });
 
       console.log('✅ Stripe session created successfully:', {
