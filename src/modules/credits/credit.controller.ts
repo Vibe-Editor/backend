@@ -34,24 +34,28 @@ export class CreditController {
   private stripe: Stripe;
 
   constructor(private readonly creditService: CreditService) {
-
     // Use environment variable or fallback dummy key to prevent crashes
-    const stripeKey = process.env.STRIPE_SECRET_KEY || 'sk_test_dummy_key_for_initialization';
-    
-    console.log('🔧 Initializing Stripe with key:', stripeKey.substring(0, 20) + '...');
-    
+    const stripeKey =
+      process.env.STRIPE_SECRET_KEY || 'sk_test_dummy_key_for_initialization';
+
+    console.log(
+      '🔧 Initializing Stripe with key:',
+      stripeKey.substring(0, 20) + '...',
+    );
+
     if (!process.env.STRIPE_SECRET_KEY) {
-      console.log('⚠️ STRIPE_SECRET_KEY environment variable is not set, using dummy key');
+      console.log(
+        '⚠️ STRIPE_SECRET_KEY environment variable is not set, using dummy key',
+      );
     } else {
       console.log('✅ Using STRIPE_SECRET_KEY from environment');
     }
-    
+
     this.stripe = new Stripe(stripeKey, {
       apiVersion: '2025-07-30.basil',
     });
-    
-    console.log('✅ Stripe initialized successfully');
 
+    console.log('✅ Stripe initialized successfully');
   }
 
   /**
@@ -214,14 +218,15 @@ export class CreditController {
   async createCheckoutSession(
     @Body() createSessionDto: CreateCheckoutSessionDto,
   ) {
-
     console.log('🛒 Creating checkout session for:', createSessionDto);
-    
+
     // Check if we have a real Stripe key
     if (!process.env.STRIPE_SECRET_KEY) {
-      throw new Error('Stripe is not configured. Please add your Stripe SECRET KEY (starts with sk_test_ or sk_live_) to environment variables as STRIPE_SECRET_KEY.');
+      throw new Error(
+        'Stripe is not configured. Please add your Stripe SECRET KEY (starts with sk_test_ or sk_live_) to environment variables as STRIPE_SECRET_KEY.',
+      );
     }
-    
+
     try {
       const baseUrl = 'http://localhost:9825';
       console.log('🔗 Using base URL:', baseUrl);
@@ -231,9 +236,8 @@ export class CreditController {
         amount: createSessionDto.amount,
         planType: createSessionDto.planType,
         userId: createSessionDto.userId,
-        email: createSessionDto.email
+        email: createSessionDto.email,
       });
-
 
       const session = await this.stripe.checkout.sessions.create({
         mode: 'payment',
@@ -261,13 +265,11 @@ export class CreditController {
         cancel_url: `${baseUrl}?canceled=true`,
       });
 
-
       console.log('✅ Stripe session created successfully:', {
         sessionId: session.id,
         url: session.url,
-        amount: session.amount_total
+        amount: session.amount_total,
       });
-
 
       return {
         url: session.url,
@@ -364,10 +366,6 @@ export class CreditController {
     }
   }
 
-      throw new Error(`Failed to retrieve session details: ${errorMessage}`);
-    }
-  }
-
   /**
    * Add credits after successful payment (simple endpoint)
    */
@@ -397,5 +395,4 @@ export class CreditController {
       message: `Successfully added ${purchaseDto.credits} credits`,
     };
   }
-
 }
