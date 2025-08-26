@@ -363,39 +363,4 @@ export class CreditController {
       };
     }
   }
-
-      throw new Error(`Failed to retrieve session details: ${errorMessage}`);
-    }
-  }
-
-  /**
-   * Add credits after successful payment (simple endpoint)
-   */
-  @Post('purchase')
-  async addPurchaseCredits(
-    @Body()
-    purchaseDto: {
-      userId: string;
-      credits: number;
-      paymentId?: string;
-    },
-  ) {
-    const transactionId = await this.creditService.addCredits(
-      purchaseDto.userId,
-      purchaseDto.credits,
-      CreditTransactionType.PURCHASE,
-      `Credit purchase via Stripe - Payment ID: ${purchaseDto.paymentId || 'N/A'}`,
-    );
-
-    const newBalance = await this.creditService.getUserBalance(
-      purchaseDto.userId,
-    );
-
-    return {
-      transactionId,
-      newBalance: newBalance.toNumber(),
-      message: `Successfully added ${purchaseDto.credits} credits`,
-    };
-  }
-
 }
