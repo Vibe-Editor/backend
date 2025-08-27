@@ -514,7 +514,7 @@ Generate the visual prompt:`,
           // Save individual segments
           const savedSegments = await Promise.all(
             segmentedScript.segments.map(async (segment, index) => {
-              return await this.prisma.videoSegment.create({
+              const savedSegment =  await this.prisma.videoSegment.create({
                 data: {
                   segmentId: `${index + 1}`,
                   visual: segment.visual,
@@ -523,6 +523,9 @@ Generate the visual prompt:`,
                   videoSegmentationId: savedSegmentation.id,
                 },
               });
+              
+              console.log(`✅ Saved segment ${index + 1} with database ID: ${savedSegment.id}`);
+              return savedSegment;
             }),
           );
 
@@ -555,8 +558,14 @@ Generate the visual prompt:`,
           // Get user's new balance after credit deduction
           const newBalance = await this.creditService.getUserBalance(userId);
 
+          // Map the segments with their actual database IDs
+          const segmentsWithDbIds = segmentedScript.segments.map((segment, index) => ({
+            ...segment,
+            id: savedSegments[index].id, // Use the actual database ID instead of seg-1, seg-2, etc.
+          }));
+
           return {
-            segments: segmentedScript.segments,
+            segments: segmentsWithDbIds,
             artStyle: script.artStyle,
             model: modelUsed,
             credits: {
