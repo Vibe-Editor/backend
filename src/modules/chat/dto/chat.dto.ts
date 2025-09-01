@@ -25,6 +25,11 @@ export class ChatDto {
   image_s3_key: string;
 
   @IsString()
+  @IsOptional()
+  @ValidateIf((o) => o.gen_type === 'voice')
+  narration: string;
+
+  @IsString()
   @IsNotEmpty()
   art_style: string;
 
