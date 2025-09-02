@@ -13,6 +13,7 @@ import { ChatDto } from './dto/chat.dto';
 import { imagenImageGen } from './image-generation/imagen.model';
 import { klingVideoGen } from './video-generation/kling.model';
 import { runwayVideoGen } from './video-generation/runway.model';
+import { VoiceGenService } from '../voice-gen/voice-gen.service';
 
 const logger = new Logger('ChatService');
 
@@ -20,7 +21,10 @@ const logger = new Logger('ChatService');
 export class ChatService implements OnModuleDestroy {
   private readonly prisma = new PrismaClient();
 
-  constructor(private readonly creditService: CreditService) {}
+  constructor(
+    private readonly creditService: CreditService,
+    private readonly voiceGenService: VoiceGenService,
+  ) {}
 
   private async validateProject(projectId: string, userId: string): Promise<void> {
     const project = await this.prisma.project.findFirst({
@@ -40,8 +44,14 @@ export class ChatService implements OnModuleDestroy {
       visual_prompt,
       animation_prompt,
       image_s3_key,
+      narration,
       art_style,
       projectId,
+      speed,
+      stability,
+      similarityBoost,
+      styleExaggeration,
+      useSpeakerBoost,
     } = chatDto;
 
     // Use authenticated user ID if available, fallback to segmentId for backward compatibility
@@ -430,6 +440,24 @@ export class ChatService implements OnModuleDestroy {
           );
         }
       }
+    } else if (gen_type === 'voice') {
+      if (!narration) {
+        throw new BadRequestException('narration is required for voice generation');
+      }
+
+      return this.voiceGenService.generateVoice(
+        {
+          narration,
+          segmentId,
+          projectId,
+          speed,
+          stability,
+          similarityBoost,
+          styleExaggeration,
+          useSpeakerBoost,
+        },
+        userId,
+      );
     }
   }
 

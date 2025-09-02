@@ -13,4 +13,10 @@ export class ChatController {
   async chat(@Body() chatDto: ChatDto, @CurrentUser('id') userId: string) {
     return this.chatService.chat(chatDto, userId);
   }
+
+  @Post('voice')
+  async generateVoice(@Body() chatDto: ChatDto, @CurrentUser('id') userId: string) {
+    chatDto.gen_type = 'voice';
+    return this.chatService.chat(chatDto, userId);
+  }
 }
