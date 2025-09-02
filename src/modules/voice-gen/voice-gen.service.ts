@@ -30,6 +30,11 @@ export class VoiceGenService implements OnModuleDestroy {
       voiceId = 'JBFqnCBsd6RMkjVDRZzb',
       modelId = 'eleven_multilingual_v2',
       isEditCall = false,
+      speed,
+      stability,
+      similarityBoost,
+      styleExaggeration,
+      useSpeakerBoost,
     } = createVoiceGenDto;
 
     let creditTransactionId: string | null = null;
@@ -46,11 +51,25 @@ export class VoiceGenService implements OnModuleDestroy {
         `Voice generation using ElevenLabs`,
       );
 
-      const audioStream = await this.elevenlabs.textToSpeech.convert(voiceId, {
+      const voiceSettings: any = {};
+      
+      if (speed !== undefined) voiceSettings.speed = speed;
+      if (stability !== undefined) voiceSettings.stability = stability;
+      if (similarityBoost !== undefined) voiceSettings.similarity_boost = similarityBoost;
+      if (styleExaggeration !== undefined) voiceSettings.style_exaggeration = styleExaggeration;
+      if (useSpeakerBoost !== undefined) voiceSettings.use_speaker_boost = useSpeakerBoost;
+
+      const requestOptions: any = {
         text: narration,
         modelId,
         outputFormat: 'mp3_44100_128',
-      });
+      };
+
+      if (Object.keys(voiceSettings).length > 0) {
+        requestOptions.voice_settings = voiceSettings;
+      }
+
+      const audioStream = await this.elevenlabs.textToSpeech.convert(voiceId, requestOptions);
 
       const chunks = [];
       for await (const chunk of audioStream) {

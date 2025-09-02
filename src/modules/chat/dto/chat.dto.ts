@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, ValidateIf } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, ValidateIf, IsNumber, IsBoolean, Min, Max } from 'class-validator';
 
 export class ChatDto {
   @IsString()
@@ -40,4 +40,37 @@ export class ChatDto {
   @IsString()
   @IsNotEmpty()
   projectId: string;
+
+  @IsNumber()
+  @IsOptional()
+  @ValidateIf((o) => o.gen_type === 'voice')
+  @Min(0.7)
+  @Max(1.2)
+  speed?: number;
+
+  @IsNumber()
+  @IsOptional()
+  @ValidateIf((o) => o.gen_type === 'voice')
+  @Min(0.0)
+  @Max(1.0)
+  stability?: number;
+
+  @IsNumber()
+  @IsOptional()
+  @ValidateIf((o) => o.gen_type === 'voice')
+  @Min(0.0)
+  @Max(1.0)
+  similarityBoost?: number;
+
+  @IsNumber()
+  @IsOptional()
+  @ValidateIf((o) => o.gen_type === 'voice')
+  @Min(0.0)
+  @Max(1.0)
+  styleExaggeration?: number;
+
+  @IsBoolean()
+  @IsOptional()
+  @ValidateIf((o) => o.gen_type === 'voice')
+  useSpeakerBoost?: boolean;
 }

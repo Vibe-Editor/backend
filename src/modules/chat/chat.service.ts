@@ -47,6 +47,11 @@ export class ChatService implements OnModuleDestroy {
       narration,
       art_style,
       projectId,
+      speed,
+      stability,
+      similarityBoost,
+      styleExaggeration,
+      useSpeakerBoost,
     } = chatDto;
 
     // Use authenticated user ID if available, fallback to segmentId for backward compatibility
@@ -445,6 +450,11 @@ export class ChatService implements OnModuleDestroy {
           narration,
           segmentId,
           projectId,
+          speed,
+          stability,
+          similarityBoost,
+          styleExaggeration,
+          useSpeakerBoost,
         },
         userId,
       );
