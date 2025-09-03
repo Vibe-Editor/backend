@@ -23,6 +23,10 @@ model User {
   totalCreditsSpent  Decimal  @default(0) @db.Decimal(12, 2) // Lifetime credits spent
   lastCreditUpdate   DateTime @default(now()) // Last credit operation timestamp
 
+  // User Context - stores context items about the user
+  userContext        String[] @default([]) // Array of user context strings (max 30)
+  lastProjectContextHash String?
+
   projects             Project[]
   conversationHistory  ConversationHistory[]
   videoConcepts        VideoConcept[]
@@ -43,6 +47,9 @@ model Project {
   userId      String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  // Project Context - stores context summaries for this project
+  projectSummaries String[] @default([]) // Array of project summary strings
 
   user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   conversations        ConversationHistory[]
@@ -117,6 +124,7 @@ enum ConversationTypeEnum {
   VOICEOVER_GENERATION
   CHARACTER_GENERATION
   GENERAL_CHAT
+  PROJECT_CONTEXT_UPDATE
 }
 
 model VideoConcept {
