@@ -4,25 +4,15 @@
 
 ## Endpoints
 
-### `POST /voice-gen` - Generate voice using ElevenLabs AI
-- **Requires**: JWT Authentication
-- **Features**: Advanced text-to-speech conversion with customizable voice parameters
-- **Model**: ElevenLabs eleven_multilingual_v2 with JBFqnCBsd6RMkjVDRZzb voice
-- **Credits**: 10 credits per generation
-- **Body Parameters**:
-  - `narration` (required): Text to convert to speech (max 5000 characters)
-  - `segmentId` (required): Unique identifier for this voice generation
-  - `projectId` (required): ID of the project to save the voice to
-  - `voiceId` (optional): ElevenLabs voice ID (default: JBFqnCBsd6RMkjVDRZzb)
-  - `modelId` (optional): ElevenLabs model ID (default: eleven_multilingual_v2)
-  - `isEditCall` (optional): Whether this is an edit operation (default: false)
-  - `speed` (optional): Speech rate 0.7-1.2 (default: 1.0)
-  - `stability` (optional): Voice consistency 0.0-1.0 (default: 0.5)
-  - `similarityBoost` (optional): Voice similarity 0.0-1.0 (default: 0.5)
-  - `styleExaggeration` (optional): Style emphasis 0.0-1.0 (default: 0.0)
-  - `useSpeakerBoost` (optional): Enhanced similarity (default: false)
+- `POST /voiceover` - Generate voiceovers using ElevenLabs AI
 
-- **Example Request**:
+  - **Requires**: JWT Authentication
+  - **Features**: Text-to-speech conversion with high-quality AI voices
+  - **Model**: ElevenLabs eleven_multilingual_v2 with JBFqnCBsd6RMkjVDRZzb voice
+  - **Body Parameters**:
+    - `narration_prompt` (required): Text to convert to speech (max 5000 characters)
+    - `projectId` (required): ID of the project to save the voiceover to
+  - **Example Request**:
 
   ```json
   {
@@ -52,20 +42,23 @@
   }
   ```
 
-### `POST /chat` - Generate voice via chat endpoint
-- **Requires**: JWT Authentication
-- **Features**: Voice generation through the unified chat interface
-- **Credits**: 10 credits per generation
-- **Body Parameters**:
-  - `gen_type` (required): Must be "voice"
-  - `narration` (required): Text to convert to speech
-  - `model` (required): Must be "elevenlabs"
-  - `art_style` (required): Style description (used for categorization)
-  - `segmentId` (required): Unique identifier
-  - `projectId` (required): Project ID
-  - All voice parameters from `/voice-gen` endpoint are supported
+- `GET /voiceover` - Get all generated voiceovers
 
-- **Example Request**:
+  - **Requires**: JWT Authentication
+  - **Query Parameters**:
+    - `id` (optional): Get specific voiceover by ID
+    - `projectId` (optional): Filter voiceovers by project
+  - **Returns**: Array of all user's generated voiceovers
+
+- `PATCH /voiceover/:id` - Update a specific generated voiceover
+
+  - **Requires**: JWT Authentication
+  - **URL Parameter**: `id` - The voiceover ID to update
+  - **Body Parameters**:
+    - `narration_prompt` (required): Updated text for the voiceover
+    - `s3_key` (optional): Updated S3 key for the audio file
+    - `projectId` (optional): Move voiceover to a different project
+  - **Example Request**:
 
   ```json
   {

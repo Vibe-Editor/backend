@@ -1,6 +1,7 @@
 # Projects
 
 - `POST /projects` - Create new project
+
   - **Requires**: JWT Authentication
   - **Body**: `{name: string, description?: string}`
   - **Example Request**:
@@ -26,6 +27,7 @@
   ```
 
 - `GET /projects` - Get all user projects with statistics
+
   - **Requires**: JWT Authentication
   - **Returns**: Array of projects with content counts
 
@@ -50,6 +52,7 @@
   ```
 
 - `GET /projects/:id` - Get specific project with statistics
+
   - **Requires**: JWT Authentication
   - **Returns**: Single project with content counts
   - **Response Format**:
@@ -76,6 +79,7 @@
   ```
 
 - `GET /projects/:id/conversations` - Get paginated conversations for a project
+
   - **Requires**: JWT Authentication
   - **Query Parameters**:
     - `page` (optional): Page number, defaults to 1
@@ -116,6 +120,7 @@
     - Comprehensive pagination metadata
 
 - `GET /projects/:id/full` - Get complete project data with all content
+
   - **Requires**: JWT Authentication
   - **Example Request**: `GET /projects/clxyz123abc/full`
   - **Returns**: Project with all foreign keys to videos, images, segmentations, concepts, etc.
@@ -298,6 +303,7 @@
   ```
 
   **Key Features:**
+
   - **Multiple Segmentation Selections**: Supports iterative workflow where multiple segmentations can be selected per project
   - **Parsed JSON**: Conversation `userInput` and `response` fields are automatically parsed from JSON strings
   - **File References**: All S3 keys for media files (images, videos, audio) are included
@@ -306,6 +312,7 @@
   - **Chronological Order**: All arrays sorted by creation date (newest first)
 
 - `PATCH /projects/:id` - Update project
+
   - **Requires**: JWT Authentication
   - **Body**: `{name?: string, description?: string}`
   - **Example Request**:
@@ -320,11 +327,13 @@
   - **Returns**: Updated project data
 
 - `DELETE /projects/:id` - Delete project and all related content
+
   - **Requires**: JWT Authentication
   - **Note**: Cascade deletes all conversations, concepts, images, videos, etc.
   - **Returns**: Success confirmation
 
 - `GET /projects/:id/concepts` - Get paginated concepts for a project
+
   - **Requires**: JWT Authentication
   - **Query Parameters**:
     - `page` (optional): Page number, defaults to 1
@@ -361,6 +370,7 @@
   ```
 
 - `GET /projects/:id/images` - Get paginated images for a project
+
   - **Requires**: JWT Authentication
   - **Query Parameters**:
     - `page` (optional): Page number, defaults to 1
@@ -399,6 +409,7 @@
   ```
 
 - `GET /projects/:id/videos` - Get paginated videos for a project
+
   - **Requires**: JWT Authentication
   - **Query Parameters**:
     - `page` (optional): Page number, defaults to 1
@@ -450,6 +461,7 @@
   ```
 
 - `GET /projects/:id/voiceovers` - Get paginated voiceovers for a project
+
   - **Requires**: JWT Authentication
   - **Query Parameters**:
     - `page` (optional): Page number, defaults to 1
@@ -482,6 +494,7 @@
   ```
 
 - `GET /projects/:id/segmentations` - Get paginated segmentations for a project
+
   - **Requires**: JWT Authentication
   - **Query Parameters**:
     - `page` (optional): Page number, defaults to 1
@@ -538,6 +551,7 @@
   ```
 
 - `GET /projects/:id/summaries` - Get paginated summaries for a project
+
   - **Requires**: JWT Authentication
   - **Query Parameters**:
     - `page` (optional): Page number, defaults to 1

@@ -3,6 +3,7 @@
 **Important**: All user-input-summarizer endpoints now require a valid `projectId` in the request body. These endpoints will not work without providing a correct project ID.
 
 - `POST /user-input-summarizer` - Summarize content based on user input
+
   - **Requires**: JWT Authentication
   - **Body Parameters**:
     - `original_content` (required): The original content to summarize
@@ -31,6 +32,7 @@
   ```
 
 - `GET /user-input-summarizer` - Get all content summaries
+
   - **Requires**: JWT Authentication
   - **Query Parameters**:
     - `id` (optional): Get specific summary by ID
@@ -38,6 +40,7 @@
   - **Returns**: Array of all user's content summaries
 
 - `PATCH /user-input-summarizer/:id` - Update a specific content summary
+
   - **Requires**: JWT Authentication
   - **URL Parameter**: `id` - The content summary ID to update
   - **Body Parameters**:

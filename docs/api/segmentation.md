@@ -1,6 +1,7 @@
 # Segmentation
 
 - `POST /segmentation` - Generate and segment video scripts using AI model handoff (OpenAI GPT-4o or Gemini 2.5 Pro)
+
   - **Requires**: JWT Authentication
   - **Body Parameters**:
     - `prompt` (required): Description of the video to create
@@ -46,6 +47,7 @@
   ```
 
 - `GET /segmentation` - Get all video segmentations
+
   - **Requires**: JWT Authentication
   - **Query Parameters**:
     - `id` (optional): Get specific segmentation by ID
@@ -88,6 +90,7 @@
   ```
 
 - `PATCH /segmentation/:id/select` - Select a segmentation for production
+
   - **Requires**: JWT Authentication
   - **Purpose**: Mark a specific segmentation as selected (supports multiple selections per project)
   - **Body Parameters**:
@@ -121,6 +124,7 @@
   ```
 
 - `PATCH /segmentation/:id` - Update a specific video segmentation
+
   - **Requires**: JWT Authentication
   - **URL Parameter**: `id` - The segmentation ID to update
   - **Body Parameters**:

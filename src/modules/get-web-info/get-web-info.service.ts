@@ -29,7 +29,7 @@ export class GetWebInfoService {
     console.log(`Deducting credits for web research`);
 
     // Deduct credits first - this handles validation internally
-    let creditTransactionId = await this.creditService.deductCredits(
+    const creditTransactionId = await this.creditService.deductCredits(
       userId,
       'TEXT_OPERATIONS',
       'perplexity',

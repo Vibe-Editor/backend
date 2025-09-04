@@ -19,6 +19,6 @@ export class SegmentationDto {
 
   @IsString()
   @IsOptional()
-  @IsIn(['pro', 'flash' , 'openai' ])
-  model: 'pro' | 'flash' | 'openai' ;
+  @IsIn(['pro', 'flash', 'openai'])
+  model: 'pro' | 'flash' | 'openai';
 }
