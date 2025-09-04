@@ -49,7 +49,12 @@ You are perfect for realistic scenes, landscapes, portraits, objects without tex
             'Agent selected Recraft for realistic content without text',
           );
           try {
-            return await generateRecraftImage(visual_prompt, art_style, segmentId, projectId);
+            return await generateRecraftImage(
+              visual_prompt,
+              art_style,
+              segmentId,
+              projectId,
+            );
           } catch (error) {
             logger.error('Recraft image generation failed:', error);
             throw new Error(

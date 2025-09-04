@@ -3,6 +3,7 @@
 **Important**: All video-gen endpoints now require a valid `projectId` in the request body. These endpoints will not work without providing a correct project ID.
 
 - `POST /video-gen` - Generate videos using AI model handoff (Google Veo2 or RunwayML Gen-3)
+
   - **Body Parameters**:
   - `animation_prompt` (required): Description of the animation/movement for the video
   - `art_style` (required): Style of the video to generate
@@ -40,6 +41,7 @@
   ```
 
 - `GET /video-gen` - Get all generated videos
+
   - **Requires**: JWT Authentication
   - **Query Parameters**:
     - `id` (optional): Get specific video by ID
@@ -47,6 +49,7 @@
   - **Returns**: Array of all user's generated videos
 
 - `PATCH /video-gen/:id` - Update a specific generated video
+
   - **Requires**: JWT Authentication
   - **URL Parameter**: `id` - The video ID to update
   - **Body Parameters**:

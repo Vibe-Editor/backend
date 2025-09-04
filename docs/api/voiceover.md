@@ -3,6 +3,7 @@
 **Important**: All voiceover endpoints now require a valid `projectId` in the request body. These endpoints will not work without providing a correct project ID.
 
 - `POST /voiceover` - Generate voiceovers using ElevenLabs AI
+
   - **Requires**: JWT Authentication
   - **Features**: Text-to-speech conversion with high-quality AI voices
   - **Model**: ElevenLabs eleven_multilingual_v2 with JBFqnCBsd6RMkjVDRZzb voice
@@ -34,6 +35,7 @@
   ```
 
 - `GET /voiceover` - Get all generated voiceovers
+
   - **Requires**: JWT Authentication
   - **Query Parameters**:
     - `id` (optional): Get specific voiceover by ID
@@ -41,6 +43,7 @@
   - **Returns**: Array of all user's generated voiceovers
 
 - `PATCH /voiceover/:id` - Update a specific generated voiceover
+
   - **Requires**: JWT Authentication
   - **URL Parameter**: `id` - The voiceover ID to update
   - **Body Parameters**:
