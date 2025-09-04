@@ -19,7 +19,7 @@ import { CreditsModule } from './modules/credits/credits.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { AgentModule } from './modules/agent/agent.module';
 import { VoiceGenModule } from './modules/voice-gen/voice-gen.module';
-import { ContextModule } from './modules/contex/context.module';
+import { ContextModule } from './modules/context/context.module';
 
 @Module({
   imports: [
