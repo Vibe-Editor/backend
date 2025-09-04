@@ -114,3 +114,39 @@ export async function uploadVideoToS3(
     throw error;
   }
 }
+
+export async function uploadAudioToS3(
+  audioBuffer: Buffer,
+  segmentId: string,
+  projectId: string,
+): Promise<string> {
+  const startTime = Date.now();
+  logger.debug(`Starting audio upload to S3`);
+
+  try {
+    const s3Key = `${projectId}/audio/${segmentId}/${randomUUID()}.mp3`;
+    logger.debug(`Uploading audio to S3 with key: ${s3Key}`);
+
+    const command = new PutObjectCommand({
+      Bucket: process.env.S3_BUCKET_NAME,
+      Key: s3Key,
+      Body: audioBuffer,
+      ContentType: 'audio/mpeg',
+    });
+
+    await s3Client.send(command);
+
+    const totalTime = Date.now() - startTime;
+    logger.debug(`Audio uploaded to S3 successfully in ${totalTime}ms`);
+
+    return s3Key;
+  } catch (error) {
+    const totalTime = Date.now() - startTime;
+    logger.error(`Failed to upload audio to S3 after ${totalTime}ms`, {
+      segmentId,
+      projectId,
+      error: error.message,
+    });
+    throw error;
+  }
+}

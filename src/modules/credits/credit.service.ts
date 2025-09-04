@@ -39,6 +39,10 @@ const PRICING = {
   VOICEOVER_GENERATION: {
     elevenlabs: { regular: 2, edit: 2 },
   },
+  // Voice Clip Generation
+  VOICE_CLIP_GENERATION: {
+    elevenlabs: { regular: 10, edit: 10 },
+  },
 };
 
 export interface CreditCheck {
