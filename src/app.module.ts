@@ -20,6 +20,7 @@ import { ChatModule } from './modules/chat/chat.module';
 import { AgentModule } from './modules/agent/agent.module';
 import { VoiceGenModule } from './modules/voice-gen/voice-gen.module';
 import { ContextModule } from './modules/context/context.module';
+import { SummariesModule } from './modules/summaries/summaries.module';
 
 @Module({
   imports: [
@@ -43,7 +44,8 @@ import { ContextModule } from './modules/context/context.module';
     ChatModule,
     AgentModule,
     VoiceGenModule,
-    ContextModule
+    ContextModule,
+    SummariesModule
   ],
   controllers: [AppController],
   providers: [AppService],

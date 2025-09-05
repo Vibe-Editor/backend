@@ -10,6 +10,7 @@ import { SegmentationDto } from './dto/segmentation.dto';
 import { TypeSegment } from './segment.interface';
 import OpenAI from 'openai';
 import { ProjectHelperService } from '../../common/services/project-helper.service';
+import { SummaryService } from '../../common/services/summary.service';
 import { PrismaClient } from '../../../generated/prisma';
 import { Decimal } from '@prisma/client/runtime/library';
 import { CreditService } from '../credits/credit.service';
@@ -22,6 +23,7 @@ export class SegmentationService {
 
   constructor(
     private readonly projectHelperService: ProjectHelperService,
+    private readonly summaryService: SummaryService,
     private readonly creditService: CreditService,
   ) {
     if (!process.env.GEMINI_API_KEY) {
@@ -419,6 +421,7 @@ Generate the visual prompt:`,
     userId: string,
   ): Promise<{
     segments: TypeSegment[];
+    summary: string | null; // Combined summary for all segments
     artStyle: string;
     model: string;
     credits: {
@@ -523,7 +526,26 @@ Generate the visual prompt:`,
           },
         });
 
-        // Save individual segments
+        // Generate one combined summary for all segments
+        let combinedSummary: string | null = null;
+        try {
+          const allSegmentsContent = segmentedScript.segments.map((segment, index) => 
+            `Segment ${index + 1}:\nVisual: ${segment.visual}\nNarration: ${segment.narration}\nAnimation: ${segment.animation}`
+          ).join('\n\n');
+          
+          combinedSummary = await this.summaryService.generateSummary({
+            content: allSegmentsContent,
+            contentType: 'segment',
+            userId,
+            projectId,
+          });
+          console.log(`Generated combined summary for all ${segmentedScript.segments.length} segments`);
+        } catch (summaryError) {
+          console.warn(`Failed to generate combined summary for segments: ${summaryError.message}`);
+          // Continue without summary - don't fail the entire operation
+        }
+
+        // Save individual segments (without individual summaries)
         const savedSegments = await Promise.all(
           segmentedScript.segments.map(async (segment, index) => {
             const savedSegment = await this.prisma.videoSegment.create({
@@ -532,6 +554,7 @@ Generate the visual prompt:`,
                 visual: segment.visual,
                 narration: segment.narration,
                 animation: segment.animation,
+                summary: null, // No individual summaries
                 videoSegmentationId: savedSegmentation.id,
               },
             });
@@ -572,16 +595,18 @@ Generate the visual prompt:`,
         // Get user's new balance after credit deduction
         const newBalance = await this.creditService.getUserBalance(userId);
 
-        // Map the segments with their actual database IDs
+        // Map the segments with their actual database IDs (no individual summaries)
         const segmentsWithDbIds = segmentedScript.segments.map(
           (segment, index) => ({
             ...segment,
             id: savedSegments[index].id, // Use the actual database ID instead of seg-1, seg-2, etc.
+            // No individual summary field
           }),
         );
 
         return {
           segments: segmentsWithDbIds,
+          summary: combinedSummary, // Single combined summary for all segments
           artStyle: script.artStyle,
           model: modelUsed,
           credits: {

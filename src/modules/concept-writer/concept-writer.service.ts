@@ -3,6 +3,7 @@ import { ConceptWriterDto } from './dto/concept-writer.dto';
 import { GoogleGenAI } from '@google/genai';
 import { GeneratedResponse } from './concept-writer.interface';
 import { ProjectHelperService } from '../../common/services/project-helper.service';
+import { SummaryService } from '../../common/services/summary.service';
 import { PrismaClient } from '../../../generated/prisma';
 import { Decimal } from '@prisma/client/runtime/library';
 import { CreditService } from '../credits/credit.service';
@@ -15,6 +16,7 @@ export class ConceptWriterService {
 
   constructor(
     private readonly projectHelperService: ProjectHelperService,
+    private readonly summaryService: SummaryService,
     private readonly creditService: CreditService,
   ) {
     if (!process.env.GEMINI_API_KEY) {
@@ -138,6 +140,22 @@ export class ConceptWriterService {
 
         const savedConcepts = await Promise.all(
           parsed.concepts.map(async (concept) => {
+            // Generate summary for the concept
+            let conceptSummary: string | null = null;
+            try {
+              const conceptContent = `Title: ${concept.title}\nConcept: ${concept.concept}\nTone: ${concept.tone}\nGoal: ${concept.goal}`;
+              conceptSummary = await this.summaryService.generateSummary({
+                content: conceptContent,
+                contentType: 'concept',
+                userId,
+                projectId,
+              });
+              this.logger.log(`Generated summary for concept: ${concept.title}`);
+            } catch (summaryError) {
+              this.logger.warn(`Failed to generate summary for concept ${concept.title}: ${summaryError.message}`);
+              // Continue without summary - don't fail the entire operation
+            }
+
             const savedConcept = await this.prisma.videoConcept.create({
               data: {
                 prompt,
@@ -146,6 +164,7 @@ export class ConceptWriterService {
                 concept: concept.concept,
                 tone: concept.tone,
                 goal: concept.goal,
+                summary: conceptSummary, // Include the generated summary
                 projectId,
                 userId,
                 // Add credit tracking
@@ -183,10 +202,16 @@ export class ConceptWriterService {
         // Get user's new balance after credit deduction
         const newBalance = await this.creditService.getUserBalance(userId);
 
+        // Build response with summaries included
+        const conceptsWithSummaries = parsed.concepts.map((concept, index) => ({
+          ...concept,
+          summary: savedConcepts[index]?.summary || null,
+        }));
+
         return {
           input: prompt,
           system_prompt: systemPrompt,
-          ...parsed,
+          concepts: conceptsWithSummaries,
           credits: {
             used: 1, // Fixed 1 credit for concept generation
             balance: newBalance.toNumber(),
