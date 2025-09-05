@@ -509,24 +509,7 @@ Generate the visual prompt:`,
           model: modelUsed,
         });
 
-        // Save to database
-        console.log(`Saving segmentation to database`);
-        const savedSegmentation = await this.prisma.videoSegmentation.create({
-          data: {
-            prompt: segmentationDto.prompt,
-            concept: segmentationDto.concept,
-            negativePrompt: segmentationDto.negative_prompt,
-            artStyle: script.artStyle,
-            model: modelUsed,
-            projectId,
-            userId,
-            // Add credit tracking
-            creditTransactionId: creditTransactionId,
-            creditsUsed: new Decimal(3), // Segmentation uses fixed pricing
-          },
-        });
-
-        // Generate one combined summary for all segments
+        // Generate one combined summary for all segments first
         let combinedSummary: string | null = null;
         try {
           const allSegmentsContent = segmentedScript.segments.map((segment, index) => 
@@ -545,6 +528,24 @@ Generate the visual prompt:`,
           // Continue without summary - don't fail the entire operation
         }
 
+        // Save to database with combined summary
+        console.log(`Saving segmentation to database`);
+        const savedSegmentation = await this.prisma.videoSegmentation.create({
+          data: {
+            prompt: segmentationDto.prompt,
+            concept: segmentationDto.concept,
+            negativePrompt: segmentationDto.negative_prompt,
+            artStyle: script.artStyle,
+            model: modelUsed,
+            summary: combinedSummary, // Store combined summary here
+            projectId,
+            userId,
+            // Add credit tracking
+            creditTransactionId: creditTransactionId,
+            creditsUsed: new Decimal(3), // Segmentation uses fixed pricing
+          },
+        });
+
         // Save individual segments (without individual summaries)
         const savedSegments = await Promise.all(
           segmentedScript.segments.map(async (segment, index) => {
@@ -554,7 +555,6 @@ Generate the visual prompt:`,
                 visual: segment.visual,
                 narration: segment.narration,
                 animation: segment.animation,
-                summary: null, // No individual summaries
                 videoSegmentationId: savedSegmentation.id,
               },
             });
@@ -606,7 +606,7 @@ Generate the visual prompt:`,
 
         return {
           segments: segmentsWithDbIds,
-          summary: combinedSummary, // Single combined summary for all segments
+          summary: savedSegmentation.summary, // Single combined summary from database
           artStyle: script.artStyle,
           model: modelUsed,
           credits: {
