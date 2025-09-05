@@ -188,6 +188,7 @@ model VideoSegmentation {
   negativePrompt String?
   artStyle       String
   model          String
+  summary        String?  
   isSelected     Boolean  @default(false)
   projectId      String?
   userId         String
@@ -208,7 +209,6 @@ model VideoSegment {
   visual              String
   narration           String
   animation           String
-  summary             String?  // AI-generated summary of the segment
   videoSegmentationId String?
   createdAt           DateTime @default(now())
 
