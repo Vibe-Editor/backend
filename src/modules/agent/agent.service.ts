@@ -71,12 +71,10 @@ interface ImageGenerationReqParam {
 }
 
 interface ImageGenerationParsedArgs {
-
   segments: [];
   art_style: string;
   projectId: string;
   model: string;
-
 }
 
 interface VideoParamSegment {
@@ -86,7 +84,6 @@ interface VideoParamSegment {
 }
 
 interface VideoGenerationParams {
-
   segment: VideoParamSegment[];
   projectId: string;
   art_style: string;
@@ -96,7 +93,7 @@ interface VideoGenerationParams {
 export class AgentService {
   private readonly logger = new Logger(AgentService.name);
   private readonly baseUrl = 'https://backend.usuals.ai';
-  // private readonly baseUrl = 'http://localhost:8080';
+  //  private readonly baseUrl = 'http://localhost:8080';
   private approvalRequests = new Map<string, ApprovalRequest>();
   private activeStreams = new Map<string, Subject<StreamMessage>>();
 
@@ -119,15 +116,27 @@ export class AgentService {
           projectId: { type: 'string', description: 'Project ID' },
           userId: { type: 'string', description: 'User ID' },
         },
-        required: ['model', 'gen_type', 'visual_prompt', 'animation_prompt', 'image_s3_key', 'art_style', 'segmentId', 'projectId', 'userId'],
+        required: [
+          'model',
+          'gen_type',
+          'visual_prompt',
+          'animation_prompt',
+          'image_s3_key',
+          'art_style',
+          'segmentId',
+          'projectId',
+          'userId',
+        ],
         additionalProperties: false,
       },
       execute: async (params: ChatParams) => {
         try {
-          this.logger.log(`➡️ [CHAT] POST /chat model=${params.model} gen_type=${params.gen_type} projectId=${params.projectId}`);
+          this.logger.log(
+            `➡️ [CHAT] POST /chat model=${params.model} gen_type=${params.gen_type} projectId=${params.projectId}`,
+          );
           const response = await axios.post(`${this.baseUrl}/chat`, params, {
             headers: {
-              'Authorization': `Bearer ${authToken}`,
+              Authorization: `Bearer ${authToken}`,
               'Content-Type': 'application/json',
             },
           });
@@ -145,47 +154,76 @@ export class AgentService {
   private createVideoGenerationTool(authToken?: string) {
     return tool({
       name: 'generate_video_with_approval',
-      description: 'Generate a video after getting user approval for the animation prompt and image',
+      description:
+        'Generate a video after getting user approval for the animation prompt and image',
       // @ts-ignore
       parameters: {
         type: 'object',
         properties: {
           segments: {
             type: 'array',
-            description: 'Array of segments with animation prompts and image data',
+            description:
+              'Array of segments with animation prompts and image data',
             items: {
               type: 'object',
               properties: {
                 id: { type: 'string', description: 'Segment ID' },
-                animation_prompt: { type: 'string', description: 'Animation prompt for the segment' },
-                imageS3Key: { type: 'string', description: 'S3 key of the image to animate' }
+                animation_prompt: {
+                  type: 'string',
+                  description: 'Animation prompt for the segment',
+                },
+                imageS3Key: {
+                  type: 'string',
+                  description: 'S3 key of the image to animate',
+                },
               },
               required: ['id', 'animation_prompt', 'imageS3Key'],
-              additionalProperties: false
-            }
+              additionalProperties: false,
+            },
           },
           art_style: { type: 'string', description: 'Art style for the video' },
           projectId: { type: 'string', description: 'Project ID' },
-          model: { type: 'string', description: 'Model to use for video generation' },
-          isRetry: { type: 'boolean', description: 'Whether this is a retry attempt' },
+          model: {
+            type: 'string',
+            description: 'Model to use for video generation',
+          },
+          isRetry: {
+            type: 'boolean',
+            description: 'Whether this is a retry attempt',
+          },
           retrySegmentIds: {
             type: 'array',
-            description: 'Array of segment IDs to retry (only used if isRetry is true)',
-            items: { type: 'string' }
-          }
+            description:
+              'Array of segment IDs to retry (only used if isRetry is true)',
+            items: { type: 'string' },
+          },
         },
-        required: ['segments', 'art_style', 'projectId', 'model', 'isRetry', 'retrySegmentIds'], additionalProperties: false,
+        required: [
+          'segments',
+          'art_style',
+          'projectId',
+          'model',
+          'isRetry',
+          'retrySegmentIds',
+        ],
+        additionalProperties: false,
       },
       needsApproval: true, // Always requires approval
-      execute: async ({ segments, art_style, projectId, model, isRetry = false, }) => {
+      execute: async ({
+        segments,
+        art_style,
+        projectId,
+        model,
+        isRetry = false,
+      }) => {
         try {
-          this.logger.log(`➡️ [VIDEO] POST /video-gen model=${model} projectId=${projectId}`);
-
-
+          this.logger.log(
+            `➡️ [VIDEO] POST /video-gen model=${model} projectId=${projectId}`,
+          );
 
           return {
             success: true,
-            data: "",
+            data: '',
             message: `Video generation complete`,
           };
         } catch (error) {
@@ -196,12 +234,12 @@ export class AgentService {
     });
   }
 
-
   // Create image generation tool with auth token
   private createImageGenerationTool(authToken?: string) {
     return tool({
       name: 'generate_image_with_approval',
-      description: 'Generate an image after getting user approval for the script',
+      description:
+        'Generate an image after getting user approval for the script',
       // @ts-ignore
       parameters: {
         type: 'object',
@@ -213,13 +251,29 @@ export class AgentService {
           userId: { type: 'string', description: 'User ID' },
           model: { type: 'string', description: 'Model to use' },
         },
-        required: ['script', 'art_style', 'segmentId', 'projectId', 'userId', 'model'],
+        required: [
+          'script',
+          'art_style',
+          'segmentId',
+          'projectId',
+          'userId',
+          'model',
+        ],
         additionalProperties: false,
       },
       needsApproval: true, // Always requires approval
-      execute: async ({ script, art_style, segmentId, projectId, userId, model }: ImageGenerationParams) => {
+      execute: async ({
+        script,
+        art_style,
+        segmentId,
+        projectId,
+        userId,
+        model,
+      }: ImageGenerationParams) => {
         try {
-          this.logger.log(`➡️ [IMAGE] POST /chat model=${model} projectId=${projectId}`);
+          this.logger.log(
+            `➡️ [IMAGE] POST /chat model=${model} projectId=${projectId}`,
+          );
           // const response = await axios.post(`${this.baseUrl}/chat`, {
           //   model,
           //   gen_type: 'image',
@@ -236,11 +290,11 @@ export class AgentService {
           // this.logger.log(`✅ [IMAGE] ${response.status} OK`);
           return {
             success: true,
-            data: "",
+            data: '',
             message: 'Image generation completed successfully',
           };
         } catch (error) {
-          console.log(error)
+          console.log(error);
           this.logger.error(`❌ [IMAGE] Error: ${error.message}`);
           throw new Error(`Failed to generate image: ${error.message}`);
         }
@@ -260,7 +314,10 @@ export class AgentService {
         properties: {
           prompt: { type: 'string', description: 'Prompt for segmentation' },
           concept: { type: 'string', description: 'Concept for the content' },
-          negative_prompt: { type: 'string', description: 'Negative prompt (optional)' },
+          negative_prompt: {
+            type: 'string',
+            description: 'Negative prompt (optional)',
+          },
           projectId: { type: 'string', description: 'Project ID' },
           userId: { type: 'string', description: 'User ID' },
         },
@@ -270,8 +327,10 @@ export class AgentService {
       needsApproval: true,
       execute: async (params: SegmentationParams) => {
         try {
-          this.logger.log(`➡️ [SEGMENTATION] POST /segmentation projectId=${params.projectId}`);
-          console.log(params)
+          this.logger.log(
+            `➡️ [SEGMENTATION] POST /segmentation projectId=${params.projectId}`,
+          );
+          console.log(params);
           // const response = await axios.post(`${this.baseUrl}/segmentation`, params, {
           //   headers: {
           //     'Authorization': `Bearer ${authToken}`,
@@ -281,9 +340,9 @@ export class AgentService {
           // this.logger.log(`✅ [SEGMENTATION] ${response.status} OK`);
           // console.log(response.data)
           // return response.data;
-          return "Segmentation executed successfully";
+          return 'Segmentation executed successfully';
         } catch (error) {
-          console.log(error)
+          console.log(error);
           this.logger.error(`❌ [SEGMENTATION] Error: ${error.message}`);
           throw new Error(`Failed to generate segmentation: ${error.message}`);
         }
@@ -310,13 +369,19 @@ export class AgentService {
       },
       execute: async (params: WebInfoParams) => {
         try {
-          this.logger.log(`➡️ [WEB-INFO] POST /get-web-info projectId=${params.projectId}`);
-          const response = await axios.post(`${this.baseUrl}/get-web-info`, params, {
-            headers: {
-              'Authorization': `Bearer ${authToken}`,
-              'Content-Type': 'application/json',
+          this.logger.log(
+            `➡️ [WEB-INFO] POST /get-web-info projectId=${params.projectId}`,
+          );
+          const response = await axios.post(
+            `${this.baseUrl}/get-web-info`,
+            params,
+            {
+              headers: {
+                Authorization: `Bearer ${authToken}`,
+                'Content-Type': 'application/json',
+              },
             },
-          });
+          );
           this.logger.log(`✅ [WEB-INFO] ${response.status} OK`);
           return response.data;
         } catch (error) {
@@ -331,14 +396,21 @@ export class AgentService {
   private createConceptWriterTool(authToken?: string) {
     return tool({
       name: 'generate_concepts_with_approval',
-      description: 'Generate 4 content concepts using web information and require user approval',
+      description:
+        'Generate 4 content concepts using web information and require user approval',
       strict: false,
       // @ts-ignore
       parameters: {
         type: 'object',
         properties: {
-          prompt: { type: 'string', description: 'Prompt for concept generation' },
-          web_info: { type: 'string', description: 'Web information to base concepts on' },
+          prompt: {
+            type: 'string',
+            description: 'Prompt for concept generation',
+          },
+          web_info: {
+            type: 'string',
+            description: 'Web information to base concepts on',
+          },
           projectId: { type: 'string', description: 'Project ID' },
           userId: { type: 'string', description: 'User ID' },
         },
@@ -358,7 +430,7 @@ export class AgentService {
           // this.logger.log(`✅ [CONCEPT-WRITER] ${response.status} OK`);
           return {
             success: true,
-            data: "",
+            data: '',
             message: 'Concepts generated successfully',
           };
         } catch (error) {
@@ -406,22 +478,38 @@ export class AgentService {
         this.createChatTool(authToken),
         this.createImageGenerationTool(authToken),
         this.createSegmentationTool(authToken),
-        this.createVideoGenerationTool(authToken)
+        this.createVideoGenerationTool(authToken),
       ],
     });
   }
 
   // Start an agent run with streaming
-  async startAgentRunStream(userInput: string, userId: string, authToken?: string, segmentId?: string, projectId?: string): Promise<Observable<StreamMessage>> {
+  async startAgentRunStream(
+    userInput: string,
+    userId: string,
+    authToken?: string,
+    segmentId?: string,
+    projectId?: string,
+  ): Promise<Observable<StreamMessage>> {
     const streamId = this.generateStreamId();
     const streamSubject = new Subject<StreamMessage>();
     this.activeStreams.set(streamId, streamSubject);
 
     // Clean the auth token - remove "Bearer " prefix and trim whitespace
-    const cleanAuthToken = authToken ? authToken.replace(/^Bearer\s+/i, '').trim() : undefined;
+    const cleanAuthToken = authToken
+      ? authToken.replace(/^Bearer\s+/i, '').trim()
+      : undefined;
 
     // Start the agent run in the background
-    this.runAgentWithStreaming(userInput, userId, streamSubject, streamId, cleanAuthToken, segmentId, projectId);
+    this.runAgentWithStreaming(
+      userInput,
+      userId,
+      streamSubject,
+      streamId,
+      cleanAuthToken,
+      segmentId,
+      projectId,
+    );
 
     return streamSubject.asObservable();
   }
@@ -433,14 +521,14 @@ export class AgentService {
     streamId: string,
     authToken?: string,
     segmentId?: string,
-    projectId?: string
+    projectId?: string,
   ) {
     try {
       this.logger.log(`🚀 [RUN] start userId=${userId} projectId=${projectId}`);
       streamSubject.next({
         type: 'log',
         data: { message: 'Starting agent run...' },
-        timestamp: new Date()
+        timestamp: new Date(),
       });
 
       const agent = this.createAgent(authToken);
@@ -451,15 +539,16 @@ export class AgentService {
       streamSubject.next({
         type: 'log',
         data: { message: 'Agent is processing your request...' },
-        timestamp: new Date()
+        timestamp: new Date(),
       });
 
       let result = await run(agent, contextualInput);
-      this.logger.log(`📊 [RUN] interruptions=${result.interruptions?.length || 0}`);
+      this.logger.log(
+        `📊 [RUN] interruptions=${result.interruptions?.length || 0}`,
+      );
 
       // Handle interruptions (approvals needed)
       while (result.interruptions?.length > 0) {
-
         // Process each interruption
         for (const interruption of result.interruptions) {
           if (interruption.type === 'tool_approval_item') {
@@ -475,7 +564,9 @@ export class AgentService {
             };
 
             this.approvalRequests.set(approvalId, approvalRequest);
-            this.logger.log(`⏸️ [APPROVAL] pending id=${approvalId} tool=${interruption.rawItem.name}`);
+            this.logger.log(
+              `⏸️ [APPROVAL] pending id=${approvalId} tool=${interruption.rawItem.name}`,
+            );
 
             // Send approval required message to stream
             streamSubject.next({
@@ -484,9 +575,9 @@ export class AgentService {
                 approvalId,
                 toolName: interruption.rawItem.name,
                 arguments: interruption.rawItem.arguments,
-                agentName: interruption.agent.name
+                agentName: interruption.agent.name,
               },
-              timestamp: new Date()
+              timestamp: new Date(),
             });
 
             // Wait for approval
@@ -498,26 +589,28 @@ export class AgentService {
               streamSubject.next({
                 type: 'log',
                 data: { message: 'Approval received, continuing execution...' },
-                timestamp: new Date()
+                timestamp: new Date(),
               });
               result.state.approve(interruption);
               // Execute the approved tool
-              const toolResult = await this.executeApprovedTool(approvalRequest, streamSubject);
+              const toolResult = await this.executeApprovedTool(
+                approvalRequest,
+                streamSubject,
+              );
 
               streamSubject.next({
                 type: 'result',
                 data: toolResult,
-                timestamp: new Date()
+                timestamp: new Date(),
               });
             } else {
               this.logger.log(`❌ [APPROVAL] rejected id=${approvalId}`);
               streamSubject.next({
                 type: 'log',
                 data: { message: 'Request was rejected' },
-                timestamp: new Date()
+                timestamp: new Date(),
               });
               result.state.reject(interruption);
-
             }
 
             // Clean up
@@ -527,7 +620,6 @@ export class AgentService {
         }
 
         result = await run(agent, result.state);
-
       }
 
       // Send completion message
@@ -536,17 +628,16 @@ export class AgentService {
         type: 'completed',
         data: {
           finalOutput: result.finalOutput,
-          message: 'Agent run completed successfully'
+          message: 'Agent run completed successfully',
         },
-        timestamp: new Date()
+        timestamp: new Date(),
       });
-
     } catch (error) {
       this.logger.error(`❌ [AGENT] Error: ${error.message}`);
       streamSubject.next({
         type: 'error',
         data: { message: error.message },
-        timestamp: new Date()
+        timestamp: new Date(),
       });
     } finally {
       // Clean up stream
@@ -555,11 +646,17 @@ export class AgentService {
     }
   }
 
-  private async waitForApproval(approvalId: string, streamSubject: Subject<StreamMessage>): Promise<void> {
+  private async waitForApproval(
+    approvalId: string,
+    streamSubject: Subject<StreamMessage>,
+  ): Promise<void> {
     return new Promise((resolve) => {
       const checkApproval = () => {
         const request = this.approvalRequests.get(approvalId);
-        if (request && (request.status === 'approved' || request.status === 'rejected')) {
+        if (
+          request &&
+          (request.status === 'approved' || request.status === 'rejected')
+        ) {
           resolve();
         } else {
           // Check again in 1 second
@@ -570,20 +667,29 @@ export class AgentService {
     });
   }
 
-  private async executeApprovedTool(approvalRequest: ApprovalRequest, streamSubject: Subject<StreamMessage>): Promise<any> {
+  private async executeApprovedTool(
+    approvalRequest: ApprovalRequest,
+    streamSubject: Subject<StreamMessage>,
+  ): Promise<any> {
     try {
-
       const { toolName, arguments: args, authToken } = approvalRequest;
 
       if (toolName === 'generate_image_with_approval') {
         const parsedArgs = typeof args === 'string' ? JSON.parse(args) : args;
-        const { segments, art_style, projectId, model, isRetry = false, retrySegmentIds = [] } = parsedArgs;
+        const {
+          segments,
+          art_style,
+          projectId,
+          model,
+          isRetry = false,
+          retrySegmentIds = [],
+        } = parsedArgs;
 
         // console.log({ "segment": segments, "art_style": art_style, "projectId": projectId, "model": model, "is retry": isRetry, "restly id?": retrySegmentIds })
         // Determine which segments to process
 
         const segmentsToProcess = isRetry
-          ? segments.filter(seg => retrySegmentIds.includes(seg.id))
+          ? segments.filter((seg) => retrySegmentIds.includes(seg.id))
           : segments;
 
         const totalSegments = segmentsToProcess.length;
@@ -596,37 +702,44 @@ export class AgentService {
           data: {
             message: isRetry
               ? `Retrying image generation for ${totalSegments} segments...`
-              : `Generating images for ${totalSegments} segments...`
+              : `Generating images for ${totalSegments} segments...`,
           },
-          timestamp: new Date()
+          timestamp: new Date(),
         });
 
         if (!authToken) {
-          throw new Error('Authentication token is missing from approval request');
+          throw new Error(
+            'Authentication token is missing from approval request',
+          );
         }
 
         // Create all promises for parallel processing
         const segmentPromises = segmentsToProcess.map((segment, index) => {
-          return axios.post(`${this.baseUrl}/chat`, {
-            model,
-            gen_type: 'image',
-            visual_prompt: segment.visual,
-            art_style,
-            segmentId: segment.id,
-            projectId,
-          }, {
-            headers: {
-              'Authorization': `Bearer ${authToken}`,
-              'Content-Type': 'application/json',
-            },
-          })
-            .then(response => {
-              console.log("RESPONSE DATA IS HERE", response.data);
+          return axios
+            .post(
+              `${this.baseUrl}/chat`,
+              {
+                model,
+                gen_type: 'image',
+                visual_prompt: segment.visual,
+                art_style,
+                segmentId: segment.id,
+                projectId,
+              },
+              {
+                headers: {
+                  Authorization: `Bearer ${authToken}`,
+                  'Content-Type': 'application/json',
+                },
+              },
+            )
+            .then((response) => {
+              console.log('RESPONSE DATA IS HERE', response.data);
 
               const result = {
                 segmentId: segment.id,
                 status: 'success',
-                imageData: response.data
+                imageData: response.data,
               };
 
               // Stream success immediately when this segment completes
@@ -635,31 +748,33 @@ export class AgentService {
                 data: {
                   segmentId: segment.id,
                   message: `✅ Segment ${segment.id} completed successfully`,
-                  ImageData: response.data
+                  ImageData: response.data,
                 },
-                timestamp: new Date()
+                timestamp: new Date(),
               });
 
               return result;
             })
-            .catch(error => {
-              console.log(error)
+            .catch((error) => {
+              console.log(error);
               const result = {
                 segmentId: segment.id,
                 status: 'failed',
-                error: error.message
+                error: error.message,
               };
 
               // Stream failure immediately when this segment fails
               streamSubject.next({
                 type: 'log',
                 data: {
-                  message: `❌ Segment ${segment.id} failed: ${error.message}`
+                  message: `❌ Segment ${segment.id} failed: ${error.message}`,
                 },
-                timestamp: new Date()
+                timestamp: new Date(),
               });
 
-              this.logger.error(`❌ [IMAGE] Segment ${segment.id} failed: ${error.message}`);
+              this.logger.error(
+                `❌ [IMAGE] Segment ${segment.id} failed: ${error.message}`,
+              );
               return result;
             });
         });
@@ -667,7 +782,7 @@ export class AgentService {
         // Wait for all promises to complete and collect results
         const settledResults = await Promise.allSettled(segmentPromises);
 
-        settledResults.forEach(settledResult => {
+        settledResults.forEach((settledResult) => {
           if (settledResult.status === 'fulfilled') {
             const result = settledResult.value;
             results.push(result);
@@ -683,7 +798,7 @@ export class AgentService {
             const result = {
               segmentId: 'unknown',
               status: 'failed',
-              error: settledResult.reason
+              error: settledResult.reason,
             };
             results.push(result);
             failureCount++;
@@ -695,7 +810,7 @@ export class AgentService {
         streamSubject.next({
           type: 'log',
           data: { message: finalMessage },
-          timestamp: new Date()
+          timestamp: new Date(),
         });
 
         return {
@@ -711,14 +826,20 @@ export class AgentService {
 
       if (toolName === 'generate_video_with_approval') {
         const parsedArgs = typeof args === 'string' ? JSON.parse(args) : args;
-        const { segments, art_style, projectId, model, isRetry = false, retrySegmentIds = [] } = parsedArgs;
+        const {
+          segments,
+          art_style,
+          projectId,
+          model,
+          isRetry = false,
+          retrySegmentIds = [],
+        } = parsedArgs;
 
-        console.log(segments, art_style, projectId)
-
+        console.log(segments, art_style, projectId);
 
         // Determine which segments to process
         const segmentsToProcess = isRetry
-          ? segments.filter(seg => retrySegmentIds.includes(seg.id))
+          ? segments.filter((seg) => retrySegmentIds.includes(seg.id))
           : segments;
 
         const totalSegments = segmentsToProcess.length;
@@ -731,39 +852,45 @@ export class AgentService {
           data: {
             message: isRetry
               ? `Retrying video generation for ${totalSegments} segments...`
-              : `Generating videos for ${totalSegments} segments...`
+              : `Generating videos for ${totalSegments} segments...`,
           },
-          timestamp: new Date()
+          timestamp: new Date(),
         });
 
         if (!authToken) {
-          throw new Error('Authentication token is missing from approval request');
+          throw new Error(
+            'Authentication token is missing from approval request',
+          );
         }
 
         for (let i = 0; i < segmentsToProcess.length; i++) {
           const segment = segmentsToProcess[i];
 
           try {
-            const response = await axios.post(`${this.baseUrl}/chat`, {
-              gen_type: "video",
-              animation_prompt: segment.animation_prompt,
-              art_style: art_style,
-              model: model,
-              image_s3_key: segment.imageS3Key,
-              segmentId: segment.id,
-              projectId: projectId,
-            }, {
-              headers: {
-                'Authorization': `Bearer ${authToken}`,
-                'Content-Type': 'application/json',
+            const response = await axios.post(
+              `${this.baseUrl}/chat`,
+              {
+                gen_type: 'video',
+                animation_prompt: segment.animation_prompt,
+                art_style: art_style,
+                model: model,
+                image_s3_key: segment.imageS3Key,
+                segmentId: segment.id,
+                projectId: projectId,
               },
-            });
+              {
+                headers: {
+                  Authorization: `Bearer ${authToken}`,
+                  'Content-Type': 'application/json',
+                },
+              },
+            );
 
-            console.log("VIDEO RESPONSE DATA IS HERE", response.data);
+            console.log('VIDEO RESPONSE DATA IS HERE', response.data);
             const result = {
               segmentId: segment.id,
               status: 'success',
-              videoData: response.data
+              videoData: response.data,
             };
 
             results.push(result);
@@ -775,17 +902,16 @@ export class AgentService {
               data: {
                 segmentId: segment.id,
                 message: `🎬 Segment ${segment.id} video completed successfully`,
-                VideoData: response.data
+                VideoData: response.data,
               },
-              timestamp: new Date()
+              timestamp: new Date(),
             });
-
           } catch (error) {
             console.log(error);
             const result = {
               segmentId: segment.id,
               status: 'failed',
-              error: error.message
+              error: error.message,
             };
 
             results.push(result);
@@ -795,14 +921,15 @@ export class AgentService {
             streamSubject.next({
               type: 'log',
               data: {
-                message: `❌ Segment ${segment.id} video failed: ${error.message}`
+                message: `❌ Segment ${segment.id} video failed: ${error.message}`,
               },
-              timestamp: new Date()
+              timestamp: new Date(),
             });
 
-            this.logger.error(`❌ [VIDEO] Segment ${segment.id} failed: ${error.message}`);
+            this.logger.error(
+              `❌ [VIDEO] Segment ${segment.id} failed: ${error.message}`,
+            );
           }
-
         }
 
         const finalMessage = `Video generation ${isRetry ? 'retry' : ''} completed: ${successCount} success, ${failureCount} failed`;
@@ -810,7 +937,7 @@ export class AgentService {
         streamSubject.next({
           type: 'log',
           data: { message: finalMessage },
-          timestamp: new Date()
+          timestamp: new Date(),
         });
 
         return {
@@ -833,23 +960,29 @@ export class AgentService {
         streamSubject.next({
           type: 'log',
           data: { message: 'Generating concepts...' },
-          timestamp: new Date()
+          timestamp: new Date(),
         });
 
         if (!authToken) {
-          throw new Error('Authentication token is missing from approval request');
+          throw new Error(
+            'Authentication token is missing from approval request',
+          );
         }
 
-        const response = await axios.post(`${this.baseUrl}/concept-writer`, {
-          prompt,
-          web_info,
-          projectId,
-        }, {
-          headers: {
-            'Authorization': `Bearer ${authToken}`,
-            'Content-Type': 'application/json',
+        const response = await axios.post(
+          `${this.baseUrl}/concept-writer`,
+          {
+            prompt,
+            web_info,
+            projectId,
           },
-        });
+          {
+            headers: {
+              Authorization: `Bearer ${authToken}`,
+              'Content-Type': 'application/json',
+            },
+          },
+        );
 
         return {
           success: true,
@@ -860,36 +993,50 @@ export class AgentService {
 
       if (toolName === 'generate_segmentation') {
         const parsedArgs = typeof args === 'string' ? JSON.parse(args) : args;
-        const { prompt,concept_id, concept, negative_prompt, projectId, model } = parsedArgs;
+        const {
+          prompt,
+          concept_id,
+          concept,
+          negative_prompt,
+          projectId,
+          model,
+        } = parsedArgs;
         // console.log({ "prompt": prompt, "concept": concept, "negative_prompt": negative_prompt, "projectId": projectId })
 
         streamSubject.next({
           type: 'log',
           data: { message: 'Generating script segmentation...' },
-          timestamp: new Date()
+          timestamp: new Date(),
         });
 
         if (!authToken) {
-          throw new Error('Authentication token is missing from approval request');
+          throw new Error(
+            'Authentication token is missing from approval request',
+          );
         }
 
         try {
-          this.logger.log(`➡️ [SEGMENTATION] POST /segmentation projectId=${projectId}`);
+          this.logger.log(
+            `➡️ [SEGMENTATION] POST /segmentation projectId=${projectId}`,
+          );
           console.log(parsedArgs);
 
-          const response = await axios.post(`${this.baseUrl}/segmentation`, {
-            prompt,
-            concept,
-            negative_prompt,
-            projectId,
-            model
-          }, {
-            headers: {
-              'Authorization': `Bearer ${authToken}`,
-              'Content-Type': 'application/json',
+          const response = await axios.post(
+            `${this.baseUrl}/segmentation`,
+            {
+              prompt,
+              concept,
+              negative_prompt,
+              projectId,
+              model,
             },
-          });
-
+            {
+              headers: {
+                Authorization: `Bearer ${authToken}`,
+                'Content-Type': 'application/json',
+              },
+            },
+          );
 
           this.logger.log(`✅ [SEGMENTATION] ${response.status} OK`);
           return {
@@ -913,7 +1060,12 @@ export class AgentService {
   }
 
   // Handle approval/rejection from frontend
-  async handleApproval(approvalId: string, approved: boolean, userId: string, additionalData?: any): Promise<any> {
+  async handleApproval(
+    approvalId: string,
+    approved: boolean,
+    userId: string,
+    additionalData?: any,
+  ): Promise<any> {
     const approvalRequest = this.approvalRequests.get(approvalId);
     if (!approvalRequest) {
       throw new Error('Approval request not found');
@@ -922,7 +1074,7 @@ export class AgentService {
     if (additionalData && approved) {
       approvalRequest.arguments = {
         ...approvalRequest.arguments,
-        ...additionalData // ← This adds segments, art_style, model, etc.
+        ...additionalData, // ← This adds segments, art_style, model, etc.
       };
     }
 
@@ -938,7 +1090,7 @@ export class AgentService {
   // Get pending approval requests
   getPendingApprovals(): ApprovalRequest[] {
     return Array.from(this.approvalRequests.values()).filter(
-      req => req.status === 'pending'
+      (req) => req.status === 'pending',
     );
   }
 
@@ -959,7 +1111,9 @@ export class AgentService {
       }
     }
 
-    this.logger.log(`🧹 [CLEANUP] Removed ${cleanedCount} old approval requests`);
+    this.logger.log(
+      `🧹 [CLEANUP] Removed ${cleanedCount} old approval requests`,
+    );
   }
 
   private generateStreamId(): string {

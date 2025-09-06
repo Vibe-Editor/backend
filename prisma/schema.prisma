@@ -135,6 +135,7 @@ model VideoConcept {
   concept   String
   tone      String
   goal      String
+  summary   String?  // AI-generated summary of the concept
   projectId String?
   userId    String
   createdAt DateTime @default(now())
@@ -187,6 +188,7 @@ model VideoSegmentation {
   negativePrompt String?
   artStyle       String
   model          String
+  summary        String?  
   isSelected     Boolean  @default(false)
   projectId      String?
   userId         String

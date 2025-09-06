@@ -5,27 +5,32 @@ The Agent API provides AI-powered content generation through a structured workfl
 ## Overview
 
 The Agent API follows a mandatory 3-step workflow:
+
 1. **Web Research**: Gathers relevant information using the `get_web_info` tool
 2. **Concept Generation**: Creates 3-4 creative concepts using the `generate_concepts_with_approval` tool
 3. **User Approval**: Presents concepts for user selection through a human-in-the-loop approval system
 
 ## Base URL
+
 ```
 POST /agent/run
 ```
 
 ## Authentication
+
 Requires JWT Bearer token in the Authorization header.
 
 ## Request
 
 ### Headers
+
 ```
 Authorization: Bearer <jwt_token>
 Content-Type: application/json
 ```
 
 ### Request Body
+
 ```json
 {
   "prompt": "string",
@@ -35,13 +40,15 @@ Content-Type: application/json
 ```
 
 #### Parameters
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `prompt` | string | Yes | The user's request for content generation |
-| `segmentId` | string | Yes | Unique identifier for the segment |
-| `projectId` | string | Yes | Unique identifier for the project |
+
+| Parameter   | Type   | Required | Description                               |
+| ----------- | ------ | -------- | ----------------------------------------- |
+| `prompt`    | string | Yes      | The user's request for content generation |
+| `segmentId` | string | Yes      | Unique identifier for the segment         |
+| `projectId` | string | Yes      | Unique identifier for the project         |
 
 ### Example Request
+
 ```json
 {
   "prompt": "An advertisement for a face wash",
@@ -55,6 +62,7 @@ Content-Type: application/json
 The API returns a **Server-Sent Events (SSE) stream** with different message types during the workflow execution.
 
 ### Response Headers
+
 ```
 Content-Type: text/event-stream
 Cache-Control: no-cache
@@ -64,6 +72,7 @@ Connection: keep-alive
 ### Stream Message Types
 
 #### 1. Log Messages
+
 Provides status updates during execution.
 
 ```json
@@ -77,6 +86,7 @@ Provides status updates during execution.
 ```
 
 #### 2. Approval Required
+
 Triggered when the agent needs user approval for concept selection.
 
 ```json
@@ -93,14 +103,16 @@ Triggered when the agent needs user approval for concept selection.
 ```
 
 ##### Approval Data Structure
-| Field | Type | Description |
-|-------|------|-------------|
+
+| Field        | Type   | Description                                |
+| ------------ | ------ | ------------------------------------------ |
 | `approvalId` | string | Unique identifier for the approval request |
-| `toolName` | string | Name of the tool requiring approval |
-| `arguments` | string | JSON string containing tool parameters |
-| `agentName` | string | Name of the requesting agent |
+| `toolName`   | string | Name of the tool requiring approval        |
+| `arguments`  | string | JSON string containing tool parameters     |
+| `agentName`  | string | Name of the requesting agent               |
 
 #### 3. Result Messages
+
 Contains the generated concepts after approval.
 
 ```json
@@ -129,20 +141,23 @@ Contains the generated concepts after approval.
 ```
 
 ##### Concept Structure
-| Field | Type | Description |
-|-------|------|-------------|
+
+| Field     | Type   | Description                         |
+| --------- | ------ | ----------------------------------- |
 | `concept` | string | Detailed description of the concept |
-| `goal` | string | What the concept aims to achieve |
-| `title` | string | Title of the concept |
-| `tone` | string | The tone/style of the concept |
+| `goal`    | string | What the concept aims to achieve    |
+| `title`   | string | Title of the concept                |
+| `tone`    | string | The tone/style of the concept       |
 
 ##### Credits Structure
-| Field | Type | Description |
-|-------|------|-------------|
-| `used` | number | Number of credits consumed |
-| `balance` | number | Remaining credit balance |
+
+| Field     | Type   | Description                |
+| --------- | ------ | -------------------------- |
+| `used`    | number | Number of credits consumed |
+| `balance` | number | Remaining credit balance   |
 
 #### 4. Completion Messages
+
 Indicates the end of the agent run.
 
 ```json
@@ -156,6 +171,7 @@ Indicates the end of the agent run.
 ```
 
 #### 5. Error Messages
+
 Returned when an error occurs during execution.
 
 ```json
@@ -171,11 +187,13 @@ Returned when an error occurs during execution.
 ## Approval Workflow
 
 ### Step 1: Handle Approval Request
+
 When you receive an `approval_required` message, use the approval endpoint to approve or reject:
 
 **Endpoint**: `POST /agent/approval`
 
 **Request Body**:
+
 ```json
 {
   "approvalId": "string",
@@ -190,6 +208,7 @@ When you receive an `approval_required` message, use the approval endpoint to ap
 | `approved` | boolean | Yes | `true` to approve, `false` to reject |
 
 **Response**:
+
 ```json
 {
   "status": "success",
@@ -198,11 +217,13 @@ When you receive an `approval_required` message, use the approval endpoint to ap
 ```
 
 ### Step 2: Concept Selection
+
 After approval, the agent generates concepts and presents them for selection. The user should select one of the generated concepts by index (0-3).
 
 ### Approval Examples
 
 #### Approve a Request
+
 ```bash
 curl -X POST http://localhost:8080/agent/approval \
   -H "Authorization: Bearer <token>" \
@@ -214,40 +235,45 @@ curl -X POST http://localhost:8080/agent/approval \
 ```
 
 #### Reject a Request
+
 ```bash
 curl -X POST http://localhost:8080/agent/approval \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
-    "approvalId": "approval_1754551476356_pvww456cf", 
+    "approvalId": "approval_1754551476356_pvww456cf",
     "approved": false
   }'
 ```
 
 Both requests return:
+
 ```json
 {
   "status": "success",
   "message": "Request approved successfully"
 }
 ```
-*Note: The message will say "approved" or "rejected" based on the action taken.*
+
+_Note: The message will say "approved" or "rejected" based on the action taken._
 
 ## Complete Workflow Example
 
 ### 1. Initial Request
+
 ```bash
 curl -X POST https://backend.usuals.ai/agent/run \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
     "prompt": "An advertisement for a face wash",
-    "segmentId": "cmdolljnu0003k7k15o4bot6f", 
+    "segmentId": "cmdolljnu0003k7k15o4bot6f",
     "projectId": "cmdojbl3j0002k78ra4p0r83n"
   }'
 ```
 
 ### 2. Stream Response Flow
+
 ```
 → {"type": "log", "data": {"message": "Starting agent run..."}}
 → {"type": "log", "data": {"message": "Agent is processing your request..."}}
@@ -259,6 +285,7 @@ curl -X POST https://backend.usuals.ai/agent/run \
 ```
 
 ### 3. Handle Approval
+
 ```bash
 
 curl -X POST http://localhost:8080/agent/approval \
@@ -271,9 +298,10 @@ curl -X POST http://localhost:8080/agent/approval \
 ```
 
 **Response**:
+
 ```json
 {
-  "status": "success", 
+  "status": "success",
   "message": "Request approved successfully"
 }
 ```
@@ -283,6 +311,7 @@ curl -X POST http://localhost:8080/agent/approval \
 ### Common Error Responses
 
 #### 401 Unauthorized
+
 ```json
 {
   "message": "Invalid or expired token",
@@ -292,15 +321,17 @@ curl -X POST http://localhost:8080/agent/approval \
 ```
 
 #### 400 Bad Request
+
 ```json
 {
   "message": "Validation failed",
-  "error": "Bad Request", 
+  "error": "Bad Request",
   "statusCode": 400
 }
 ```
 
 #### 500 Internal Server Error
+
 ```json
 {
   "type": "error",
@@ -321,4 +352,4 @@ The Agent API consumes credits from the user's balance. Each concept generation 
 - All requests require valid JWT authentication
 - The approval workflow is mandatory for concept generation
 - Credits are deducted upon successful concept generation
-- The agent follows a strict 3-step workflow that cannot be bypassed 
+- The agent follows a strict 3-step workflow that cannot be bypassed

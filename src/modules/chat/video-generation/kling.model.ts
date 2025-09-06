@@ -14,11 +14,10 @@ export async function klingVideoGen(
   imageS3Key: string,
   projectId: string,
 ) {
-
   fal.config({
     credentials: process.env.FAL_KEY,
   });
-  
+
   const startTime = Date.now();
   logger.log(`Starting Kling video generation for id: ${segmentId}`);
 
@@ -50,7 +49,7 @@ export async function klingVideoGen(
         input: {
           prompt: combinedPrompt,
           image_url: dataUri,
-          duration: '5', 
+          duration: '5',
           negative_prompt: 'blur, distort, and low quality',
           cfg_scale: 0.5,
         },
@@ -73,7 +72,11 @@ export async function klingVideoGen(
     logger.log(`Kling video URL: ${result.data.video.url}`);
 
     logger.log('Uploading Kling video to S3');
-    const s3Key = await uploadVideoToS3(result.data.video.url, segmentId, projectId);
+    const s3Key = await uploadVideoToS3(
+      result.data.video.url,
+      segmentId,
+      projectId,
+    );
     logger.log(`Successfully uploaded Kling video to S3: ${s3Key}`);
 
     const totalTime = Date.now() - startTime;

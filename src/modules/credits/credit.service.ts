@@ -34,6 +34,7 @@ const PRICING = {
     'concept-gen': { regular: 1, edit: 1 },
     segmentation: { regular: 3, edit: 6 },
     'content-summarizer': { regular: 1, edit: 1 },
+    'summary-generation': { regular: 0.5, edit: 0.5 }, // New model for AI summaries
   },
   // Voiceover
   VOICEOVER_GENERATION: {

@@ -10,6 +10,7 @@ import { SegmentationDto } from './dto/segmentation.dto';
 import { TypeSegment } from './segment.interface';
 import OpenAI from 'openai';
 import { ProjectHelperService } from '../../common/services/project-helper.service';
+import { SummariesService } from '../summaries/summaries.service';
 import { PrismaClient } from '../../../generated/prisma';
 import { Decimal } from '@prisma/client/runtime/library';
 import { CreditService } from '../credits/credit.service';
@@ -22,6 +23,7 @@ export class SegmentationService {
 
   constructor(
     private readonly projectHelperService: ProjectHelperService,
+    private readonly summaryService: SummariesService,
     private readonly creditService: CreditService,
   ) {
     if (!process.env.GEMINI_API_KEY) {
@@ -50,27 +52,26 @@ export class SegmentationService {
   }> {
     const { narrationPrompt, visualPrompt, animationPrompt, model } = options;
 
-    const [animationRes, narrationRes, artStyleRes] =
-      await Promise.all([
-        this.genAI.models.generateContent({
-          model,
-          contents: animationPrompt,
-        }),
-        this.genAI.models.generateContent({
-          model,
-          contents: narrationPrompt,
-        }),
-        this.genAI.models.generateContent({
-          model,
-          contents: `VISUAL PROMPT: ${visualPrompt} \n ANIMATION PROMPT: ${animationPrompt}. \n Your task is to generate a art style prompt using the visual prompt and animation prompt. This is to maintain consistency in the visual and animation style. If there's a person involved in the visual, make sure to mention the looks of the person in the art style prompt.
+    const [animationRes, narrationRes, artStyleRes] = await Promise.all([
+      this.genAI.models.generateContent({
+        model,
+        contents: animationPrompt,
+      }),
+      this.genAI.models.generateContent({
+        model,
+        contents: narrationPrompt,
+      }),
+      this.genAI.models.generateContent({
+        model,
+        contents: `VISUAL PROMPT: ${visualPrompt} \n ANIMATION PROMPT: ${animationPrompt}. \n Your task is to generate a art style prompt using the visual prompt and animation prompt. This is to maintain consistency in the visual and animation style. If there's a person involved in the visual, make sure to mention the looks of the person in the art style prompt.
         
         Example Style Prompt for a face wash ad that is minimal:
         showcase the natural and alovera related positives of the face wash product using minimalistic branding and light colors. The face wash has a white colour pack and consists of a skin enhancing lotion made o alovera and natural ingrideints. Use water and fluid elements to portray freshness.
 
         Keep this style prompt as short as possible. Must be within 300 characters.
         `,
-        }),
-      ]);
+      }),
+    ]);
 
     const animation = animationRes.text?.trim();
     const narration = narrationRes.text?.trim();
@@ -104,7 +105,14 @@ export class SegmentationService {
     negativePrompt: string;
     model: string;
   }): Promise<string> {
-    const { animationPrompt, userPrompt, artStyle, concept, negativePrompt, model } = options;
+    const {
+      animationPrompt,
+      userPrompt,
+      artStyle,
+      concept,
+      negativePrompt,
+      model,
+    } = options;
 
     try {
       const response = await this.genAI.models.generateContent({
@@ -168,7 +176,10 @@ Generate the visual prompt:`,
 
       return visualScript;
     } catch (error) {
-      console.error('Error generating visual script with Director Brain:', error);
+      console.error(
+        'Error generating visual script with Director Brain:',
+        error,
+      );
       throw new HttpException(
         'Failed to generate visual script with Director Brain model.',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -188,34 +199,39 @@ Generate the visual prompt:`,
     animation: string;
     artStyle: string;
   }> {
-    const { narrationPrompt, visualPrompt, animationPrompt, concept, negativePrompt } = options;
+    const {
+      narrationPrompt,
+      visualPrompt,
+      animationPrompt,
+      concept,
+      negativePrompt,
+    } = options;
 
-    const [animationRes, narrationRes, artStyleRes] =
-      await Promise.all([
-        this.openai.chat.completions.create({
-          model: 'gpt-4o',
-          messages: [{ role: 'user', content: animationPrompt }],
-        }),
-        this.openai.chat.completions.create({
-          model: 'gpt-4o',
-          messages: [{ role: 'user', content: narrationPrompt }],
-        }),
-        this.openai.chat.completions.create({
-          model: 'gpt-4o',
-          messages: [
-            {
-              role: 'user',
-              content: `VISUAL PROMPT: ${visualPrompt} \n ANIMATION PROMPT: ${animationPrompt}. \n Your task is to generate a art style prompt using the visual prompt and animation prompt. This is to maintain consistency in the visual and animation style. If there's a person involved in the visual, make sure to mention the looks of the person in the art style prompt.
+    const [animationRes, narrationRes, artStyleRes] = await Promise.all([
+      this.openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: animationPrompt }],
+      }),
+      this.openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: narrationPrompt }],
+      }),
+      this.openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
+          {
+            role: 'user',
+            content: `VISUAL PROMPT: ${visualPrompt} \n ANIMATION PROMPT: ${animationPrompt}. \n Your task is to generate a art style prompt using the visual prompt and animation prompt. This is to maintain consistency in the visual and animation style. If there's a person involved in the visual, make sure to mention the looks of the person in the art style prompt.
         
         Example Style Prompt for a face wash ad that is minimal:
         showcase the natural and alovera related positives of the face wash product using minimalistic branding and light colors. The face wash has a white colour pack and consists of a skin enhancing lotion made o alovera and natural ingrideints. Use water and fluid elements to portray freshness.
 
         Keep this style prompt as short as possible. Must be within 300 characters.
         `,
-            },
-          ],
-        }),
-      ]);
+          },
+        ],
+      }),
+    ]);
 
     const animation = animationRes.choices[0]?.message?.content?.trim();
     const narration = narrationRes.choices[0]?.message?.content?.trim();
@@ -405,6 +421,7 @@ Generate the visual prompt:`,
     userId: string,
   ): Promise<{
     segments: TypeSegment[];
+    summary: string | null; // Combined summary for all segments
     artStyle: string;
     model: string;
     credits: {
@@ -422,7 +439,7 @@ Generate the visual prompt:`,
     console.log(`Deducting credits for script segmentation`);
 
     // Deduct credits first - this handles validation internally
-    let creditTransactionId = await this.creditService.deductCredits(
+    const creditTransactionId = await this.creditService.deductCredits(
       userId,
       'TEXT_OPERATIONS',
       'segmentation',
@@ -439,18 +456,14 @@ Generate the visual prompt:`,
     // Determine Gemini model variant (default to flash if not provided)
     const selectedModel = segmentationDto.model || 'flash';
 
-
     // Determine Gemini model variant based on user input (default to pro)
     const geminiModel =
       selectedModel === 'flash'
         ? 'gemini-2.5-flash'
         : 'gemini-2.5-pro-preview-06-05';
 
-
     try {
-
       try {
-
         let script: {
           narration: string;
           visual: string;
@@ -483,96 +496,123 @@ Generate the visual prompt:`,
           });
           modelUsed = 'gpt-4o';
         } else {
-          throw new BadRequestException('Invalid model specified. Choose either "gemini" or "openai".');
+          throw new BadRequestException(
+            'Invalid model specified. Choose either "gemini" or "openai".',
+          );
         }
 
-          // Segment the generated script
+        // Segment the generated script
 
-          const segmentedScript = await this.segmentGeneratedScript({
-            ...script,
-            negative_prompt: segmentationDto.negative_prompt,
-            model: modelUsed,
-          });
+        const segmentedScript = await this.segmentGeneratedScript({
+          ...script,
+          negative_prompt: segmentationDto.negative_prompt,
+          model: modelUsed,
+        });
 
-          // Save to database
-          console.log(`Saving segmentation to database`);
-          const savedSegmentation = await this.prisma.videoSegmentation.create({
-            data: {
-              prompt: segmentationDto.prompt,
-              concept: segmentationDto.concept,
-              negativePrompt: segmentationDto.negative_prompt,
-              artStyle: script.artStyle,
-              model: modelUsed,
-              projectId,
-              userId,
-              // Add credit tracking
-              creditTransactionId: creditTransactionId,
-              creditsUsed: new Decimal(3), // Segmentation uses fixed pricing
-            },
-          });
+        // Generate one combined summary for all segments first
+        let combinedSummary: string | null = null;
+        try {
+          const allSegmentsContent = segmentedScript.segments.map((segment, index) => 
+            `Segment ${index + 1}:\nVisual: ${segment.visual}\nNarration: ${segment.narration}\nAnimation: ${segment.animation}`
+          ).join('\n\n');
+          
+          combinedSummary = await this.summaryService.generateSummary({
+            content: allSegmentsContent,
+            contentType: 'segment',
+            projectId,
+          }, userId);
+          console.log(`Generated combined summary for all ${segmentedScript.segments.length} segments`);
+        } catch (summaryError) {
+          console.warn(`Failed to generate combined summary for segments: ${summaryError.message}`);
+          // Continue without summary - don't fail the entire operation
+        }
 
-          // Save individual segments
-          const savedSegments = await Promise.all(
-            segmentedScript.segments.map(async (segment, index) => {
-              const savedSegment =  await this.prisma.videoSegment.create({
-                data: {
-                  segmentId: `${index + 1}`,
-                  visual: segment.visual,
-                  narration: segment.narration,
-                  animation: segment.animation,
-                  videoSegmentationId: savedSegmentation.id,
-                },
-              });
-              
-              console.log(`✅ Saved segment ${index + 1} with database ID: ${savedSegment.id}`);
-              return savedSegment;
-            }),
-          );
-
-          // Save conversation history
-          await this.prisma.conversationHistory.create({
-            data: {
-              type: 'VIDEO_SEGMENTATION',
-              userInput: segmentationDto.prompt,
-              response: JSON.stringify({
-                segments: segmentedScript.segments,
-                artStyle: script.artStyle,
-                model: modelUsed,
-              }),
-              metadata: {
-                concept: segmentationDto.concept,
-                negativePrompt: segmentationDto.negative_prompt,
-                segmentCount: segmentedScript.segments.length,
-                savedSegmentationId: savedSegmentation.id,
-                savedSegmentIds: savedSegments.map((s) => s.id),
-              },
-              projectId,
-              userId,
-            },
-          });
-
-          console.log(
-            `Successfully saved segmentation: ${savedSegmentation.id} with ${savedSegments.length} segments`,
-          );
-
-          // Get user's new balance after credit deduction
-          const newBalance = await this.creditService.getUserBalance(userId);
-
-          // Map the segments with their actual database IDs
-          const segmentsWithDbIds = segmentedScript.segments.map((segment, index) => ({
-            ...segment,
-            id: savedSegments[index].id, // Use the actual database ID instead of seg-1, seg-2, etc.
-          }));
-
-          return {
-            segments: segmentsWithDbIds,
+        // Save to database with combined summary
+        console.log(`Saving segmentation to database`);
+        const savedSegmentation = await this.prisma.videoSegmentation.create({
+          data: {
+            prompt: segmentationDto.prompt,
+            concept: segmentationDto.concept,
+            negativePrompt: segmentationDto.negative_prompt,
             artStyle: script.artStyle,
             model: modelUsed,
-            credits: {
-              used: 3, // Segmentation uses fixed pricing
-              balance: newBalance.toNumber(),
+            summary: combinedSummary, // Store combined summary here
+            projectId,
+            userId,
+            // Add credit tracking
+            creditTransactionId: creditTransactionId,
+            creditsUsed: new Decimal(3), // Segmentation uses fixed pricing
+          },
+        });
+
+        // Save individual segments (without individual summaries)
+        const savedSegments = await Promise.all(
+          segmentedScript.segments.map(async (segment, index) => {
+            const savedSegment = await this.prisma.videoSegment.create({
+              data: {
+                segmentId: `${index + 1}`,
+                visual: segment.visual,
+                narration: segment.narration,
+                animation: segment.animation,
+                videoSegmentationId: savedSegmentation.id,
+              },
+            });
+
+            console.log(
+              `✅ Saved segment ${index + 1} with database ID: ${savedSegment.id}`,
+            );
+            return savedSegment;
+          }),
+        );
+
+        // Save conversation history
+        await this.prisma.conversationHistory.create({
+          data: {
+            type: 'VIDEO_SEGMENTATION',
+            userInput: segmentationDto.prompt,
+            response: JSON.stringify({
+              segments: segmentedScript.segments,
+              artStyle: script.artStyle,
+              model: modelUsed,
+            }),
+            metadata: {
+              concept: segmentationDto.concept,
+              negativePrompt: segmentationDto.negative_prompt,
+              segmentCount: segmentedScript.segments.length,
+              savedSegmentationId: savedSegmentation.id,
+              savedSegmentIds: savedSegments.map((s) => s.id),
             },
-          };
+            projectId,
+            userId,
+          },
+        });
+
+        console.log(
+          `Successfully saved segmentation: ${savedSegmentation.id} with ${savedSegments.length} segments`,
+        );
+
+        // Get user's new balance after credit deduction
+        const newBalance = await this.creditService.getUserBalance(userId);
+
+        // Map the segments with their actual database IDs (no individual summaries)
+        const segmentsWithDbIds = segmentedScript.segments.map(
+          (segment, index) => ({
+            ...segment,
+            id: savedSegments[index].id, // Use the actual database ID instead of seg-1, seg-2, etc.
+            // No individual summary field
+          }),
+        );
+
+        return {
+          segments: segmentsWithDbIds,
+          summary: savedSegmentation.summary, // Single combined summary from database
+          artStyle: script.artStyle,
+          model: modelUsed,
+          credits: {
+            used: 3, // Segmentation uses fixed pricing
+            balance: newBalance.toNumber(),
+          },
+        };
       } catch (parseError) {
         console.error('Failed to parse agent result with Gemini:', parseError);
       }
@@ -645,7 +685,8 @@ Generate the visual prompt:`,
       });
 
       console.log(
-        `Retrieved ${segmentations.length} video segmentations for user ${userId}${projectId ? ` in project ${projectId}` : ''
+        `Retrieved ${segmentations.length} video segmentations for user ${userId}${
+          projectId ? ` in project ${projectId}` : ''
         }`,
       );
 

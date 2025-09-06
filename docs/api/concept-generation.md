@@ -3,6 +3,7 @@
 **Important**: All concept-writer endpoints now require a valid `projectId` in the request body. These endpoints will not work without providing a correct project ID.
 
 - `POST /concept-writer` - Generate creative video concepts
+
   - **Requires**: JWT Authentication
   - **Body Parameters**:
     - `prompt` (required): Description of the video concept to generate
@@ -38,6 +39,7 @@
   ```
 
 - `GET /concept-writer` - Get all generated video concepts
+
   - **Requires**: JWT Authentication
   - **Query Parameters**:
     - `id` (optional): Get specific concept by ID
@@ -62,6 +64,7 @@
   ```
 
 - `PATCH /concept-writer/:id` - Update a specific video concept
+
   - **Requires**: JWT Authentication
   - **URL Parameter**: `id` - The concept ID to update
   - **Body Parameters**:

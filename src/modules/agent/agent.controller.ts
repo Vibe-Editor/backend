@@ -1,7 +1,21 @@
-import { Controller, Post, Body, Get, Param, UseGuards, Res, Sse, Headers } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Get,
+  Param,
+  UseGuards,
+  Res,
+  Sse,
+  Headers,
+} from '@nestjs/common';
 import { Response } from 'express';
 import { AgentService } from './agent.service';
-import { StartAgentRunDto, ApprovalResponseDto, AgentRunResponseDto } from './dto/agent.dto';
+import {
+  StartAgentRunDto,
+  ApprovalResponseDto,
+  AgentRunResponseDto,
+} from './dto/agent.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/user.decorator';
 
@@ -44,26 +58,25 @@ export class AgentController {
           const errorData = `data: ${JSON.stringify({
             type: 'error',
             data: { message: error.message },
-            timestamp: new Date()
+            timestamp: new Date(),
           })}\n\n`;
           res.write(errorData);
           res.end();
         },
         complete: () => {
           res.end();
-        }
+        },
       });
 
       // Handle client disconnect
       res.on('close', () => {
         subscription.unsubscribe();
       });
-
     } catch (error) {
       const errorData = `data: ${JSON.stringify({
         type: 'error',
         data: { message: error.message },
-        timestamp: new Date()
+        timestamp: new Date(),
       })}\n\n`;
       res.write(errorData);
       res.end();
@@ -76,14 +89,13 @@ export class AgentController {
     @CurrentUser('id') userId: string,
   ): Promise<AgentRunResponseDto> {
     try {
-
       const { approvalId, approved, ...additionalData } = approvalResponseDto;
 
       const result = await this.agentService.handleApproval(
         approvalId,
         approved,
         userId,
-        additionalData
+        additionalData,
       );
 
       return result;

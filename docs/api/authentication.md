@@ -1,10 +1,12 @@
 #### Authentication
 
 - `GET /auth/google` - Initiate Google OAuth login flow
+
   - Redirects user to Google's authentication page
   - No parameters required
 
 - `GET /auth/google-redirect` - Google OAuth callback endpoint
+
   - Handles OAuth callback from Google
   - Creates/finds user in database
   - Returns JWT token and user info
@@ -40,10 +42,12 @@
 #### Users
 
 - `GET /users/profile` - Get current user profile (🔒 Protected)
+
   - **Requires**: JWT Authentication
   - **Returns**: Current user's profile information
 
 - `GET /users/:id` - Get user by ID (🔒 Protected)
+
   - **Requires**: JWT Authentication
   - **Returns**: User information by ID
 

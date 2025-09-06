@@ -26,13 +26,18 @@ export class ChatService implements OnModuleDestroy {
     private readonly voiceGenService: VoiceGenService,
   ) {}
 
-  private async validateProject(projectId: string, userId: string): Promise<void> {
+  private async validateProject(
+    projectId: string,
+    userId: string,
+  ): Promise<void> {
     const project = await this.prisma.project.findFirst({
       where: { id: projectId, userId },
     });
     console.log(projectId, userId);
     if (!project) {
-      throw new NotFoundException('Project not found or does not belong to user');
+      throw new NotFoundException(
+        'Project not found or does not belong to user',
+      );
     }
   }
 
@@ -76,7 +81,12 @@ export class ChatService implements OnModuleDestroy {
             `Image generation using recraft-v3 model`,
           );
 
-          const image = await recraftImageGen(segmentId, visual_prompt, art_style, projectId);
+          const image = await recraftImageGen(
+            segmentId,
+            visual_prompt,
+            art_style,
+            projectId,
+          );
 
           // Save to database
           await this.prisma.generatedImage.create({
@@ -91,7 +101,7 @@ export class ChatService implements OnModuleDestroy {
               projectId: projectId,
               userId: userId,
               creditsUsed: 1,
-              videoSegmentId : segmentId,
+              videoSegmentId: segmentId,
               creditTransactionId: creditTransactionId,
             },
           });
@@ -107,7 +117,7 @@ export class ChatService implements OnModuleDestroy {
             },
           };
         } catch (error) {
-          console.log(error)
+          console.log(error);
           // Refund credits if they were deducted
           if (creditTransactionId) {
             try {
@@ -162,7 +172,12 @@ export class ChatService implements OnModuleDestroy {
             `Image generation using imagen model`,
           );
 
-          const image = await imagenImageGen(segmentId, visual_prompt, art_style, projectId);
+          const image = await imagenImageGen(
+            segmentId,
+            visual_prompt,
+            art_style,
+            projectId,
+          );
 
           // Save to database
           await this.prisma.generatedImage.create({
@@ -298,7 +313,7 @@ export class ChatService implements OnModuleDestroy {
             },
           };
         } catch (error) {
-          console.log(error)
+          console.log(error);
           // Refund credits if they were deducted
           if (creditTransactionId) {
             try {
