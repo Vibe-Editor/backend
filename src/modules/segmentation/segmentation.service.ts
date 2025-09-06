@@ -10,7 +10,7 @@ import { SegmentationDto } from './dto/segmentation.dto';
 import { TypeSegment } from './segment.interface';
 import OpenAI from 'openai';
 import { ProjectHelperService } from '../../common/services/project-helper.service';
-import { SummaryService } from '../../common/services/summary.service';
+import { SummariesService } from '../summaries/summaries.service';
 import { PrismaClient } from '../../../generated/prisma';
 import { Decimal } from '@prisma/client/runtime/library';
 import { CreditService } from '../credits/credit.service';
@@ -23,7 +23,7 @@ export class SegmentationService {
 
   constructor(
     private readonly projectHelperService: ProjectHelperService,
-    private readonly summaryService: SummaryService,
+    private readonly summaryService: SummariesService,
     private readonly creditService: CreditService,
   ) {
     if (!process.env.GEMINI_API_KEY) {
@@ -519,9 +519,8 @@ Generate the visual prompt:`,
           combinedSummary = await this.summaryService.generateSummary({
             content: allSegmentsContent,
             contentType: 'segment',
-            userId,
             projectId,
-          });
+          }, userId);
           console.log(`Generated combined summary for all ${segmentedScript.segments.length} segments`);
         } catch (summaryError) {
           console.warn(`Failed to generate combined summary for segments: ${summaryError.message}`);
