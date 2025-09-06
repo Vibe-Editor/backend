@@ -93,7 +93,7 @@ interface VideoGenerationParams {
 export class AgentService {
   private readonly logger = new Logger(AgentService.name);
   private readonly baseUrl = 'https://backend.usuals.ai';
-  // private readonly baseUrl = 'http://localhost:8080';
+  //  private readonly baseUrl = 'http://localhost:8080';
   private approvalRequests = new Map<string, ApprovalRequest>();
   private activeStreams = new Map<string, Subject<StreamMessage>>();
 
