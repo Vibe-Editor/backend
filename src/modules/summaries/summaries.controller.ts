@@ -34,9 +34,7 @@ export class SummariesController {
     @Body() createSummaryDto: CreateSummaryDto,
     @CurrentUser('id') userId: string,
   ) {
-    // Set userId from the authenticated user
-    createSummaryDto.userId = userId;
-    return this.summariesService.createSummary(createSummaryDto);
+    return this.summariesService.createSummary(createSummaryDto, userId);
   }
 
   @Get()

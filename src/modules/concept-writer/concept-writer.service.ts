@@ -3,7 +3,7 @@ import { ConceptWriterDto } from './dto/concept-writer.dto';
 import { GoogleGenAI } from '@google/genai';
 import { GeneratedResponse } from './concept-writer.interface';
 import { ProjectHelperService } from '../../common/services/project-helper.service';
-import { SummaryService } from '../../common/services/summary.service';
+import { SummariesService } from '../summaries/summaries.service';
 import { PrismaClient } from '../../../generated/prisma';
 import { Decimal } from '@prisma/client/runtime/library';
 import { CreditService } from '../credits/credit.service';
@@ -16,7 +16,7 @@ export class ConceptWriterService {
 
   constructor(
     private readonly projectHelperService: ProjectHelperService,
-    private readonly summaryService: SummaryService,
+    private readonly summaryService: SummariesService,
     private readonly creditService: CreditService,
   ) {
     if (!process.env.GEMINI_API_KEY) {
@@ -147,9 +147,8 @@ export class ConceptWriterService {
               conceptSummary = await this.summaryService.generateSummary({
                 content: conceptContent,
                 contentType: 'concept',
-                userId,
                 projectId,
-              });
+              }, userId);
               this.logger.log(`Generated summary for concept: ${concept.title}`);
             } catch (summaryError) {
               this.logger.warn(`Failed to generate summary for concept ${concept.title}: ${summaryError.message}`);
@@ -164,7 +163,7 @@ export class ConceptWriterService {
                 concept: concept.concept,
                 tone: concept.tone,
                 goal: concept.goal,
-                summary: conceptSummary, // Include the generated summary
+                summary: conceptSummary, 
                 projectId,
                 userId,
                 // Add credit tracking
