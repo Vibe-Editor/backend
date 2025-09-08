@@ -53,7 +53,7 @@ export async function veo3VideoGen(
       body: JSON.stringify({
         prompt: prompt,
         image_url: `data:image/png;base64,${imageBase64}`,
-        duration: 5,
+        duration: "8s",
         aspect_ratio: '16:9',
         num_inference_steps: 25,
         guidance_scale: 3.5,
