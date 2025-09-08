@@ -62,6 +62,7 @@ async function bootstrap() {
     origin: [
       'http://localhost:5173',
       'http://localhost:8080',
+      'https://credits-adder-usuals-ai.vercel.app',
       process.env.FRONTEND_URL || 'http://localhost:5173',
     ],
     credentials: true,
