@@ -9,12 +9,12 @@ import { GoogleGenAI } from '@google/genai';
 import { VideoGenDto } from './dto/video-gen.dto';
 import { UpdateVideoGenDto } from './dto/update-video-gen.dto';
 import { Agent, handoff, run } from '@openai/agents';
-import { ProjectHelperService } from '../../common/services/project-helper.service';
 import { PrismaClient } from '../../../generated/prisma';
 import { Decimal } from '@prisma/client/runtime/library';
 import { createVeo2Agent } from './agents/veo2.agent';
 import { createRunwayMLAgent } from './agents/runwayml.agent';
 import { createKlingAgent } from './agents/kling.agent';
+import { createVeo3Agent } from './agents/veo3.agent';
 import { CreditService } from '../credits/credit.service';
 
 export interface VideoGenerationResult {
@@ -71,6 +71,7 @@ export class VideoGenService {
     const Veo2Agent = createVeo2Agent();
     const RunwayMLAgent = createRunwayMLAgent();
     const KlingAgent = createKlingAgent();
+    const Veo3Agent = createVeo3Agent();
 
     const triageAgent = Agent.create({
       name: 'Video Generation Triage Agent',
@@ -94,6 +95,18 @@ export class VideoGenService {
       - Photorealistic animations
       - Commercial or marketing videos
       
+      Use Veo3 for:
+      - Ultra-high quality, professional content
+      - Premium video generation needs
+      - When the highest quality is required
+      - Complex scenes with detailed motion
+      - Professional/commercial applications
+      
+      Use Kling for:
+      - Cinematic, fluid motion content
+      - High-quality realistic videos
+      - Professional video production
+      
       Analyze the prompt and choose the appropriate model, then hand off to the corresponding agent.`,
       handoffs: [
         handoff(Veo2Agent, {
@@ -105,6 +118,11 @@ export class VideoGenService {
           toolNameOverride: 'use_runwayml_agent',
           toolDescriptionOverride:
             'Send to RunwayML agent for realistic/high-quality content.',
+        }),
+        handoff(Veo3Agent, {
+          toolNameOverride: 'use_veo3_agent',
+          toolDescriptionOverride:
+            'Send to Veo3 agent for ultra-high quality professional content.',
         }),
         handoff(KlingAgent, {
           toolNameOverride: 'use_kling_agent',
@@ -136,14 +154,14 @@ export class VideoGenService {
       creditTransactionId = await this.creditService.deductCredits(
         userId,
         'VIDEO_GENERATION',
-        'veo2', // Deduct for most expensive model upfront
+        'veo3', // Deduct for most expensive model upfront (Veo3 = 37.5 credits)
         segmentId,
         false,
         `Video generation - upfront deduction for ${segmentId}`,
       );
 
       this.logger.log(
-        `Successfully deducted 25 credits upfront for video generation. Transaction ID: ${creditTransactionId} [${segmentId}]`,
+        `Successfully deducted 37.5 credits upfront for video generation. Transaction ID: ${creditTransactionId} [${segmentId}]`,
       );
       // ===== END CREDIT DEDUCTION =====
 
@@ -211,7 +229,7 @@ export class VideoGenService {
 
           try {
             // Determine the model used from the agent result
-            modelUsed = 'veo2'; // default fallback
+            modelUsed = 'veo3'; // default fallback (most expensive)
             if (
               agentResult.model.toLowerCase().includes('runwayml') ||
               agentResult.model.toLowerCase().includes('runway')
@@ -219,27 +237,30 @@ export class VideoGenService {
               modelUsed = 'runwayml';
             } else if (agentResult.model.toLowerCase().includes('kling')) {
               modelUsed = 'kling';
-            } else if (
-              agentResult.model.toLowerCase().includes('veo2') ||
-              agentResult.model.toLowerCase().includes('veo')
-            ) {
+            } else if (agentResult.model.toLowerCase().includes('veo2')) {
               modelUsed = 'veo2';
+            } else if (agentResult.model.toLowerCase().includes('veo3')) {
+              modelUsed = 'veo3';
+            } else if (agentResult.model.toLowerCase().includes('veo')) {
+              modelUsed = 'veo2'; // fallback to veo2 for generic 'veo' mentions
             }
 
             // Set actual credits used based on model
             if (modelUsed === 'veo2') {
               actualCreditsUsed = 25;
+            } else if (modelUsed === 'veo3') {
+              actualCreditsUsed = 37.5;
             } else if (modelUsed === 'runwayml') {
               actualCreditsUsed = 2.5;
             } else if (modelUsed === 'kling') {
               actualCreditsUsed = 20;
             } else {
-              actualCreditsUsed = 25; // fallback to veo2 pricing
+              actualCreditsUsed = 37.5; // fallback to veo3 pricing (most expensive)
             }
 
-            // We deducted 25 credits upfront for veo2
+            // We deducted 37.5 credits upfront for veo3
             // If a cheaper model was used, refund the difference
-            const deductedAmount = 25; // We always deduct veo2 amount upfront
+            const deductedAmount = 37.5; // We always deduct veo3 amount upfront
             const refundAmount = deductedAmount - actualCreditsUsed;
 
             if (refundAmount > 0) {
@@ -248,7 +269,7 @@ export class VideoGenService {
                 userId,
                 refundAmount,
                 'REFUND',
-                `Refund excess credits: used ${modelUsed} (${actualCreditsUsed}) instead of veo2 (25)`,
+                `Refund excess credits: used ${modelUsed} (${actualCreditsUsed}) instead of veo3 (37.5)`,
               );
 
               this.logger.log(
@@ -265,7 +286,7 @@ export class VideoGenService {
               creditError,
             );
             // Note: We still continue and save the video since generation was successful
-            actualCreditsUsed = 25; // Assume full deduction if adjustment fails
+            actualCreditsUsed = 37.5; // Assume full deduction if adjustment fails
           }
           // ===== END CREDIT ADJUSTMENT =====
 
@@ -377,12 +398,12 @@ export class VideoGenService {
       try {
         await this.creditService.addCredits(
           userId,
-          25, // We deducted 25 credits upfront for veo2 pricing
+          37.5, // We deducted 37.5 credits upfront for veo3 pricing
           'REFUND',
           `Video generation failed - refunding pre-deducted credits [${segmentId}]`,
         );
         this.logger.log(
-          `Refunded 25 credits due to failed video generation [${segmentId}]`,
+          `Refunded 37.5 credits due to failed video generation [${segmentId}]`,
         );
       } catch (refundError) {
         this.logger.error(

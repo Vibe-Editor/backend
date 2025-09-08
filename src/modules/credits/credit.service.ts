@@ -14,15 +14,15 @@ import { Decimal } from '@prisma/client/runtime/library';
 const PRICING = {
   // Image Generation
   IMAGE_GENERATION: {
-    imagen: { regular: 2, edit: 4 },
-    recraft: { regular: 1, edit: 2 },
+    imagen: { regular: 20, edit: 40 },
+    recraft: { regular: 10, edit: 20 },
   },
   // Video Generation
   VIDEO_GENERATION: {
-    veo2: { regular: 25, edit: 37.5 },
-    runwayml: { regular: 2.5, edit: 3.75 },
-    kling: { regular: 20, edit: 30 },
-    veo3: { regular: 37.5, edit: 0 },
+    veo2: { regular: 250, edit: 375 },
+    runwayml: { regular: 25, edit: 37.5 },
+    kling: { regular: 200, edit: 300 },
+    veo3: { regular: 750, edit: 750 },
   },
   // Character Generation
   CHARACTER_GENERATION: {
@@ -30,9 +30,9 @@ const PRICING = {
   },
   // Text Operations
   TEXT_OPERATIONS: {
-    perplexity: { regular: 1, edit: 1 },
-    'concept-gen': { regular: 1, edit: 1 },
-    segmentation: { regular: 3, edit: 6 },
+    perplexity: { regular: 10, edit: 10 },
+    'concept-gen': { regular: 10, edit: 1 },
+    segmentation: { regular: 30, edit: 60 },
     'content-summarizer': { regular: 1, edit: 1 },
   },
   // Voiceover

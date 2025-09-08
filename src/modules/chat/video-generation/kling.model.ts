@@ -50,7 +50,7 @@ export async function klingVideoGen(
         input: {
           prompt: combinedPrompt,
           image_url: dataUri,
-          duration: '5', 
+          duration: '5',
           negative_prompt: 'blur, distort, and low quality',
           cfg_scale: 0.5,
         },
