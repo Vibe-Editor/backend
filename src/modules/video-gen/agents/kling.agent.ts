@@ -31,7 +31,13 @@ export const createKlingAgent = () =>
           segmentId: z.string(),
           projectId: z.string(),
         }) as any,
-        execute: async ({ animation_prompt, art_style, imageS3Key, segmentId, projectId }) => {
+        execute: async ({
+          animation_prompt,
+          art_style,
+          imageS3Key,
+          segmentId,
+          projectId,
+        }) => {
           logger.log('Agent selected Kling 2.1 Master for cinematic content');
           return await generateKlingVideo(
             animation_prompt,
@@ -105,7 +111,11 @@ async function generateKlingVideo(
 
     // Upload video to S3
     logger.debug('Uploading Kling video to S3');
-    const s3Key = await uploadVideoToS3(result.data.video.url, segmentId, projectId);
+    const s3Key = await uploadVideoToS3(
+      result.data.video.url,
+      segmentId,
+      projectId,
+    );
     logger.log(`Successfully uploaded Kling video to S3: ${s3Key}`);
 
     const totalTime = Date.now() - startTime;

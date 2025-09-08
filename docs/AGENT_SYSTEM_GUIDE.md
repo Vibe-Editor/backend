@@ -7,6 +7,7 @@ The agent system uses the **OpenAI Agents SDK** to create intelligent workflows 
 1. **Web Research** → 2. **Concept Generation** → **[STOPS HERE]**
 
 But you want the complete pipeline:
+
 1. **Web Research** → 2. **Concept Generation** → 3. **Script Generation** → 4. **Image Generation** → 5. **Video Generation**
 
 ## Current Architecture
@@ -41,22 +42,22 @@ const myTool = tool({
   parameters: {
     type: 'object',
     properties: {
-      param1: { type: 'string', description: 'Parameter description' }
+      param1: { type: 'string', description: 'Parameter description' },
     },
-    required: ['param1']
+    required: ['param1'],
   },
   needsApproval: true, // Requires user approval before execution
   execute: async (params) => {
     // Tool logic here
     return { result: 'success' };
-  }
+  },
 });
 
 // Create an agent with tools
 const agent = new Agent({
   name: 'My Agent',
   instructions: 'Agent behavior instructions...',
-  tools: [myTool]
+  tools: [myTool],
 });
 
 // Run the agent
@@ -66,17 +67,19 @@ const result = await run(agent, userInput);
 ### Tool Types in Current System
 
 #### 1. No Approval Tools
+
 ```typescript
 // Example: get_web_info, generate_segmentation
 execute: async (params) => {
   const response = await axios.post(`${baseUrl}/endpoint`, params, {
-    headers: { 'Authorization': `Bearer ${authToken}` }
+    headers: { Authorization: `Bearer ${authToken}` },
   });
   return response.data;
-}
+};
 ```
 
 #### 2. Approval Required Tools
+
 ```typescript
 // Example: generate_image_with_approval, generate_concepts_with_approval
 {
@@ -91,6 +94,7 @@ execute: async (params) => {
 ## Approval System Flow
 
 ### 1. User Makes Request
+
 ```http
 POST /agent/run
 {
@@ -101,24 +105,27 @@ POST /agent/run
 ```
 
 ### 2. Agent Processes Request
+
 - Agent runs through tools sequentially
 - When it hits a tool with `needsApproval: true`, it pauses
 
 ### 3. Approval Request Generated
+
 ```typescript
 // System creates ApprovalRequest
 interface ApprovalRequest {
-  id: string;                    // approval_1234567890_abc123
-  agentName: string;            // "Content Generation Agent"
-  toolName: string;             // "generate_image_with_approval" 
-  arguments: any;               // Tool parameters
+  id: string; // approval_1234567890_abc123
+  agentName: string; // "Content Generation Agent"
+  toolName: string; // "generate_image_with_approval"
+  arguments: any; // Tool parameters
   status: 'pending' | 'approved' | 'rejected';
   timestamp: Date;
-  authToken?: string;           // For API calls
+  authToken?: string; // For API calls
 }
 ```
 
 ### 4. Frontend Gets Approval Request via Stream
+
 ```typescript
 // Streaming response
 {
@@ -139,6 +146,7 @@ interface ApprovalRequest {
 ```
 
 ### 5. User Approves/Rejects
+
 ```http
 POST /agent/approval
 {
@@ -148,12 +156,14 @@ POST /agent/approval
 ```
 
 ### 6. Agent Continues Execution
+
 - Tool executes with approved parameters
 - Agent continues to next step
 
 ## Existing API Endpoints
 
 ### Start Agent Run (Streaming)
+
 ```http
 POST /agent/run
 Authorization: Bearer <jwt_token>
@@ -161,12 +171,13 @@ Content-Type: application/json
 
 {
   "prompt": "Create content about AI",
-  "segmentId": "optional-segment-id", 
+  "segmentId": "optional-segment-id",
   "projectId": "optional-project-id"
 }
 ```
 
 **Response:** Server-Sent Events stream with:
+
 ```typescript
 interface StreamMessage {
   type: 'log' | 'approval_required' | 'result' | 'error' | 'completed';
@@ -176,6 +187,7 @@ interface StreamMessage {
 ```
 
 ### Handle Approval
+
 ```http
 POST /agent/approval
 Authorization: Bearer <jwt_token>
@@ -187,6 +199,7 @@ Authorization: Bearer <jwt_token>
 ```
 
 ### Get Pending Approvals
+
 ```http
 GET /agent/approvals/pending
 Authorization: Bearer <jwt_token>
@@ -195,6 +208,7 @@ Authorization: Bearer <jwt_token>
 ## How to Add New Tools
 
 ### Step 1: Define Parameters Interface
+
 ```typescript
 interface NewToolParams {
   param1: string;
@@ -205,6 +219,7 @@ interface NewToolParams {
 ```
 
 ### Step 2: Create Tool Method
+
 ```typescript
 private createNewTool(authToken?: string) {
   return tool({
@@ -241,6 +256,7 @@ private createNewTool(authToken?: string) {
 ```
 
 ### Step 3: Add to Agent Tools Array
+
 ```typescript
 private createAgent(authToken?: string) {
   return new Agent({
@@ -257,15 +273,16 @@ private createAgent(authToken?: string) {
 ```
 
 ### Step 4: Handle Approval Execution (if needsApproval: true)
+
 ```typescript
 private async executeApprovedTool(approvalRequest: ApprovalRequest, streamSubject: Subject<StreamMessage>): Promise<any> {
   try {
     const { toolName, arguments: args, authToken } = approvalRequest;
-    
+
     if (toolName === 'new_tool') {
       const parsedArgs = typeof args === 'string' ? JSON.parse(args) : args;
       const { param1, param2, projectId, userId } = parsedArgs;
-      
+
       streamSubject.next({
         type: 'log',
         data: { message: 'Executing new tool...' },
@@ -290,7 +307,7 @@ private async executeApprovedTool(approvalRequest: ApprovalRequest, streamSubjec
         message: 'New tool executed successfully'
       };
     }
-    
+
     // ... handle other tools
   } catch (error) {
     this.logger.error(`❌ [TOOL] Error: ${error.message}`);
@@ -302,6 +319,7 @@ private async executeApprovedTool(approvalRequest: ApprovalRequest, streamSubjec
 ## Adding the Missing Pipeline Tools
 
 ### 1. Script Generation Tool (using Segmentation)
+
 ```typescript
 private createScriptGenerationTool(authToken?: string) {
   return tool({
@@ -332,7 +350,8 @@ private createScriptGenerationTool(authToken?: string) {
 }
 ```
 
-### 2. Video Generation Tool 
+### 2. Video Generation Tool
+
 ```typescript
 private createVideoGenerationTool(authToken?: string) {
   return tool({
@@ -399,36 +418,37 @@ User: "Create a face wash advertisement"
 EXAMPLE DIRECT COMMAND:
 User: "make the image" 
 → Ask for script/concept if missing
-→ Use generate_image_with_approval with provided/default parameters`
+→ Use generate_image_with_approval with provided/default parameters`;
 ```
 
 ## Frontend Integration Examples
 
 ### 1. Handle Different Stream Message Types
+
 ```typescript
 const eventSource = new EventSource('/agent/run');
 
 eventSource.onmessage = (event) => {
   const message = JSON.parse(event.data);
-  
+
   switch (message.type) {
     case 'log':
       console.log('Agent:', message.data.message);
       break;
-      
+
     case 'approval_required':
       showApprovalDialog(message.data);
       break;
-      
+
     case 'result':
       displayResult(message.data);
       break;
-      
+
     case 'completed':
       showFinalResult(message.data.finalOutput);
       eventSource.close();
       break;
-      
+
     case 'error':
       showError(message.data.message);
       break;
@@ -437,19 +457,20 @@ eventSource.onmessage = (event) => {
 ```
 
 ### 2. Smart Approval UI
+
 ```typescript
 function showApprovalDialog(approvalData) {
   const { approvalId, toolName, arguments: args } = approvalData;
-  
+
   switch (toolName) {
     case 'generate_concepts_with_approval':
       showConceptApproval(approvalId, args);
       break;
-      
+
     case 'generate_image_with_approval':
       showImageApproval(approvalId, args);
       break;
-      
+
     case 'generate_video_with_approval':
       showVideoApproval(approvalId, args);
       break;
@@ -475,12 +496,12 @@ async function approveRequest(approvalId, approved) {
   await fetch('/agent/approval', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ approvalId, approved })
+    body: JSON.stringify({ approvalId, approved }),
   });
-  
+
   // Remove modal
   document.querySelector('.approval-modal').remove();
 }
@@ -489,6 +510,7 @@ async function approveRequest(approvalId, approved) {
 ## Testing the System
 
 ### 1. Test Current Flow
+
 ```bash
 curl -X POST http://localhost:8080/agent/run \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
@@ -501,6 +523,7 @@ curl -X POST http://localhost:8080/agent/run \
 ```
 
 ### 2. Test Direct Commands
+
 ```bash
 # Direct image generation
 curl -X POST http://localhost:8080/agent/run \
@@ -512,6 +535,7 @@ curl -X POST http://localhost:8080/agent/run \
 ```
 
 ### 3. Test Approval Flow
+
 ```bash
 # Get pending approvals
 curl -X GET http://localhost:8080/agent/approvals/pending \
@@ -530,7 +554,7 @@ curl -X POST http://localhost:8080/agent/approval \
 ## Next Steps
 
 1. **Add Script Generation Tool** - Connect to segmentation module
-2. **Add Video Generation Tool** - Connect to video-gen module  
+2. **Add Video Generation Tool** - Connect to video-gen module
 3. **Update Agent Instructions** - Support direct commands and full pipeline
 4. **Test Complete Flow** - Verify all tools work together
 5. **Improve Frontend** - Better approval UI and result display
@@ -542,6 +566,7 @@ curl -X POST http://localhost:8080/agent/approval \
 3. Frontend components - Improve approval UI and result handling
 
 This system is powerful because it:
+
 - ✅ Uses industry-standard OpenAI Agents SDK
 - ✅ Has built-in approval system for user control
 - ✅ Supports streaming for real-time feedback

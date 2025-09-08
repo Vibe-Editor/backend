@@ -1,4 +1,11 @@
-import { IsString, IsNotEmpty, IsOptional, IsBoolean, ValidateIf, IsArray } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsBoolean,
+  ValidateIf,
+  IsArray,
+} from 'class-validator';
 
 export class StartAgentRunDto {
   @IsString()
@@ -82,7 +89,6 @@ export class ApprovalResponseDto {
   @ValidateIf((o) => o.concept !== null)
   negative_prompt?: string | null;
 }
-
 
 export class AgentRunResponseDto {
   runId?: string;

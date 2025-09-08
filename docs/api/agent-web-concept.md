@@ -1,6 +1,7 @@
 # Agent Run: Web Research → Concept Generation (With Approvals)
 
 This document describes the Agent run flow that strictly covers:
+
 - get_web_info (web research)
 - generate_concepts_with_approval (concept generation with human-in-the-loop)
 
@@ -9,26 +10,31 @@ Excluded from this document: image generation, chat tool, and segmentation.
 ## Overview
 
 For every user prompt, the agent follows a mandatory 2-step workflow and pauses for approval:
+
 1. Web Research: Uses `get_web_info` to collect relevant information.
 2. Concept Generation (Requires Approval): Uses `generate_concepts_with_approval` to produce four concepts based on the web info. The agent pauses and emits an approval request to the client.
 
 All routes below require JWT authentication.
 
 ## Authentication
+
 - Header: `Authorization: Bearer <JWT>`
 
 ## Endpoints
 
 ### POST /agent/run (SSE stream)
+
 Starts an agent run and streams progress/events using Server-Sent Events.
 
 Headers:
+
 ```
 Authorization: Bearer <JWT>
 Content-Type: application/json
 ```
 
 Body:
+
 ```json
 {
   "prompt": "string",
@@ -38,6 +44,7 @@ Body:
 ```
 
 Behavior:
+
 - Emits `log` messages while the agent processes the request.
 - Executes `get_web_info` first.
 - Executes `generate_concepts_with_approval` next; this triggers an approval interruption.
@@ -45,6 +52,7 @@ Behavior:
 - After you POST an approval decision to `/agent/approval`, emits either a `result` (on approval) or an informational `log` (on rejection), then finally `completed`.
 
 SSE message types:
+
 - `log`: Progress updates
 - `approval_required`: A decision is required from a human
 - `result`: Result of the approved concept generation
@@ -52,6 +60,7 @@ SSE message types:
 - `error`: Run encountered an error
 
 Example SSE messages:
+
 ```json
 {"type":"log","data":{"message":"Starting agent run..."},"timestamp":"2025-08-07T07:24:36.356Z"}
 {"type":"approval_required","data":{"approvalId":"approval_...","toolName":"generate_concepts_with_approval","arguments":"{...}","agentName":"Content Generation Agent"},"timestamp":"..."}
@@ -60,15 +69,18 @@ Example SSE messages:
 ```
 
 ### POST /agent/approval
+
 Approve or reject a pending approval request.
 
 Headers:
+
 ```
 Authorization: Bearer <JWT>
 Content-Type: application/json
 ```
 
 Body:
+
 ```json
 {
   "approvalId": "string",
@@ -77,6 +89,7 @@ Body:
 ```
 
 Response:
+
 ```json
 {
   "status": "success",
@@ -85,12 +98,15 @@ Response:
 ```
 
 ### GET /agent/approvals/pending
+
 List all pending approvals.
 
 ### GET /agent/approvals/:approvalId
+
 Fetch a single approval request by ID.
 
 ### POST /agent/cleanup
+
 Remove old approval requests (maintenance utility).
 
 ## Internal Tooling (for understanding the flow)
@@ -98,6 +114,7 @@ Remove old approval requests (maintenance utility).
 These tools are invoked internally by the agent and authenticated using the provided JWT. Clients do not call these tools directly—interact only with the `agent/*` endpoints above.
 
 - get_web_info
+
   - Purpose: Perform web research for the user’s prompt.
   - Params: `prompt`, `projectId`, `userId` (the `userId` is injected from the authenticated context; clients should not pass it directly to the tool).
   - Backend call: `POST /get-web-info` (internal, with auth).
@@ -110,6 +127,7 @@ These tools are invoked internally by the agent and authenticated using the prov
   - On approval: The service continues and calls backend `POST /concept-writer` (internal, with auth) and emits a `result` message with the generated concepts.
 
 ## Typical Streaming Sequence
+
 - log: Starting agent run...
 - log: Agent is processing your request...
 - approval_required: Approve running `generate_concepts_with_approval` with given arguments
@@ -122,6 +140,7 @@ These tools are invoked internally by the agent and authenticated using the prov
 ## Examples
 
 Start a run (SSE):
+
 ```bash
 curl -N -X POST https://backend.usuals.ai/agent/run \
   -H "Authorization: Bearer <token>" \
@@ -134,6 +153,7 @@ curl -N -X POST https://backend.usuals.ai/agent/run \
 ```
 
 Approve a pending request:
+
 ```bash
 curl -X POST https://backend.usuals.ai/agent/approval \
   -H "Authorization: Bearer <token>" \
@@ -145,19 +165,22 @@ curl -X POST https://backend.usuals.ai/agent/approval \
 ```
 
 List pending approvals:
+
 ```bash
 curl -X GET https://backend.usuals.ai/agent/approvals/pending \
   -H "Authorization: Bearer <token>"
 ```
 
 Fetch a specific approval:
+
 ```bash
 curl -X GET https://backend.usuals.ai/agent/approvals/approval_1754551476356_pvww456cf \
   -H "Authorization: Bearer <token>"
 ```
 
 ## Notes & Constraints
+
 - The agent always starts with `get_web_info`, then proceeds to `generate_concepts_with_approval` and pauses for human approval.
 - Do not include or invoke other tools (image generation, chat, segmentation) in this flow unless explicitly extended.
 - SSE events include timestamps; clients should be prepared to handle out-of-order arrival under network jitter.
-- `segmentId` and `projectId` are optional in the run request; `userId` is provided by the authenticated context automatically. 
+- `segmentId` and `projectId` are optional in the run request; `userId` is provided by the authenticated context automatically.
