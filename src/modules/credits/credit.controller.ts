@@ -8,6 +8,7 @@ import {
   ParseIntPipe,
   UseGuards,
 } from '@nestjs/common';
+import { Public } from '../../common/decorators/public.decorator';
 import { CreditService } from './credit.service';
 import { CreditTransactionType } from '../../../generated/prisma';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -166,9 +167,10 @@ export class CreditController {
   }
 
   /**
-   * Get current pricing information
+   * Get current pricing information (public endpoint)
    */
   @Get('pricing')
+  @Public()
   getPricing() {
     const pricing = this.creditService.getPricingInfo();
     return {
