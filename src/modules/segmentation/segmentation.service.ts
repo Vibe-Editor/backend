@@ -287,10 +287,17 @@ Generate the visual prompt:`,
 
       const narrationAddendum = `
       IMPORTANT (for narration scripts):
-      Each segment must contain only what the narrator will say aloud. 
-      Do NOT describe visuals, camera shots, or sound design. 
-      Do NOT include instructions, scene setting, or internal monologue. 
-      Only generate spoken lines that match the tone of the style (e.g. professional for ads, intense for hype).
+      Each segment must contain only what the narrator will say aloud with ElevenLabs v3 emotion embeddings.
+      PRESERVE the emotion embedding format: [emotion] text content
+      Do NOT describe visuals, camera shots, or sound design.
+      Do NOT include instructions, scene setting, or internal monologue.
+      Each segment should be approximately 5 seconds of speech (15-20 words) with emotion tag.
+      Maintain the emotion embedding format exactly as provided in the original script.
+      
+      EXAMPLES of correct segmentation:
+      - [excited] Get ready to discover something that will completely transform the way you think about innovation!
+      - [confident] This groundbreaking technology represents years of research and development, bringing you unprecedented capabilities.
+      - [whisper] But there's something even more extraordinary waiting to be revealed in the next chapter.
       `;
 
       const visualAddendum = `
@@ -479,7 +486,32 @@ Generate the visual prompt:`,
         if (selectedModel === 'flash') {
           script = await this.generateScriptWithGemini({
             animationPrompt: `Create an animation sequence for a video about: "${segmentationDto.prompt}". The animation should be engaging and well-paced. Structure the animation into exactly 5 parts that flow naturally. Include specific animation cues and transitions. Focus on the animation flow and visual storytelling.`,
-            narrationPrompt: `Write a voiceover script for a video about: "${segmentationDto.prompt}". The script should be engaging, clear, and well-structured. Structure the script into exactly 5 distinct segments. Each segment should be standalone and flow naturally into the next. Focus on clear, compelling narration.`,
+            narrationPrompt: `Write a voiceover script for a 25-second video about: "${segmentationDto.prompt}". 
+
+CRITICAL REQUIREMENTS:
+- Each segment must be exactly 5 seconds of spoken content (approximately 15-20 words per segment)
+- Use ElevenLabs v3 emotion embedding format: [emotion] text content
+- Structure into exactly 5 distinct segments (5 seconds each)
+- Each segment should be a complete thought or compelling narrative phrase
+
+EMOTION EMBEDDING FORMAT:
+Use these emotion tags before the text: [angry], [whisper], [sad], [happy], [excited], [calm], [dramatic], [mysterious], [confident], [surprised], [thoughtful], [urgent], [cheerful], [serious], [playful], [intense], [gentle], [bold], [nervous], [proud], [curious], [determined], [relaxed], [energetic], [compassionate], [authoritative], [dreamy], [fierce], [hopeful], [melancholic], [optimistic], [passionate], [rebellious], [sarcastic], [tender], [triumphant], [vulnerable], [witty], [zealous]
+
+EXAMPLES:
+Segment 1: [excited] Get ready to discover something that will completely transform the way you think about innovation!
+Segment 2: [confident] This groundbreaking technology represents years of research and development, bringing you unprecedented capabilities.
+Segment 3: [dramatic] The moment has finally arrived when dreams become reality and possibilities become limitless.
+Segment 4: [whisper] But there's something even more extraordinary waiting to be revealed in the next chapter.
+Segment 5: [triumphant] Welcome to the future - where your imagination is the only boundary to what's possible!
+
+TIMING GUIDELINES:
+- Total script duration: exactly 25 seconds
+- Each segment: 5 seconds (15-20 words maximum)
+- Choose emotions that match the content and create engaging progression
+- Ensure smooth emotional flow between segments
+- Create compelling narrative arc across all segments
+
+Focus on creating impactful, emotion-driven narration that works perfectly with ElevenLabs v3 voice synthesis.`,
             visualPrompt: `Generate a visual concept for a video about: "${segmentationDto.prompt}". Create descriptions for 5 distinct visual segments, each representing a single, cohesive image concept. Each image should be visually compelling and support the overall narrative. Focus on visual composition and storytelling.`,
             concept: concept,
             negativePrompt: segmentationDto.negative_prompt,
@@ -489,7 +521,32 @@ Generate the visual prompt:`,
         } else if (selectedModel === 'openai') {
           script = await this.generateScriptWithOpenAI({
             animationPrompt: `Create an animation sequence for a video about: "${segmentationDto.prompt}". The animation should be engaging and well-paced. Structure the animation into exactly 5 parts that flow naturally. Include specific animation cues and transitions. Focus on the animation flow and visual storytelling.`,
-            narrationPrompt: `Write a voiceover script for a video about: "${segmentationDto.prompt}". The script should be engaging, clear, and well-structured. Structure the script into exactly 5 distinct segments. Each segment should be standalone and flow naturally into the next. Focus on clear, compelling narration.`,
+            narrationPrompt: `Write a voiceover script for a 25-second video about: "${segmentationDto.prompt}". 
+
+CRITICAL REQUIREMENTS:
+- Each segment must be exactly 5 seconds of spoken content (approximately 15-20 words per segment)
+- Use ElevenLabs v3 emotion embedding format: [emotion] text content
+- Structure into exactly 5 distinct segments (5 seconds each)
+- Each segment should be a complete thought or compelling narrative phrase
+
+EMOTION EMBEDDING FORMAT:
+Use these emotion tags before the text: [angry], [whisper], [sad], [happy], [excited], [calm], [dramatic], [mysterious], [confident], [surprised], [thoughtful], [urgent], [cheerful], [serious], [playful], [intense], [gentle], [bold], [nervous], [proud], [curious], [determined], [relaxed], [energetic], [compassionate], [authoritative], [dreamy], [fierce], [hopeful], [melancholic], [optimistic], [passionate], [rebellious], [sarcastic], [tender], [triumphant], [vulnerable], [witty], [zealous]
+
+EXAMPLES:
+Segment 1: [excited] Get ready to discover something that will completely transform the way you think about innovation!
+Segment 2: [confident] This groundbreaking technology represents years of research and development, bringing you unprecedented capabilities.
+Segment 3: [dramatic] The moment has finally arrived when dreams become reality and possibilities become limitless.
+Segment 4: [whisper] But there's something even more extraordinary waiting to be revealed in the next chapter.
+Segment 5: [triumphant] Welcome to the future - where your imagination is the only boundary to what's possible!
+
+TIMING GUIDELINES:
+- Total script duration: exactly 25 seconds
+- Each segment: 5 seconds (15-20 words maximum)
+- Choose emotions that match the content and create engaging progression
+- Ensure smooth emotional flow between segments
+- Create compelling narrative arc across all segments
+
+Focus on creating impactful, emotion-driven narration that works perfectly with ElevenLabs v3 voice synthesis.`,
             visualPrompt: `Generate a visual concept for a video about: "${segmentationDto.prompt}". Create descriptions for 5 distinct visual segments, each representing a single, cohesive image concept. Each image should be visually compelling and support the overall narrative. Focus on visual composition and storytelling.`,
             concept: concept,
             negativePrompt: segmentationDto.negative_prompt,
