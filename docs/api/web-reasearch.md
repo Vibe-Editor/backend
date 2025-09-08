@@ -3,6 +3,7 @@
 **Important**: All get-web-info endpoints now require a valid `projectId` in the request body. These endpoints will not work without providing a correct project ID.
 
 - `POST /get-web-info` - Get information from the web using Perplexity AI
+
   - **Requires**: JWT Authentication
   - **Body Parameters**:
     - `prompt` (required): Research query to ask Perplexity AI
@@ -38,6 +39,7 @@
   - **Returns**: Response from Perplexity AI's chat completion API with credit information
 
 - `GET /get-web-info` - Get all web research results
+
   - **Requires**: JWT Authentication
   - **Query Parameters**:
     - `id` (optional): Get specific research result by ID
@@ -45,6 +47,7 @@
   - **Returns**: Array of all user's research queries and responses
 
 - `PATCH /get-web-info/:id` - Update a specific web research query
+
   - **Requires**: JWT Authentication
   - **URL Parameter**: `id` - The web research query ID to update
   - **Body Parameters**:

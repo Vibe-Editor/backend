@@ -23,11 +23,16 @@ const RECRAFT_PRESETS = {
   vintage: { style: 'realistic_image', substyle: 'retro_realism' },
   modern: { style: 'vector_illustration', substyle: 'vivid_shapes' },
   creative: { style: 'digital_illustration', substyle: 'pop_art' },
-  brand: { style: 'logo_raster', substyle: 'emblem_vintage' }
+  brand: { style: 'logo_raster', substyle: 'emblem_vintage' },
 };
 
 export function getRecraftStyle(preset: string) {
-  return RECRAFT_PRESETS[preset] || { style: 'realistic_image', substyle: 'natural_light' };
+  return (
+    RECRAFT_PRESETS[preset] || {
+      style: 'realistic_image',
+      substyle: 'natural_light',
+    }
+  );
 }
 
 export async function recraftImageGen(
@@ -36,8 +41,7 @@ export async function recraftImageGen(
   art_style: string,
   projectId: string,
 ) {
-
-    // Get style config using art_style as key
+  // Get style config using art_style as key
   const styleConfig = getRecraftStyle(art_style);
 
   let recraftPrompt = `${visual_prompt}. Art style: ${art_style}. Create a realistic, photographic image with no text elements.`;
@@ -56,8 +60,8 @@ export async function recraftImageGen(
     'https://external.api.recraft.ai/v1/images/generations',
     {
       prompt: recraftPrompt,
-      style: styleConfig.style,        // Dynamic from preset
-      substyle: styleConfig.substyle, 
+      style: styleConfig.style, // Dynamic from preset
+      substyle: styleConfig.substyle,
       size: '1820x1024',
       n: 1,
     },

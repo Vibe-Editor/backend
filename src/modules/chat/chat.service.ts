@@ -13,6 +13,8 @@ import { ChatDto } from './dto/chat.dto';
 import { imagenImageGen } from './image-generation/imagen.model';
 import { klingVideoGen } from './video-generation/kling.model';
 import { runwayVideoGen } from './video-generation/runway.model';
+import { veo3VideoGen } from './video-generation/veo3.model';
+import { VoiceGenService } from '../voice-gen/voice-gen.service';
 
 const logger = new Logger('ChatService');
 
@@ -20,15 +22,23 @@ const logger = new Logger('ChatService');
 export class ChatService implements OnModuleDestroy {
   private readonly prisma = new PrismaClient();
 
-  constructor(private readonly creditService: CreditService) {}
+  constructor(
+    private readonly creditService: CreditService,
+    private readonly voiceGenService: VoiceGenService,
+  ) {}
 
-  private async validateProject(projectId: string, userId: string): Promise<void> {
+  private async validateProject(
+    projectId: string,
+    userId: string,
+  ): Promise<void> {
     const project = await this.prisma.project.findFirst({
       where: { id: projectId, userId },
     });
     console.log(projectId, userId);
     if (!project) {
-      throw new NotFoundException('Project not found or does not belong to user');
+      throw new NotFoundException(
+        'Project not found or does not belong to user',
+      );
     }
   }
 
@@ -40,8 +50,14 @@ export class ChatService implements OnModuleDestroy {
       visual_prompt,
       animation_prompt,
       image_s3_key,
+      narration,
       art_style,
       projectId,
+      speed,
+      stability,
+      similarityBoost,
+      styleExaggeration,
+      useSpeakerBoost,
     } = chatDto;
 
     // Use authenticated user ID if available, fallback to segmentId for backward compatibility
@@ -66,7 +82,12 @@ export class ChatService implements OnModuleDestroy {
             `Image generation using recraft-v3 model`,
           );
 
-          const image = await recraftImageGen(segmentId, visual_prompt, art_style, projectId);
+          const image = await recraftImageGen(
+            segmentId,
+            visual_prompt,
+            art_style,
+            projectId,
+          );
 
           // Save to database
           await this.prisma.generatedImage.create({
@@ -81,7 +102,7 @@ export class ChatService implements OnModuleDestroy {
               projectId: projectId,
               userId: userId,
               creditsUsed: 1,
-              videoSegmentId : segmentId,
+              videoSegmentId: segmentId,
               creditTransactionId: creditTransactionId,
             },
           });
@@ -97,7 +118,7 @@ export class ChatService implements OnModuleDestroy {
             },
           };
         } catch (error) {
-          console.log(error)
+          console.log(error);
           // Refund credits if they were deducted
           if (creditTransactionId) {
             try {
@@ -152,7 +173,12 @@ export class ChatService implements OnModuleDestroy {
             `Image generation using imagen model`,
           );
 
-          const image = await imagenImageGen(segmentId, visual_prompt, art_style, projectId);
+          const image = await imagenImageGen(
+            segmentId,
+            visual_prompt,
+            art_style,
+            projectId,
+          );
 
           // Save to database
           await this.prisma.generatedImage.create({
@@ -288,7 +314,7 @@ export class ChatService implements OnModuleDestroy {
             },
           };
         } catch (error) {
-          console.log(error)
+          console.log(error);
           // Refund credits if they were deducted
           if (creditTransactionId) {
             try {
@@ -429,7 +455,124 @@ export class ChatService implements OnModuleDestroy {
             (error as Error).message || 'Failed to generate video.',
           );
         }
+      } else if (model === 'veo3') {
+        try {
+          // Deduct credits before generation
+          creditTransactionId = await this.creditService.deductCredits(
+            userId,
+            'VIDEO_GENERATION',
+            'veo3',
+            segmentId,
+            false,
+            `Video generation using veo3 model`,
+          );
+
+          const video = await veo3VideoGen(
+            segmentId,
+            animation_prompt,
+            art_style,
+            image_s3_key,
+            projectId,
+          );
+
+          // Save to database
+          const savedVideo = await this.prisma.generatedVideo.create({
+            data: {
+              animationPrompt: animation_prompt,
+              artStyle: art_style,
+              imageS3Key: image_s3_key,
+              uuid: segmentId,
+              success: true,
+              model: video.model,
+              totalVideos: 1,
+              projectId: projectId,
+              userId: userId,
+              creditsUsed: 37.5,
+              creditTransactionId: creditTransactionId,
+            },
+          });
+
+          // Save video file
+          await this.prisma.generatedVideoFile.create({
+            data: {
+              s3Key: video.s3_key,
+              generatedVideoId: savedVideo.id,
+            },
+          });
+
+          // Get user's new balance after credit deduction
+          const newBalance = await this.creditService.getUserBalance(userId);
+
+          return {
+            ...video,
+            credits: {
+              used: 37.5,
+              balance: newBalance.toNumber(),
+            },
+          };
+        } catch (error) {
+          console.log(error)
+          // Refund credits if they were deducted
+          if (creditTransactionId) {
+            try {
+              await this.creditService.refundCredits(
+                userId,
+                'VIDEO_GENERATION',
+                'veo3',
+                segmentId,
+                creditTransactionId,
+                false,
+                `Refund for failed video generation: ${error.message}`,
+              );
+              logger.log(
+                `Successfully refunded 37.5 credits for failed veo3 generation. User: ${userId}, Operation: ${segmentId}`,
+              );
+            } catch (refundError) {
+              logger.error(
+                `Failed to refund credits for user ${userId}, operation ${segmentId}:`,
+                refundError,
+              );
+            }
+          }
+
+          // Log the error for debugging purposes
+          logger.error(
+            `Video generation failed for user ${userId}, operation ${segmentId}: ${(error as Error).message}`,
+          );
+
+          // If it's a known NestJS exception, rethrow it
+          if (
+            error instanceof BadRequestException ||
+            error instanceof InternalServerErrorException ||
+            error instanceof NotFoundException
+          ) {
+            throw error;
+          }
+
+          // Otherwise, throw the original error message as an internal server error
+          throw new InternalServerErrorException(
+            (error as Error).message || 'Failed to generate video.',
+          );
+        }
       }
+    } else if (gen_type === 'voice') {
+      if (!narration) {
+        throw new BadRequestException('narration is required for voice generation');
+      }
+
+      return this.voiceGenService.generateVoice(
+        {
+          narration,
+          segmentId,
+          projectId,
+          speed,
+          stability,
+          similarityBoost,
+          styleExaggeration,
+          useSpeakerBoost,
+        },
+        userId,
+      );
     }
   }
 

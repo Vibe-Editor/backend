@@ -6,6 +6,6 @@ import { ChatModule } from '../chat/chat.module';
 @Module({
   imports: [ChatModule],
   controllers: [AgentController],
-  providers: [AgentService]
+  providers: [AgentService],
 })
 export class AgentModule {}

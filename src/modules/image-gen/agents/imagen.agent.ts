@@ -50,7 +50,12 @@ You are perfect for images containing text, logos, signs, artistic styles, and c
         execute: async ({ visual_prompt, art_style, segmentId, projectId }) => {
           logger.log('Agent selected Imagen for text-based/artistic content');
           try {
-            return await generateImagenImage(visual_prompt, art_style, segmentId, projectId);
+            return await generateImagenImage(
+              visual_prompt,
+              art_style,
+              segmentId,
+              projectId,
+            );
           } catch (error) {
             logger.error('Imagen image generation failed:', error);
             throw new Error(`Imagen image generation failed: ${error.message}`);
@@ -163,7 +168,7 @@ async function generateImagenImage(
     }
 
     // Handle the correct response structure
-    const responseData = response as any;
+    const responseData = response;
 
     // Enhanced validation logging
     logger.log('=== IMAGEN RESPONSE VALIDATION START ===');

@@ -32,7 +32,13 @@ export const createRunwayMLAgent = () =>
           segmentId: z.string(),
           projectId: z.string(),
         }) as any,
-        execute: async ({ animation_prompt, art_style, imageS3Key, segmentId, projectId }) => {
+        execute: async ({
+          animation_prompt,
+          art_style,
+          imageS3Key,
+          segmentId,
+          projectId,
+        }) => {
           logger.log(
             'Agent selected RunwayML for realistic/high-quality content',
           );

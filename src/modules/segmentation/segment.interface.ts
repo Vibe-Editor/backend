@@ -3,4 +3,5 @@ export interface TypeSegment {
   narration: string;
   visual: string;
   animation: string;
+  // No individual summary - combined summary is in the main response
 }
