@@ -537,4 +537,20 @@ export class CreditService {
   getPricingInfo() {
     return PRICING;
   }
+
+  /**
+   * Find user by email
+   */
+  async findUserByEmail(email: string) {
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { email },
+        select: { id: true, email: true, name: true },
+      });
+      return user;
+    } catch (error) {
+      this.logger.error(`Error finding user by email ${email}:`, error);
+      throw new InternalServerErrorException('Failed to find user by email');
+    }
+  }
 }
