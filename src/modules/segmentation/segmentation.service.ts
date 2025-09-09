@@ -315,6 +315,7 @@ Generate the visual prompt:`,
       Each segment should describe motion and transitions for one continuous shot.
       Avoid visual summaries or multiple scene ideas per segment.
       Only describe how the camera moves, how things animate, and what's happening dynamically on screen.
+      Responsd with all the prompts in json format.
       `;
 
       let prompt = base;
