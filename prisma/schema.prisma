@@ -312,3 +312,4 @@ model CharacterGeneration {
   project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
