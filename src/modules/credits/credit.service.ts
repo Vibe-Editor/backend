@@ -24,6 +24,10 @@ const PRICING = {
     kling: { regular: 200, edit: 300 },
     veo3: { regular: 750, edit: 750 },
   },
+  // Video Editing
+  VIDEO_EDITING: {
+    'runway-aleph': { regular: 50, edit: 75 },
+  },
   // Character Generation
   CHARACTER_GENERATION: {
     'recraft-character': { regular: 6, edit: 12 }, // Sprite sheet + final character generation
