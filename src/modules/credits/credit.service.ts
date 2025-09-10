@@ -24,6 +24,10 @@ const PRICING = {
     kling: { regular: 200, edit: 300 },
     veo3: { regular: 750, edit: 750 },
   },
+  // Video Editing
+  VIDEO_EDITING: {
+    'runway-aleph': { regular: 50, edit: 75 },
+  },
   // Character Generation
   CHARACTER_GENERATION: {
     'recraft-character': { regular: 6, edit: 12 }, // Sprite sheet + final character generation
@@ -536,5 +540,21 @@ export class CreditService {
    */
   getPricingInfo() {
     return PRICING;
+  }
+
+  /**
+   * Find user by email
+   */
+  async findUserByEmail(email: string) {
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { email },
+        select: { id: true, email: true, name: true },
+      });
+      return user;
+    } catch (error) {
+      this.logger.error(`Error finding user by email ${email}:`, error);
+      throw new InternalServerErrorException('Failed to find user by email');
+    }
   }
 }

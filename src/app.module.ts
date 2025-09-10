@@ -18,9 +18,11 @@ import { UploadsModule } from './modules/uploads/uploads.module';
 import { CreditsModule } from './modules/credits/credits.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { AgentModule } from './modules/agent/agent.module';
+import { TextToVideoModule } from './modules/texttovideo/agent.module';
 import { VoiceGenModule } from './modules/voice-gen/voice-gen.module';
 import { ContextModule } from './modules/context/context.module';
 import { SummariesModule } from './modules/summaries/summaries.module';
+import { VideoEditingModule } from './modules/video-editing/video-editing.module';
 
 @Module({
   imports: [
@@ -43,9 +45,11 @@ import { SummariesModule } from './modules/summaries/summaries.module';
     CreditsModule,
     ChatModule,
     AgentModule,
+    TextToVideoModule,
     VoiceGenModule,
     ContextModule,
-    SummariesModule
+    SummariesModule,
+    VideoEditingModule
   ],
   controllers: [AppController],
   providers: [AppService],

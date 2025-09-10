@@ -29,7 +29,13 @@ export const createVeo3Agent = () =>
           segmentId: z.string(),
           projectId: z.string(),
         }) as any,
-        execute: async ({ animation_prompt, art_style, imageS3Key, segmentId, projectId }) => {
+        execute: async ({
+          animation_prompt,
+          art_style,
+          imageS3Key,
+          segmentId,
+          projectId,
+        }) => {
           return await generateVeo3Video(
             animation_prompt,
             art_style,
@@ -49,7 +55,6 @@ async function generateVeo3Video(
   segmentId: string,
   projectId: string,
 ): Promise<VideoGenerationResult> {
-  
   logger.log(`Starting Veo3 video generation for user: ${segmentId}`);
 
   if (!process.env.FAL_KEY) {
@@ -77,19 +82,19 @@ async function generateVeo3Video(
     );
 
     logger.log('Starting Veo3 video generation with Fal.ai');
-    
+
     const prompt = `ANIMATION_PROMPT: ${animation_prompt} \n ART_STYLE: ${art_style}`;
-    
+
     const response = await fetch('https://fal.run/fal-ai/veo3', {
       method: 'POST',
       headers: {
-        'Authorization': `Key ${process.env.FAL_KEY}`,
+        Authorization: `Key ${process.env.FAL_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         prompt: prompt,
         image_url: `data:image/png;base64,${imageBase64}`,
-        duration: 5,
+        duration: '8s',
         aspect_ratio: '16:9',
         num_inference_steps: 25,
         guidance_scale: 3.5,
@@ -111,12 +116,8 @@ async function generateVeo3Video(
     }
 
     logger.log(`Veo3 generated video, starting S3 upload`);
-    
-    const s3Key = await uploadVideoToS3(
-      result.video.url,
-      segmentId,
-      projectId,
-    );
+
+    const s3Key = await uploadVideoToS3(result.video.url, segmentId, projectId);
 
     logger.log(`Successfully uploaded Veo3 video to S3: ${s3Key}`);
 

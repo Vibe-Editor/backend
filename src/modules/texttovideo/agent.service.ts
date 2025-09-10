@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Agent, tool, run, RunState, RunResult } from '@openai/agents';
-import { z } from 'zod';
+import { Agent, tool, run } from '@openai/agents';
 import axios from 'axios';
 import { Subject, Observable } from 'rxjs';
+import { TextToVideoService } from './texttovideo.service';
 
 export interface ApprovalRequest {
   id: string;
@@ -33,14 +33,6 @@ interface ChatParams {
   userId: string;
 }
 
-interface ImageGenerationParams {
-  script: string;
-  art_style: string;
-  segmentId: string;
-  projectId: string;
-  userId: string;
-  model?: string;
-}
 
 interface SegmentationParams {
   prompt: string;
@@ -63,31 +55,8 @@ interface ConceptWriterParams {
   userId: string;
 }
 
-interface ImageGenerationReqParam {
-  id: string;
-  visual_prompt: string;
-  art_style: string;
-  projectId: string;
-}
 
-interface ImageGenerationParsedArgs {
-  segments: [];
-  art_style: string;
-  projectId: string;
-  model: string;
-}
 
-interface VideoParamSegment {
-  animation_prompt: string;
-  imageS3Key: string;
-  segmentId: string;
-}
-
-interface VideoGenerationParams {
-  segment: VideoParamSegment[];
-  projectId: string;
-  art_style: string;
-}
 
 @Injectable()
 export class AgentService {
@@ -96,12 +65,13 @@ export class AgentService {
   private approvalRequests = new Map<string, ApprovalRequest>();
   private activeStreams = new Map<string, Subject<StreamMessage>>();
 
+  constructor(private readonly textToVideoService: TextToVideoService) {}
+
   // Create chat tool with auth token
   private createChatTool(authToken?: string) {
     return tool({
       name: 'chat',
       description: 'Send a chat message to generate content',
-      // @ts-ignore
       parameters: {
         type: 'object',
         properties: {
@@ -149,34 +119,29 @@ export class AgentService {
     });
   }
 
-  // Video Generation Tool
-  private createVideoGenerationTool(authToken?: string) {
+  // Text-to-Video Generation Tool using Fal AI Veo3
+  private createTextToVideoTool(authToken?: string) {
     return tool({
       name: 'generate_video_with_approval',
       description:
-        'Generate a video after getting user approval for the animation prompt and image',
-      // @ts-ignore
+        'Generate a video directly from text prompts using Fal AI Veo3 model',
       parameters: {
         type: 'object',
         properties: {
           segments: {
             type: 'array',
             description:
-              'Array of segments with animation prompts and image data',
+              'Array of segments with text prompts for video generation',
             items: {
               type: 'object',
               properties: {
                 id: { type: 'string', description: 'Segment ID' },
-                animation_prompt: {
+                text_prompt: {
                   type: 'string',
-                  description: 'Animation prompt for the segment',
-                },
-                imageS3Key: {
-                  type: 'string',
-                  description: 'S3 key of the image to animate',
+                  description: 'Text prompt for video generation',
                 },
               },
-              required: ['id', 'animation_prompt', 'imageS3Key'],
+              required: ['id', 'text_prompt'],
               additionalProperties: false,
             },
           },
@@ -184,7 +149,8 @@ export class AgentService {
           projectId: { type: 'string', description: 'Project ID' },
           model: {
             type: 'string',
-            description: 'Model to use for video generation',
+            description: 'Model to use for video generation (fal-ai/veo3)',
+            default: 'fal-ai/veo3'
           },
           isRetry: {
             type: 'boolean',
@@ -217,89 +183,22 @@ export class AgentService {
       }) => {
         try {
           this.logger.log(
-            `➡️ [VIDEO] POST /video-gen model=${model} projectId=${projectId}`,
+            `➡️ [TEXT-TO-VIDEO] POST /texttovideo model=${model} projectId=${projectId}`,
           );
 
           return {
             success: true,
             data: '',
-            message: `Video generation complete`,
+            message: `Text-to-video generation complete`,
           };
         } catch (error) {
-          this.logger.error(`❌ [VIDEO] Error: ${error.message}`);
+          this.logger.error(`❌ [TEXT-TO-VIDEO] Error: ${error.message}`);
           throw new Error(`Failed to generate video: ${error.message}`);
         }
       },
     });
   }
 
-  // Create image generation tool with auth token
-  private createImageGenerationTool(authToken?: string) {
-    return tool({
-      name: 'generate_image_with_approval',
-      description:
-        'Generate an image after getting user approval for the script',
-      // @ts-ignore
-      parameters: {
-        type: 'object',
-        properties: {
-          script: { type: 'string', description: 'Image generation script' },
-          art_style: { type: 'string', description: 'Art style for the image' },
-          segmentId: { type: 'string', description: 'Segment ID' },
-          projectId: { type: 'string', description: 'Project ID' },
-          userId: { type: 'string', description: 'User ID' },
-          model: { type: 'string', description: 'Model to use' },
-        },
-        required: [
-          'script',
-          'art_style',
-          'segmentId',
-          'projectId',
-          'userId',
-          'model',
-        ],
-        additionalProperties: false,
-      },
-      needsApproval: true, // Always requires approval
-      execute: async ({
-        script,
-        art_style,
-        segmentId,
-        projectId,
-        userId,
-        model,
-      }: ImageGenerationParams) => {
-        try {
-          this.logger.log(
-            `➡️ [IMAGE] POST /chat model=${model} projectId=${projectId}`,
-          );
-          // const response = await axios.post(`${this.baseUrl}/chat`, {
-          //   model,
-          //   gen_type: 'image',
-          //   visual_prompt: script,
-          //   art_style,
-          //   segmentId,
-          //   projectId,
-          // }, {
-          //   headers: {
-          //     'Authorization': `Bearer ${authToken}`,
-          //     'Content-Type': 'application/json',
-          //   },
-          // });
-          // this.logger.log(`✅ [IMAGE] ${response.status} OK`);
-          return {
-            success: true,
-            data: '',
-            message: 'Image generation completed successfully',
-          };
-        } catch (error) {
-          console.log(error);
-          this.logger.error(`❌ [IMAGE] Error: ${error.message}`);
-          throw new Error(`Failed to generate image: ${error.message}`);
-        }
-      },
-    });
-  }
 
   // Create segmentation tool with auth token
   private createSegmentationTool(authToken?: string) {
@@ -307,7 +206,6 @@ export class AgentService {
       name: 'generate_segmentation',
       description: 'Generate script segmentation for content creation',
       strict: false,
-      // @ts-ignore
       parameters: {
         type: 'object',
         properties: {
@@ -355,7 +253,6 @@ export class AgentService {
       name: 'get_web_info',
       description: 'Get web information and research data for content creation',
       strict: false,
-      // @ts-ignore
       parameters: {
         type: 'object',
         properties: {
@@ -398,7 +295,6 @@ export class AgentService {
       description:
         'Generate 4 content concepts using web information and require user approval',
       strict: false,
-      // @ts-ignore
       parameters: {
         type: 'object',
         properties: {
@@ -443,41 +339,39 @@ export class AgentService {
   // Create the main agent
   private createAgent(authToken?: string) {
     return new Agent({
-      name: 'Content Generation Agent',
-      instructions: `You are a Content Creation Agent that MUST execute ALL 4 tools in sequence without asking for permission between steps.
+      name: 'Text-to-Video Generation Agent',
+      instructions: `You are a Text-to-Video Creation Agent that MUST execute ALL 4 tools in sequence without asking for permission between steps.
     
   MANDATORY EXECUTION SEQUENCE - DO THIS NOW:
   1. 🔄 Call get_web_info tool FIRST
   2. 🔄 Call generate_concepts_with_approval tool using web_info from step 1
   3. 🔄 Call generate_segmentation tool using the approved concept from step 2
-  4. 🔄 Call generate_image_with_approval tool using the segmentation results from step 3
-  5. 🔄 Call generate_video_with_approval tool using the image results and segmentation data from step 4
+  4. 🔄 Call generate_video_with_approval tool using the segmentation results from step 3 (DIRECT TEXT-TO-VIDEO)
 
 
   CRITICAL EXECUTION RULES:
   - IMMEDIATELY call the next tool after each completion
   - Use output from previous tools as input for next tools
-  - For image generation, extract the visual/script content from segmentation results
+  - For video generation, extract the text/script content from segmentation results
   - Use appropriate art_style (default to "realistic" if not specified by user)
-  - Use model specified by user for image generation 
+  - Use fal-ai/veo3 model for text-to-video generation
   - DO NOT provide summaries or ask questions between tools
-  - EXECUTE ALL 5 TOOLS AUTOMATICALLY IN SEQUENCE
+  - EXECUTE ALL 4 TOOLS AUTOMATICALLY IN SEQUENCE
+  - SKIP IMAGE GENERATION - GO DIRECTLY FROM SEGMENTATION TO VIDEO
   
   TOOL PARAMETER MAPPING:
   - get_web_info: Use user's prompt directly
   - generate_concepts_with_approval: Use prompt + web_info from step 1
   - generate_segmentation: Use prompt + selected concept from step 2
-  - generate_image_with_approval: Use script/visual content from segmentation + art_style + model
-  - generate_video_with_approval: Use segments with animation prompts + imageS3Key from image results + art_style + model
+  - generate_video_with_approval: Use segments with text prompts from segmentation + art_style + fal-ai/veo3 model
     `,
 
       tools: [
         this.createGetWebInfoTool(authToken),
         this.createConceptWriterTool(authToken),
         this.createChatTool(authToken),
-        this.createImageGenerationTool(authToken),
         this.createSegmentationTool(authToken),
-        this.createVideoGenerationTool(authToken),
+        this.createTextToVideoTool(authToken),
       ],
     });
   }
@@ -673,155 +567,6 @@ export class AgentService {
     try {
       const { toolName, arguments: args, authToken } = approvalRequest;
 
-      if (toolName === 'generate_image_with_approval') {
-        const parsedArgs = typeof args === 'string' ? JSON.parse(args) : args;
-        const {
-          segments,
-          art_style,
-          projectId,
-          model,
-          isRetry = false,
-          retrySegmentIds = [],
-        } = parsedArgs;
-
-        // console.log({ "segment": segments, "art_style": art_style, "projectId": projectId, "model": model, "is retry": isRetry, "restly id?": retrySegmentIds })
-        // Determine which segments to process
-
-        const segmentsToProcess = isRetry
-          ? segments.filter((seg) => retrySegmentIds.includes(seg.id))
-          : segments;
-
-        const totalSegments = segmentsToProcess.length;
-        const results = [];
-        let successCount = 0;
-        let failureCount = 0;
-
-        streamSubject.next({
-          type: 'log',
-          data: {
-            message: isRetry
-              ? `Retrying image generation for ${totalSegments} segments...`
-              : `Generating images for ${totalSegments} segments...`,
-          },
-          timestamp: new Date(),
-        });
-
-        if (!authToken) {
-          throw new Error(
-            'Authentication token is missing from approval request',
-          );
-        }
-
-        // Create all promises for parallel processing
-        const segmentPromises = segmentsToProcess.map((segment, index) => {
-          return axios
-            .post(
-              `${this.baseUrl}/chat`,
-              {
-                model,
-                gen_type: 'image',
-                visual_prompt: segment.visual,
-                art_style,
-                segmentId: segment.id,
-                projectId,
-              },
-              {
-                headers: {
-                  Authorization: `Bearer ${authToken}`,
-                  'Content-Type': 'application/json',
-                },
-              },
-            )
-            .then((response) => {
-              console.log('RESPONSE DATA IS HERE', response.data);
-
-              const result = {
-                segmentId: segment.id,
-                status: 'success',
-                imageData: response.data,
-              };
-
-              // Stream success immediately when this segment completes
-              streamSubject.next({
-                type: 'log',
-                data: {
-                  segmentId: segment.id,
-                  message: `✅ Segment ${segment.id} completed successfully`,
-                  ImageData: response.data,
-                },
-                timestamp: new Date(),
-              });
-
-              return result;
-            })
-            .catch((error) => {
-              console.log(error);
-              const result = {
-                segmentId: segment.id,
-                status: 'failed',
-                error: error.message,
-              };
-
-              // Stream failure immediately when this segment fails
-              streamSubject.next({
-                type: 'log',
-                data: {
-                  message: `❌ Segment ${segment.id} failed: ${error.message}`,
-                },
-                timestamp: new Date(),
-              });
-
-              this.logger.error(
-                `❌ [IMAGE] Segment ${segment.id} failed: ${error.message}`,
-              );
-              return result;
-            });
-        });
-
-        // Wait for all promises to complete and collect results
-        const settledResults = await Promise.allSettled(segmentPromises);
-
-        settledResults.forEach((settledResult) => {
-          if (settledResult.status === 'fulfilled') {
-            const result = settledResult.value;
-            results.push(result);
-
-            if (result.status === 'success') {
-              successCount++;
-            } else {
-              failureCount++;
-            }
-          } else {
-            // This shouldn't happen since we handle errors in the promise chain
-            // but just in case...
-            const result = {
-              segmentId: 'unknown',
-              status: 'failed',
-              error: settledResult.reason,
-            };
-            results.push(result);
-            failureCount++;
-          }
-        });
-
-        const finalMessage = `Image generation ${isRetry ? 'retry' : ''} completed: ${successCount} success, ${failureCount} failed`;
-
-        streamSubject.next({
-          type: 'log',
-          data: { message: finalMessage },
-          timestamp: new Date(),
-        });
-
-        return {
-          success: failureCount === 0,
-          totalSegments,
-          successCount,
-          failureCount,
-          results,
-          isRetry,
-          message: finalMessage,
-        };
-      }
 
       if (toolName === 'generate_video_with_approval') {
         const parsedArgs = typeof args === 'string' ? JSON.parse(args) : args;
@@ -829,12 +574,12 @@ export class AgentService {
           segments,
           art_style,
           projectId,
-          model,
+          model = 'fal-ai/veo3',
           isRetry = false,
           retrySegmentIds = [],
         } = parsedArgs;
 
-        console.log(segments, art_style, projectId);
+        console.log('Text-to-Video Generation:', segments, art_style, projectId, model);
 
         // Determine which segments to process
         const segmentsToProcess = isRetry
@@ -850,8 +595,8 @@ export class AgentService {
           type: 'log',
           data: {
             message: isRetry
-              ? `Retrying video generation for ${totalSegments} segments...`
-              : `Generating videos for ${totalSegments} segments...`,
+              ? `Retrying text-to-video generation for ${totalSegments} segments using ${model}...`
+              : `Generating videos directly from text for ${totalSegments} segments using ${model}...`,
           },
           timestamp: new Date(),
         });
@@ -866,30 +611,19 @@ export class AgentService {
           const segment = segmentsToProcess[i];
 
           try {
-            const response = await axios.post(
-              `${this.baseUrl}/chat`,
-              {
-                gen_type: 'video',
-                animation_prompt: segment.animation_prompt,
-                art_style: art_style,
-                model: model,
-                image_s3_key: segment.imageS3Key,
-                segmentId: segment.id,
-                projectId: projectId,
-              },
-              {
-                headers: {
-                  Authorization: `Bearer ${authToken}`,
-                  'Content-Type': 'application/json',
-                },
-              },
+            const videoResult = await this.textToVideoService.generateTextToVideo(
+              segment.id,
+              segment.text_prompt,
+              art_style,
+              projectId,
+              model,
             );
 
-            console.log('VIDEO RESPONSE DATA IS HERE', response.data);
+            console.log('TEXT-TO-VIDEO RESPONSE DATA:', videoResult);
             const result = {
               segmentId: segment.id,
               status: 'success',
-              videoData: response.data,
+              videoData: videoResult,
             };
 
             results.push(result);
@@ -900,8 +634,8 @@ export class AgentService {
               type: 'log',
               data: {
                 segmentId: segment.id,
-                message: `🎬 Segment ${segment.id} video completed successfully`,
-                VideoData: response.data,
+                message: `🎬 Segment ${segment.id} text-to-video completed successfully`,
+                VideoData: videoResult,
               },
               timestamp: new Date(),
             });
@@ -920,18 +654,18 @@ export class AgentService {
             streamSubject.next({
               type: 'log',
               data: {
-                message: `❌ Segment ${segment.id} video failed: ${error.message}`,
+                message: `❌ Segment ${segment.id} text-to-video failed: ${error.message}`,
               },
               timestamp: new Date(),
             });
 
             this.logger.error(
-              `❌ [VIDEO] Segment ${segment.id} failed: ${error.message}`,
+              `❌ [TEXT-TO-VIDEO] Segment ${segment.id} failed: ${error.message}`,
             );
           }
         }
 
-        const finalMessage = `Video generation ${isRetry ? 'retry' : ''} completed: ${successCount} success, ${failureCount} failed`;
+        const finalMessage = `Text-to-video generation ${isRetry ? 'retry' : ''} completed: ${successCount} success, ${failureCount} failed`;
 
         streamSubject.next({
           type: 'log',
