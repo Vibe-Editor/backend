@@ -61,6 +61,11 @@ model Project {
   generatedVideos      GeneratedVideo[]
   generatedVoiceovers  GeneratedVoiceover[]
   characterGenerations CharacterGeneration[]
+
+  completedSteps    String[] @default([]) // Replaces the projectStates map
+  userPrompts       String[] @default([]) // Stores all user prompts for this project
+
+
 }
 
 // Credit system models
