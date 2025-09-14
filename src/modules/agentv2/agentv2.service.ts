@@ -3,6 +3,8 @@ import { Agent, tool, run, RunState, RunResult, handoff } from '@openai/agents';
 import { z } from 'zod';
 import axios from 'axios';
 import { Subject, Observable } from 'rxjs';
+import { PrismaClient } from '../../../generated/prisma';
+
 
 export interface ApprovalRequest {
   id: string;
@@ -96,7 +98,7 @@ export class AgentServiceV2 {
   //  private readonly baseUrl = 'http://localhost:8080';
   private approvalRequests = new Map<string, ApprovalRequest>();
   private activeStreams = new Map<string, Subject<StreamMessage>>();
-  
+
   // State tracking
   private projectStates = new Map<string, string[]>(); // projectId -> completed steps array
 
@@ -108,35 +110,88 @@ export class AgentServiceV2 {
   private routerAgent: Agent;
   private segmentationAgent: Agent;
 
-  private getProjectStateMessage(projectId: string): string {
-    const completedSteps = this.projectStates.get(projectId) || [];
-    
+
+  private readonly prisma = new PrismaClient();
+
+
+  private async getProjectStateMessage(projectId: string): Promise<string> {
+    let completedSteps
+    try {
+      const project = await this.prisma.project.findUnique({
+        where: { id: projectId },
+        select: { completedSteps: true }
+      });
+
+      completedSteps = project?.completedSteps || [];
+
+    } catch (error) {
+
+      this.logger.error(`Failed to fetch project state for ${projectId}: ${error.message}`);
+
+    }
+
+
+    // const completedSteps = this.projectStates.get(projectId) || [];
+
     const hasConceptGeneration = completedSteps.includes('concept_generation');
     const hasSegmentation = completedSteps.includes('segmentation');
     const hasImageGeneration = completedSteps.includes('image_generation');
     const hasVideoGeneration = completedSteps.includes('video_generation');
 
     if (!hasConceptGeneration) {
-      return "STATE_MESSAGE: Project needs concept generation first. User cannot generate segments, images, or videos until concepts are created. kindly tell the user to generate those first!! If the user prompt asks for web search or anything research related then please call the websearch agent directly!!! Also if the user is asking for concept generation then allso please call concept generation tool immediately";
+      return "STATE_MESSAGE: Project needs concept generation first. User cannot generate segments, images, or videos until concepts are created. kindly tell the user to generate those first!! If the user prompt asks for web search or anything research related then please call the websearch agent directly!!! Also if the user is asking for concept generation then please call concept generation agent immediately";
     }
-    
-    if (!hasSegmentation) {
+
+    if (hasConceptGeneration && !hasSegmentation) {
       return "STATE_MESSAGE: Project has concepts but needs segmentation. User cannot generate images or videos until segments are created. so if user is demanding for images or video tell him he can't do that. If the user is asking of concept generation or segmentation generation then call the required tools";
     }
-    
-    
+
+
     return "STATE_MESSAGE: All steps completed. User can generate any content , please call the required tool/agent ";
   }
 
-  private updateProjectState(projectId: string, completedStep: string): void {
-    const currentSteps = this.projectStates.get(projectId) || [];
-    
-    if (!currentSteps.includes(completedStep)) {
-      currentSteps.push(completedStep);
-      this.projectStates.set(projectId, currentSteps);
-      this.logger.log(`📊 [STATE] Project ${projectId} completed step: ${completedStep}`);
+  private async updateProjectState(projectId: string, completedStep: string): Promise<void> {
+    try {
+      const project = await this.prisma.project.findUnique({
+        where: { id: projectId },
+        select: { completedSteps: true }
+      });
+
+      const currentSteps = project?.completedSteps || [];
+
+      if (!currentSteps.includes(completedStep)) {
+        await this.prisma.project.update({
+          where: { id: projectId },
+          data: {
+            completedSteps: {
+              push: completedStep
+            }
+          }
+        });
+
+        this.logger.log(`📊 [STATE] Project ${projectId} completed step: ${completedStep}`);
+      }
+    } catch (error) {
+      this.logger.error(`❌ [STATE] Failed to update project state: ${error.message}`);
     }
-  }  
+  }
+
+  private async storeUserPrompt(projectId: string, userPrompt: string): Promise<void> {
+  try {
+    await this.prisma.project.update({
+      where: { id: projectId },
+      data: {
+        userPrompts: {
+          push: userPrompt
+        }
+      }
+    });
+    
+    this.logger.log(`💬 [PROMPT] Stored user prompt for project ${projectId}`);
+  } catch (error) {
+    this.logger.error(`❌ [PROMPT] Failed to store user prompt: ${error.message}`);
+  }
+}
 
 
   // Create chat tool with auth token
@@ -525,7 +580,7 @@ CORE RESPONSIBILITIES:
 - Ensure concepts are culturally appropriate and contextually relevant
 
 WORKFLOW PROCESS:
-1. RESEARCH PHASE (if needed):
+1. RESEARCH PHASE:
    - Use get_web_info tool to gather background information
    - Research current trends, cultural context, and relevant examples
    - Understand the market landscape and audience expectations
@@ -544,7 +599,7 @@ CONCEPT QUALITY STANDARDS:
 - Clear narrative structure and compelling themes
 - Detailed enough for further development
 
-IMPORTANT: Always research first if you need background information, then generate concepts. Present concepts clearly with distinct creative directions for user selection.`,
+IMPORTANT: Always research first, then generate concepts. Present concepts clearly with distinct creative directions for user selection.`,
       tools: [
         this.createGetWebInfoTool(authToken),
         this.createConceptWriterTool(authToken)
@@ -672,14 +727,6 @@ IMPORTANT: Do not wait for images or segments to be provided upfront. Call the v
 
 ROUTING DECISION TREE:
 
-🔍 WEB RESEARCH AGENT (routeToWebResearch)
-Route when user wants:
-- Research, information gathering, data collection
-- Web searches, finding sources, latest trends
-- Market analysis, competitive research
-- Keywords: "research", "find info", "search", "lookup", "investigate", "data on", "information about", "trends", "statistics", "what's happening with", "latest news", "current state of"
-- Examples: "research AI trends", "find information about renewable energy", "what's the latest on cryptocurrency"
-
 💡 CONCEPT GENERATION AGENT (routeToConcept)  
 Route when user wants:
 - Creative concepts, brainstorming, idea generation
@@ -730,7 +777,7 @@ ROUTING EXAMPLES:
 - "Make me a video and some images about pizza" → routeToVideo (video takes priority)
 
 IMPORTANT: Look into the StateMessage and Route IMMEDIATELY upon receiving user input if statemessage agress with the tool call is requested in user prompt. Do not provide explanations or summaries - just route to the appropriate agent.`,
-      handoffs: [routeToWebResearch, routeToConcept, routeToSegmentation, routeToImage, routeToVideo]
+      handoffs: [routeToConcept, routeToSegmentation, routeToImage, routeToVideo]
     });
 
 
@@ -782,6 +829,9 @@ IMPORTANT: Look into the StateMessage and Route IMMEDIATELY upon receiving user 
   ) {
     try {
       this.logger.log(`🚀 [RUN] start userId=${userId} projectId=${projectId}`);
+
+      await this.storeUserPrompt(projectId || 'default', userInput);
+
       streamSubject.next({
         type: 'log',
         data: { message: 'Starting agent run...' },
@@ -793,10 +843,14 @@ IMPORTANT: Look into the StateMessage and Route IMMEDIATELY upon receiving user 
 
       const agent = this.routerAgent;
 
-      const stateMessage = this.getProjectStateMessage(projectId || 'default');
+      const stateMessage = await this.getProjectStateMessage(projectId || 'default');
+
+      console.log(this.projectStates)
 
       // Add user context to the input (don't include auth token - it's handled internally)
       const contextualInput = `${userInput}\n  stateMessage: ${stateMessage} \n\nUser ID: ${userId}\nSegment ID: ${segmentId || 'default'}\nProject ID: ${projectId || 'default'}`;
+
+      console.log(contextualInput)
 
       streamSubject.next({
         type: 'log',
