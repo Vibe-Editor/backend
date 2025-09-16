@@ -32,7 +32,13 @@ export const createVeo2Agent = () =>
           segmentId: z.string(),
           projectId: z.string(),
         }) as any,
-        execute: async ({ animation_prompt, art_style, imageS3Key, segmentId, projectId }) => {
+        execute: async ({
+          animation_prompt,
+          art_style,
+          imageS3Key,
+          segmentId,
+          projectId,
+        }) => {
           return await generateVeo2Video(
             animation_prompt,
             art_style,
@@ -144,12 +150,12 @@ async function generateVeo2Video(
             `Successfully uploaded Veo2 video ${i + 1} to S3: ${s3Key}`,
           );
         } catch (error) {
-                      logger.error(`Failed to upload Veo2 video ${i + 1}:`, {
-              error: error.message,
-              stack: error.stack,
-              uri,
-              segmentId,
-            });
+          logger.error(`Failed to upload Veo2 video ${i + 1}:`, {
+            error: error.message,
+            stack: error.stack,
+            uri,
+            segmentId,
+          });
         }
       } else {
         logger.warn(`Video ${i + 1} has no URI:`, videos[i]);

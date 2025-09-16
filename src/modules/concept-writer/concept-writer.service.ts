@@ -1,8 +1,10 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConceptWriterDto } from './dto/concept-writer.dto';
 import { GoogleGenAI } from '@google/genai';
+import OpenAI from 'openai';
 import { GeneratedResponse } from './concept-writer.interface';
 import { ProjectHelperService } from '../../common/services/project-helper.service';
+import { SummariesService } from '../summaries/summaries.service';
 import { PrismaClient } from '../../../generated/prisma';
 import { Decimal } from '@prisma/client/runtime/library';
 import { CreditService } from '../credits/credit.service';
@@ -10,17 +12,23 @@ import { CreditService } from '../credits/credit.service';
 @Injectable()
 export class ConceptWriterService {
   private gemini: GoogleGenAI;
+  private openai: OpenAI;
   private readonly logger = new Logger(ConceptWriterService.name);
   private readonly prisma = new PrismaClient();
 
   constructor(
     private readonly projectHelperService: ProjectHelperService,
+    private readonly summaryService: SummariesService,
     private readonly creditService: CreditService,
   ) {
     if (!process.env.GEMINI_API_KEY) {
       throw new Error('GEMINI_API_KEY environment variable not set.');
     }
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error('OPENAI_API_KEY environment variable not set.');
+    }
     this.gemini = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    this.openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   }
 
   async getConcept(
@@ -28,8 +36,15 @@ export class ConceptWriterService {
     userId: string,
   ): Promise<GeneratedResponse> {
     // Use projectId from body - no fallback project creation logic
-    const { prompt, web_info, projectId } = conceptWriterDto;
-    this.logger.log(`Using project ${projectId} for concept generation`);
+    const {
+      prompt,
+      web_info,
+      projectId,
+      model = 'gpt-5',
+    } = conceptWriterDto;
+    this.logger.log(
+      `Using project ${projectId} for concept generation with model: ${model}`,
+    );
 
     const systemPrompt = `Generate 3-4 creative video concept ideas based on this prompt: "${prompt}"
 
@@ -76,42 +91,31 @@ export class ConceptWriterService {
         `Successfully deducted credits for concept generation. Transaction ID: ${creditTransactionId}`,
       );
       // ===== END CREDIT DEDUCTION =====
-      const result = await this.gemini.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: systemPrompt,
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: 'object',
-            properties: {
-              concepts: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: {
-                    title: { type: 'string' },
-                    concept: { type: 'string' },
-                    tone: { type: 'string' },
-                    goal: { type: 'string' },
-                  },
-                  required: ['title', 'concept', 'tone', 'goal'],
-                },
-              },
-            },
-            required: ['concepts'],
-          },
-        },
-      });
+      let result: any;
 
-      let text = result.text.trim();
+      switch (model) {
+        case 'gemini-flash':
+          result = await this.generateWithGeminiFlash(systemPrompt);
+          break;
+        case 'gemini-pro':
+          result = await this.generateWithGeminiPro(systemPrompt);
+          break;
+        case 'gpt-5':
+          result = await this.generateWithGPT5(systemPrompt);
+          break;
+        default:
+          throw new Error(`Unsupported model: ${model}`);
+      }
+
+      let text = (result as any).text.trim();
 
       // Try to find JSON in the response
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      const jsonMatch = (text as string).match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
         throw new Error('No JSON object found in the response');
       }
 
-      text = jsonMatch[0];
+      text = jsonMatch[0] as string;
 
       try {
         const parsed = JSON.parse(text) as GeneratedResponse;
@@ -138,6 +142,21 @@ export class ConceptWriterService {
 
         const savedConcepts = await Promise.all(
           parsed.concepts.map(async (concept) => {
+            // Generate summary for the concept
+            let conceptSummary: string | null = null;
+            try {
+              const conceptContent = `Title: ${concept.title}\nConcept: ${concept.concept}\nTone: ${concept.tone}\nGoal: ${concept.goal}`;
+              conceptSummary = await this.summaryService.generateSummary({
+                content: conceptContent,
+                contentType: 'concept',
+                projectId,
+              }, userId);
+              this.logger.log(`Generated summary for concept: ${concept.title}`);
+            } catch (summaryError) {
+              this.logger.warn(`Failed to generate summary for concept ${concept.title}: ${(summaryError as Error).message}`);
+              // Continue without summary - don't fail the entire operation
+            }
+
             const savedConcept = await this.prisma.videoConcept.create({
               data: {
                 prompt,
@@ -146,6 +165,7 @@ export class ConceptWriterService {
                 concept: concept.concept,
                 tone: concept.tone,
                 goal: concept.goal,
+                summary: conceptSummary, 
                 projectId,
                 userId,
                 // Add credit tracking
@@ -183,10 +203,16 @@ export class ConceptWriterService {
         // Get user's new balance after credit deduction
         const newBalance = await this.creditService.getUserBalance(userId);
 
+        // Build response with summaries included
+        const conceptsWithSummaries = parsed.concepts.map((concept, index) => ({
+          ...concept,
+          summary: savedConcepts[index]?.summary || null,
+        }));
+
         return {
           input: prompt,
           system_prompt: systemPrompt,
-          ...parsed,
+          concepts: conceptsWithSummaries,
           credits: {
             used: 1, // Fixed 1 credit for concept generation
             balance: newBalance.toNumber(),
@@ -195,10 +221,10 @@ export class ConceptWriterService {
       } catch (parseError) {
         this.logger.error(`JSON parsing error: ${parseError.message}`);
         this.logger.error(`Attempted to parse: ${text}`);
-        throw new Error(`Invalid JSON response: ${parseError.message}`);
+        throw new Error(`Invalid JSON response: ${(parseError as Error).message}`);
       }
     } catch (error) {
-      this.logger.error(`Failed to generate concepts: ${error.message}`);
+      this.logger.error(`Failed to generate concepts: ${(error as Error).message}`);
 
       // Refund credits if deduction was successful
       if (creditTransactionId) {
@@ -210,19 +236,19 @@ export class ConceptWriterService {
             `concept-gen-${Date.now()}`,
             creditTransactionId,
             false,
-            `Refund for failed concept generation: ${error.message}`,
+            `Refund for failed concept generation: ${(error as Error).message}`,
           );
           this.logger.log(
             `Successfully refunded 1 credit for failed concept generation. User: ${userId}`,
           );
         } catch (refundError) {
           this.logger.error(
-            `Failed to refund credits for concept generation: ${refundError.message}`,
+            `Failed to refund credits for concept generation: ${(refundError as Error).message}`,
           );
         }
       }
 
-      throw new Error(`Failed to generate concepts: ${error.message}`);
+      throw new Error(`Failed to generate concepts: ${(error as Error).message}`);
     }
   }
 
@@ -263,8 +289,8 @@ export class ConceptWriterService {
         concepts,
       };
     } catch (error) {
-      this.logger.error(`Failed to retrieve concepts: ${error.message}`);
-      throw new Error(`Failed to retrieve concepts: ${error.message}`);
+      this.logger.error(`Failed to retrieve concepts: ${(error as Error).message}`);
+      throw new Error(`Failed to retrieve concepts: ${(error as Error).message}`);
     }
   }
 
@@ -302,12 +328,12 @@ export class ConceptWriterService {
       };
     } catch (error) {
       this.logger.error(
-        `Failed to retrieve concept ${conceptId}: ${error.message}`,
+        `Failed to retrieve concept ${conceptId}: ${(error as Error).message}`,
       );
       if (error instanceof NotFoundException) {
         throw error;
       }
-      throw new Error(`Failed to retrieve concept: ${error.message}`);
+      throw new Error(`Failed to retrieve concept: ${(error as Error).message}`);
     }
   }
 
@@ -390,12 +416,89 @@ export class ConceptWriterService {
       };
     } catch (error) {
       this.logger.error(
-        `Failed to update concept ${conceptId}: ${error.message}`,
+        `Failed to update concept ${conceptId}: ${(error as Error).message}`,
       );
       if (error instanceof NotFoundException) {
         throw error;
       }
-      throw new Error(`Failed to update concept: ${error.message}`);
+      throw new Error(`Failed to update concept: ${(error as Error).message}`);
     }
+  }
+
+  private async generateWithGeminiFlash(systemPrompt: string) {
+    return await this.gemini.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: systemPrompt,
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: 'object',
+          properties: {
+            concepts: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  title: { type: 'string' },
+                  concept: { type: 'string' },
+                  tone: { type: 'string' },
+                  goal: { type: 'string' },
+                },
+                required: ['title', 'concept', 'tone', 'goal'],
+              },
+            },
+          },
+          required: ['concepts'],
+        },
+      },
+    });
+  }
+
+  private async generateWithGeminiPro(systemPrompt: string) {
+    return await this.gemini.models.generateContent({
+      model: 'gemini-2.5-pro',
+      contents: systemPrompt,
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: 'object',
+          properties: {
+            concepts: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  title: { type: 'string' },
+                  concept: { type: 'string' },
+                  tone: { type: 'string' },
+                  goal: { type: 'string' },
+                },
+                required: ['title', 'concept', 'tone', 'goal'],
+              },
+            },
+          },
+          required: ['concepts'],
+        },
+      },
+    });
+  }
+
+  private async generateWithGPT5(systemPrompt: string) {
+    const response = await this.openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        {
+          role: 'system',
+          content: systemPrompt,
+        },
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.7,
+      max_tokens: 2000,
+    });
+
+    return {
+      text: response.choices[0]?.message?.content || '{}',
+    };
   }
 }

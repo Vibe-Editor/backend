@@ -8,6 +8,7 @@ import {
   ParseIntPipe,
   UseGuards,
 } from '@nestjs/common';
+import { Public } from '../../common/decorators/public.decorator';
 import { CreditService } from './credit.service';
 import { CreditTransactionType } from '../../../generated/prisma';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -166,15 +167,140 @@ export class CreditController {
   }
 
   /**
-   * Get current pricing information
+   * Get current pricing information (public endpoint)
    */
   @Get('pricing')
+  @Public()
   getPricing() {
     const pricing = this.creditService.getPricingInfo();
     return {
       pricing,
       message: 'Pricing information retrieved successfully',
     };
+  }
+
+  /**
+   * Add credits to user by email (public endpoint)
+   */
+  @Get('add-credits/:email/:amount')
+  @Public()
+  async addCreditsByEmail(
+    @Param('email') email: string,
+    @Param('amount', ParseIntPipe) amount: number,
+  ) {
+    try {
+      // Find user by email
+      const user = await this.creditService.findUserByEmail(email);
+
+      if (!user) {
+        return {
+          success: false,
+          message: `User with email ${email} not found`,
+        };
+      }
+
+      // Add credits to the user
+      const transactionId = await this.creditService.addCredits(
+        user.id,
+        amount,
+        CreditTransactionType.PURCHASE,
+        `Credits added via public API for ${email}`,
+      );
+
+      // Get new balance
+      const newBalance = await this.creditService.getUserBalance(user.id);
+
+      return {
+        success: true,
+        transactionId,
+        email: user.email,
+        creditsAdded: amount,
+        newBalance: newBalance.toNumber(),
+        message: `Successfully added ${amount} credits to ${email}`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: `Failed to add credits: ${error.message}`,
+      };
+    }
+  }
+
+  /**
+   * Get credits balance by email (public endpoint)
+   */
+  @Get('credits-by-email/:email')
+  @Public()
+  async getCreditsByEmail(@Param('email') email: string) {
+    try {
+      // Find user by email
+      const user = await this.creditService.findUserByEmail(email);
+
+      if (!user) {
+        return {
+          success: false,
+          message: `User with email ${email} not found`,
+        };
+      }
+
+      // Get user's credit balance
+      const balance = await this.creditService.getUserBalance(user.id);
+
+      return {
+        success: true,
+        email: user.email,
+        name: user.name,
+        credits: balance.toNumber(),
+        message: `Credits balance retrieved successfully for ${email}`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: `Failed to get credits balance: ${error.message}`,
+      };
+    }
+  }
+
+  /**
+   * Get credits balance by email via query parameter (public endpoint for frontend)
+   */
+  @Get('api/get-credits')
+  @Public()
+  async getCreditsByEmailQuery(@Query('email') email: string) {
+    try {
+      if (!email) {
+        return {
+          success: false,
+          message: 'Email parameter is required',
+        };
+      }
+
+      // Find user by email
+      const user = await this.creditService.findUserByEmail(email);
+
+      if (!user) {
+        return {
+          success: false,
+          message: `User with email ${email} not found`,
+        };
+      }
+
+      // Get user's credit balance
+      const balance = await this.creditService.getUserBalance(user.id);
+
+      return {
+        success: true,
+        email: user.email,
+        name: user.name,
+        credits: balance.toNumber(),
+        message: `Credits balance retrieved successfully for ${email}`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: `Failed to get credits balance: ${error.message}`,
+      };
+    }
   }
 
   /**

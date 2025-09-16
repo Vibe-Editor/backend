@@ -3,6 +3,7 @@ export interface TypeConcept {
   concept: string;
   tone: string;
   goal: string;
+  summary?: string; // AI-generated summary
 }
 
 export interface GeneratedResponse {

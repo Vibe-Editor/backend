@@ -3,6 +3,7 @@
 **Important**: All image-gen endpoints now require a valid `projectId` in the request body. These endpoints will not work without providing a correct project ID.
 
 - `POST /image-gen` - Generate images using AI model handoff (Recraft AI or Google Imagen)
+
   - **Requires**: JWT Authentication
   - **Features**: Intelligent model selection based on content type (realistic vs artistic/text-based)
   - **Models**: Recraft AI for realistic images, Google Imagen for artistic/text content
@@ -39,6 +40,7 @@
   ```
 
 - `GET /image-gen` - Get all generated images
+
   - **Requires**: JWT Authentication
   - **Query Parameters**:
     - `id` (optional): Get specific image by ID
@@ -46,6 +48,7 @@
   - **Returns**: Array of all user's generated images
 
 - `PATCH /image-gen/:id` - Update a specific generated image
+
   - **Requires**: JWT Authentication
   - **URL Parameter**: `id` - The image ID to update
   - **Body Parameters**:

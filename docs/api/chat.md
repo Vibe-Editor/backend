@@ -1,6 +1,6 @@
 # Chat API
 
-The Chat API provides a unified interface for generating images and videos using various AI models. It supports both image generation (using Recraft and Imagen models) and video generation (using Kling and RunwayML models).
+The Chat API provides a unified interface for generating images and videos using various AI models. It supports both image generation (using Recraft and Imagen models) and video generation (using Kling, RunwayML, Veo2, and Veo3 models with automatic model selection).
 
 ## Base URL
 
@@ -40,7 +40,7 @@ This endpoint allows users to generate images or videos based on prompts and art
 
 | Parameter          | Type   | Required    | Description                                     | Validation                                                                |
 | ------------------ | ------ | ----------- | ----------------------------------------------- | ------------------------------------------------------------------------- |
-| `model`            | string | Yes         | The AI model to use for generation              | Must be one of: `recraft-v3`, `imagen`, `kling-v2.1-master`, `gen4_turbo` |
+| `model`            | string | Yes         | The AI model to use for generation              | Must be one of: `recraft-v3`, `imagen`, `kling-v2.1-master`, `gen4_turbo`, `veo3` |
 | `gen_type`         | string | Yes         | Type of generation                              | Must be either `image` or `video`                                         |
 | `uuid`             | string | Yes         | Unique identifier for the user                  | Non-empty string                                                          |
 | `visual_prompt`    | string | Conditional | Text description for image generation           | Required when `gen_type` is `image`                                       |
@@ -115,10 +115,11 @@ The chat endpoint now deducts credits based on the model used:
 
 ### Video Generation Credits
 
-| Model               | Credits Required |
-| ------------------- | ---------------- |
-| `kling-v2.1-master` | 20 credits       |
-| `gen4_turbo`        | 2.5 credits      |
+| Model               | Credits Required | Description |
+| ------------------- | ---------------- | ----------- |
+| `veo3`              | 37.5 credits     | Direct Veo3 model |
+| `kling-v2.1-master` | 20 credits       | Direct Kling model |
+| `gen4_turbo`        | 2.5 credits      | Direct RunwayML model |
 
 **Note**: Credits are deducted before generation begins. If generation fails, the credits are still consumed but the failure is recorded in the database.
 
@@ -133,10 +134,11 @@ The chat endpoint now deducts credits based on the model used:
 
 ### Video Generation Models
 
-| Model               | Provider | Description               | Duration  | Resolution |
-| ------------------- | -------- | ------------------------- | --------- | ---------- |
-| `kling-v2.1-master` | Fal.ai   | Image-to-video generation | 5 seconds | Variable   |
-| `gen4_turbo`        | RunwayML | Advanced video generation | 5 seconds | 1280:720   |
+| Model               | Provider | Description               | Duration  | Resolution | Credits |
+| ------------------- | -------- | ------------------------- | --------- | ---------- | ------- |
+| `veo3`              | Fal.ai   | Ultra-high quality professional | 5 seconds | Variable   | 37.5     |
+| `kling-v2.1-master` | Fal.ai   | Image-to-video generation | 5 seconds | Variable   | 20       |
+| `gen4_turbo`        | RunwayML | Advanced video generation | 5 seconds | 1280:720   | 2.5      |
 
 ## Examples
 
@@ -172,7 +174,39 @@ curl -X POST http://localhost:3000/chat \
 }
 ```
 
-### Video Generation Example
+### Veo3 Video Generation Example
+
+**Request:**
+
+```bash
+curl -X POST http://localhost:3000/chat \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{
+    "model": "veo3",
+    "gen_type": "video",
+    "uuid": "user-123",
+    "animation_prompt": "A professional cinematic scene with smooth camera movement, high-quality lighting, and detailed motion for commercial use",
+    "image_s3_key": "user-123/images/abc123-def456.png",
+    "art_style": "cinematic, professional, high-quality",
+    "projectId": "project-456"
+  }'
+```
+
+**Response:**
+
+```json
+{
+  "s3_key": "user-123/videos/xyz789-uvw012.mp4",
+  "model": "veo3",
+  "credits": {
+    "used": 37.5,
+    "balance": 62.5
+  }
+}
+```
+
+### Kling Video Generation Example
 
 **Request:**
 

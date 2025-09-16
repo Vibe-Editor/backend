@@ -10,6 +10,7 @@ import { SegmentationDto } from './dto/segmentation.dto';
 import { TypeSegment } from './segment.interface';
 import OpenAI from 'openai';
 import { ProjectHelperService } from '../../common/services/project-helper.service';
+import { SummariesService } from '../summaries/summaries.service';
 import { PrismaClient } from '../../../generated/prisma';
 import { Decimal } from '@prisma/client/runtime/library';
 import { CreditService } from '../credits/credit.service';
@@ -22,6 +23,7 @@ export class SegmentationService {
 
   constructor(
     private readonly projectHelperService: ProjectHelperService,
+    private readonly summaryService: SummariesService,
     private readonly creditService: CreditService,
   ) {
     if (!process.env.GEMINI_API_KEY) {
@@ -50,27 +52,26 @@ export class SegmentationService {
   }> {
     const { narrationPrompt, visualPrompt, animationPrompt, model } = options;
 
-    const [animationRes, narrationRes, artStyleRes] =
-      await Promise.all([
-        this.genAI.models.generateContent({
-          model,
-          contents: animationPrompt,
-        }),
-        this.genAI.models.generateContent({
-          model,
-          contents: narrationPrompt,
-        }),
-        this.genAI.models.generateContent({
-          model,
-          contents: `VISUAL PROMPT: ${visualPrompt} \n ANIMATION PROMPT: ${animationPrompt}. \n Your task is to generate a art style prompt using the visual prompt and animation prompt. This is to maintain consistency in the visual and animation style. If there's a person involved in the visual, make sure to mention the looks of the person in the art style prompt.
+    const [animationRes, narrationRes, artStyleRes] = await Promise.all([
+      this.genAI.models.generateContent({
+        model,
+        contents: animationPrompt,
+      }),
+      this.genAI.models.generateContent({
+        model,
+        contents: narrationPrompt,
+      }),
+      this.genAI.models.generateContent({
+        model,
+        contents: `VISUAL PROMPT: ${visualPrompt} \n ANIMATION PROMPT: ${animationPrompt}. \n Your task is to generate a art style prompt using the visual prompt and animation prompt. This is to maintain consistency in the visual and animation style. If there's a person involved in the visual, make sure to mention the looks of the person in the art style prompt.
         
         Example Style Prompt for a face wash ad that is minimal:
         showcase the natural and alovera related positives of the face wash product using minimalistic branding and light colors. The face wash has a white colour pack and consists of a skin enhancing lotion made o alovera and natural ingrideints. Use water and fluid elements to portray freshness.
 
         Keep this style prompt as short as possible. Must be within 300 characters.
         `,
-        }),
-      ]);
+      }),
+    ]);
 
     const animation = animationRes.text?.trim();
     const narration = narrationRes.text?.trim();
@@ -104,7 +105,14 @@ export class SegmentationService {
     negativePrompt: string;
     model: string;
   }): Promise<string> {
-    const { animationPrompt, userPrompt, artStyle, concept, negativePrompt, model } = options;
+    const {
+      animationPrompt,
+      userPrompt,
+      artStyle,
+      concept,
+      negativePrompt,
+      model,
+    } = options;
 
     try {
       const response = await this.genAI.models.generateContent({
@@ -168,7 +176,10 @@ Generate the visual prompt:`,
 
       return visualScript;
     } catch (error) {
-      console.error('Error generating visual script with Director Brain:', error);
+      console.error(
+        'Error generating visual script with Director Brain:',
+        error,
+      );
       throw new HttpException(
         'Failed to generate visual script with Director Brain model.',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -188,34 +199,39 @@ Generate the visual prompt:`,
     animation: string;
     artStyle: string;
   }> {
-    const { narrationPrompt, visualPrompt, animationPrompt, concept, negativePrompt } = options;
+    const {
+      narrationPrompt,
+      visualPrompt,
+      animationPrompt,
+      concept,
+      negativePrompt,
+    } = options;
 
-    const [animationRes, narrationRes, artStyleRes] =
-      await Promise.all([
-        this.openai.chat.completions.create({
-          model: 'gpt-4o',
-          messages: [{ role: 'user', content: animationPrompt }],
-        }),
-        this.openai.chat.completions.create({
-          model: 'gpt-4o',
-          messages: [{ role: 'user', content: narrationPrompt }],
-        }),
-        this.openai.chat.completions.create({
-          model: 'gpt-4o',
-          messages: [
-            {
-              role: 'user',
-              content: `VISUAL PROMPT: ${visualPrompt} \n ANIMATION PROMPT: ${animationPrompt}. \n Your task is to generate a art style prompt using the visual prompt and animation prompt. This is to maintain consistency in the visual and animation style. If there's a person involved in the visual, make sure to mention the looks of the person in the art style prompt.
+    const [animationRes, narrationRes, artStyleRes] = await Promise.all([
+      this.openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: animationPrompt }],
+      }),
+      this.openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: narrationPrompt }],
+      }),
+      this.openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
+          {
+            role: 'user',
+            content: `VISUAL PROMPT: ${visualPrompt} \n ANIMATION PROMPT: ${animationPrompt}. \n Your task is to generate a art style prompt using the visual prompt and animation prompt. This is to maintain consistency in the visual and animation style. If there's a person involved in the visual, make sure to mention the looks of the person in the art style prompt.
         
         Example Style Prompt for a face wash ad that is minimal:
         showcase the natural and alovera related positives of the face wash product using minimalistic branding and light colors. The face wash has a white colour pack and consists of a skin enhancing lotion made o alovera and natural ingrideints. Use water and fluid elements to portray freshness.
 
         Keep this style prompt as short as possible. Must be within 300 characters.
         `,
-            },
-          ],
-        }),
-      ]);
+          },
+        ],
+      }),
+    ]);
 
     const animation = animationRes.choices[0]?.message?.content?.trim();
     const narration = narrationRes.choices[0]?.message?.content?.trim();
@@ -239,6 +255,22 @@ Generate the visual prompt:`,
     });
 
     return { narration, visual, animation, artStyle };
+  }
+
+  private async generateScriptWithGPT5(options: {
+    narrationPrompt: string;
+    visualPrompt: string;
+    animationPrompt: string;
+    concept: string;
+    negativePrompt: string;
+  }): Promise<{
+    narration: string;
+    visual: string;
+    animation: string;
+    artStyle: string;
+  }> {
+    // Use the same structure as generateScriptWithOpenAI but with better error handling
+    return await this.generateScriptWithOpenAI(options);
   }
 
   private async segmentGeneratedScript(script: {
@@ -271,10 +303,17 @@ Generate the visual prompt:`,
 
       const narrationAddendum = `
       IMPORTANT (for narration scripts):
-      Each segment must contain only what the narrator will say aloud. 
-      Do NOT describe visuals, camera shots, or sound design. 
-      Do NOT include instructions, scene setting, or internal monologue. 
-      Only generate spoken lines that match the tone of the style (e.g. professional for ads, intense for hype).
+      Each segment must contain only what the narrator will say aloud with ElevenLabs v3 emotion embeddings.
+      PRESERVE the emotion embedding format: [emotion] text content
+      Do NOT describe visuals, camera shots, or sound design.
+      Do NOT include instructions, scene setting, or internal monologue.
+      Each segment should be approximately 5 seconds of speech (15-20 words) with emotion tag.
+      Maintain the emotion embedding format exactly as provided in the original script.
+      
+      EXAMPLES of correct segmentation:
+      - [excited] Get ready to discover something that will completely transform the way you think about innovation!
+      - [confident] This groundbreaking technology represents years of research and development, bringing you unprecedented capabilities.
+      - [whisper] But there's something even more extraordinary waiting to be revealed in the next chapter.
       `;
 
       const visualAddendum = `
@@ -292,6 +331,7 @@ Generate the visual prompt:`,
       Each segment should describe motion and transitions for one continuous shot.
       Avoid visual summaries or multiple scene ideas per segment.
       Only describe how the camera moves, how things animate, and what's happening dynamically on screen.
+      Responsd with all the prompts in json format.
       `;
 
       let prompt = base;
@@ -307,6 +347,13 @@ Generate the visual prompt:`,
       ---
       `;
     };
+
+    console.log('Starting segmentation with model:', script.model || 'gemini-2.5-flash');
+    console.log('Script lengths:', {
+      narration: script.narration?.length || 0,
+      visual: script.visual?.length || 0,
+      animation: script.animation?.length || 0
+    });
 
     const [animationSegRes, narrationSegRes, visualSegRes] = await Promise.all([
       await this.genAI.models.generateContent({
@@ -405,6 +452,7 @@ Generate the visual prompt:`,
     userId: string,
   ): Promise<{
     segments: TypeSegment[];
+    summary: string | null; // Combined summary for all segments
     artStyle: string;
     model: string;
     credits: {
@@ -422,7 +470,7 @@ Generate the visual prompt:`,
     console.log(`Deducting credits for script segmentation`);
 
     // Deduct credits first - this handles validation internally
-    let creditTransactionId = await this.creditService.deductCredits(
+    const creditTransactionId = await this.creditService.deductCredits(
       userId,
       'TEXT_OPERATIONS',
       'segmentation',
@@ -436,9 +484,8 @@ Generate the visual prompt:`,
     );
     // ===== END CREDIT DEDUCTION =====
 
-    // Determine Gemini model variant (default to flash if not provided)
-    const selectedModel = segmentationDto.model || 'flash';
-
+    // Determine model variant (default to gpt-5 if not provided)
+    const selectedModel = segmentationDto.model || 'gpt-5';
 
     // Determine Gemini model variant based on user input (default to pro)
     const geminiModel =
@@ -446,11 +493,8 @@ Generate the visual prompt:`,
         ? 'gemini-2.5-flash'
         : 'gemini-2.5-pro-preview-06-05';
 
-
     try {
-
       try {
-
         let script: {
           narration: string;
           visual: string;
@@ -466,7 +510,67 @@ Generate the visual prompt:`,
         if (selectedModel === 'flash') {
           script = await this.generateScriptWithGemini({
             animationPrompt: `Create an animation sequence for a video about: "${segmentationDto.prompt}". The animation should be engaging and well-paced. Structure the animation into exactly 5 parts that flow naturally. Include specific animation cues and transitions. Focus on the animation flow and visual storytelling.`,
-            narrationPrompt: `Write a voiceover script for a video about: "${segmentationDto.prompt}". The script should be engaging, clear, and well-structured. Structure the script into exactly 5 distinct segments. Each segment should be standalone and flow naturally into the next. Focus on clear, compelling narration.`,
+            narrationPrompt: `Write a voiceover script for a 25-second video about: "${segmentationDto.prompt}". 
+
+CRITICAL REQUIREMENTS:
+- Each segment must be exactly 5 seconds of spoken content (approximately 15-20 words per segment)
+- Use ElevenLabs v3 emotion embedding format: [emotion] text content
+- Structure into exactly 5 distinct segments (5 seconds each)
+- Each segment should be a complete thought or compelling narrative phrase
+
+EMOTION EMBEDDING FORMAT:
+Use these emotion tags before the text: [angry], [whisper], [sad], [happy], [excited], [calm], [dramatic], [mysterious], [confident], [surprised], [thoughtful], [urgent], [cheerful], [serious], [playful], [intense], [gentle], [bold], [nervous], [proud], [curious], [determined], [relaxed], [energetic], [compassionate], [authoritative], [dreamy], [fierce], [hopeful], [melancholic], [optimistic], [passionate], [rebellious], [sarcastic], [tender], [triumphant], [vulnerable], [witty], [zealous]
+
+EXAMPLES:
+Segment 1: [excited] Get ready to discover something that will completely transform the way you think about innovation!
+Segment 2: [confident] This groundbreaking technology represents years of research and development, bringing you unprecedented capabilities.
+Segment 3: [dramatic] The moment has finally arrived when dreams become reality and possibilities become limitless.
+Segment 4: [whisper] But there's something even more extraordinary waiting to be revealed in the next chapter.
+Segment 5: [triumphant] Welcome to the future - where your imagination is the only boundary to what's possible!
+
+TIMING GUIDELINES:
+- Total script duration: exactly 25 seconds
+- Each segment: 5 seconds (15-20 words maximum)
+- Choose emotions that match the content and create engaging progression
+- Ensure smooth emotional flow between segments
+- Create compelling narrative arc across all segments
+
+Focus on creating impactful, emotion-driven narration that works perfectly with ElevenLabs v3 voice synthesis.`,
+            visualPrompt: `Generate a visual concept for a video about: "${segmentationDto.prompt}". Create descriptions for 5 distinct visual segments, each representing a single, cohesive image concept. Each image should be visually compelling and support the overall narrative. Focus on visual composition and storytelling.`,
+            concept: concept,
+            negativePrompt: segmentationDto.negative_prompt,
+            model: geminiModel,
+          });
+          modelUsed = 'gemini-2.5-flash';
+        } else if (selectedModel === 'pro') {
+          script = await this.generateScriptWithGemini({
+            animationPrompt: `Create an animation sequence for a video about: "${segmentationDto.prompt}". The animation should be engaging and well-paced. Structure the animation into exactly 5 parts that flow naturally. Include specific animation cues and transitions. Focus on the animation flow and visual storytelling.`,
+            narrationPrompt: `Write a voiceover script for a 25-second video about: "${segmentationDto.prompt}". 
+
+CRITICAL REQUIREMENTS:
+- Each segment must be exactly 5 seconds of spoken content (approximately 15-20 words per segment)
+- Use ElevenLabs v3 emotion embedding format: [emotion] text content
+- Structure into exactly 5 distinct segments (5 seconds each)
+- Each segment should be a complete thought or compelling narrative phrase
+
+EMOTION EMBEDDING FORMAT:
+Use these emotion tags before the text: [angry], [whisper], [sad], [happy], [excited], [calm], [dramatic], [mysterious], [confident], [surprised], [thoughtful], [urgent], [cheerful], [serious], [playful], [intense], [gentle], [bold], [nervous], [proud], [curious], [determined], [relaxed], [energetic], [compassionate], [authoritative], [dreamy], [fierce], [hopeful], [melancholic], [optimistic], [passionate], [rebellious], [sarcastic], [tender], [triumphant], [vulnerable], [witty], [zealous]
+
+EXAMPLES:
+Segment 1: [excited] Get ready to discover something that will completely transform the way you think about innovation!
+Segment 2: [confident] This groundbreaking technology represents years of research and development, bringing you unprecedented capabilities.
+Segment 3: [dramatic] The moment has finally arrived when dreams become reality and possibilities become limitless.
+Segment 4: [whisper] But there's something even more extraordinary waiting to be revealed in the next chapter.
+Segment 5: [triumphant] Welcome to the future - where your imagination is the only boundary to what's possible!
+
+TIMING GUIDELINES:
+- Total script duration: exactly 25 seconds
+- Each segment: 5 seconds (15-20 words maximum)
+- Choose emotions that match the content and create engaging progression
+- Ensure smooth emotional flow between segments
+- Create compelling narrative arc across all segments
+
+Focus on creating impactful, emotion-driven narration that works perfectly with ElevenLabs v3 voice synthesis.`,
             visualPrompt: `Generate a visual concept for a video about: "${segmentationDto.prompt}". Create descriptions for 5 distinct visual segments, each representing a single, cohesive image concept. Each image should be visually compelling and support the overall narrative. Focus on visual composition and storytelling.`,
             concept: concept,
             negativePrompt: segmentationDto.negative_prompt,
@@ -476,105 +580,222 @@ Generate the visual prompt:`,
         } else if (selectedModel === 'openai') {
           script = await this.generateScriptWithOpenAI({
             animationPrompt: `Create an animation sequence for a video about: "${segmentationDto.prompt}". The animation should be engaging and well-paced. Structure the animation into exactly 5 parts that flow naturally. Include specific animation cues and transitions. Focus on the animation flow and visual storytelling.`,
-            narrationPrompt: `Write a voiceover script for a video about: "${segmentationDto.prompt}". The script should be engaging, clear, and well-structured. Structure the script into exactly 5 distinct segments. Each segment should be standalone and flow naturally into the next. Focus on clear, compelling narration.`,
+            narrationPrompt: `Write a voiceover script for a 25-second video about: "${segmentationDto.prompt}". 
+
+CRITICAL REQUIREMENTS:
+- Each segment must be exactly 5 seconds of spoken content (approximately 15-20 words per segment)
+- Use ElevenLabs v3 emotion embedding format: [emotion] text content
+- Structure into exactly 5 distinct segments (5 seconds each)
+- Each segment should be a complete thought or compelling narrative phrase
+
+EMOTION EMBEDDING FORMAT:
+Use these emotion tags before the text: [angry], [whisper], [sad], [happy], [excited], [calm], [dramatic], [mysterious], [confident], [surprised], [thoughtful], [urgent], [cheerful], [serious], [playful], [intense], [gentle], [bold], [nervous], [proud], [curious], [determined], [relaxed], [energetic], [compassionate], [authoritative], [dreamy], [fierce], [hopeful], [melancholic], [optimistic], [passionate], [rebellious], [sarcastic], [tender], [triumphant], [vulnerable], [witty], [zealous]
+
+EXAMPLES:
+Segment 1: [excited] Get ready to discover something that will completely transform the way you think about innovation!
+Segment 2: [confident] This groundbreaking technology represents years of research and development, bringing you unprecedented capabilities.
+Segment 3: [dramatic] The moment has finally arrived when dreams become reality and possibilities become limitless.
+Segment 4: [whisper] But there's something even more extraordinary waiting to be revealed in the next chapter.
+Segment 5: [triumphant] Welcome to the future - where your imagination is the only boundary to what's possible!
+
+TIMING GUIDELINES:
+- Total script duration: exactly 25 seconds
+- Each segment: 5 seconds (15-20 words maximum)
+- Choose emotions that match the content and create engaging progression
+- Ensure smooth emotional flow between segments
+- Create compelling narrative arc across all segments
+
+Focus on creating impactful, emotion-driven narration that works perfectly with ElevenLabs v3 voice synthesis.`,
             visualPrompt: `Generate a visual concept for a video about: "${segmentationDto.prompt}". Create descriptions for 5 distinct visual segments, each representing a single, cohesive image concept. Each image should be visually compelling and support the overall narrative. Focus on visual composition and storytelling.`,
             concept: concept,
             negativePrompt: segmentationDto.negative_prompt,
           });
           modelUsed = 'gpt-4o';
+        } else if (selectedModel === 'gpt-5') {
+          console.log('Starting GPT-5 script generation...');
+          try {
+            script = await this.generateScriptWithGPT5({
+              animationPrompt: `Create an animation sequence for a video about: "${segmentationDto.prompt}". The animation should be engaging and well-paced. Structure the animation into exactly 5 parts that flow naturally. Include specific animation cues and transitions. Focus on the animation flow and visual storytelling.`,
+              narrationPrompt: `Write a voiceover script for a 25-second video about: "${segmentationDto.prompt}". 
+
+CRITICAL REQUIREMENTS:
+- Each segment must be exactly 5 seconds of spoken content (approximately 15-20 words per segment)
+- Use ElevenLabs v3 emotion embedding format: [emotion] text content
+- Structure into exactly 5 distinct segments (5 seconds each)
+- Each segment should be a complete thought or compelling narrative phrase
+
+EMOTION EMBEDDING FORMAT:
+Use these emotion tags before the text: [angry], [whisper], [sad], [happy], [excited], [calm], [dramatic], [mysterious], [confident], [surprised], [thoughtful], [urgent], [cheerful], [serious], [playful], [intense], [gentle], [bold], [nervous], [proud], [curious], [determined], [relaxed], [energetic], [compassionate], [authoritative], [dreamy], [fierce], [hopeful], [melancholic], [optimistic], [passionate], [rebellious], [sarcastic], [tender], [triumphant], [vulnerable], [witty], [zealous]
+
+EXAMPLES:
+Segment 1: [excited] Get ready to discover something that will completely transform the way you think about innovation!
+Segment 2: [confident] This groundbreaking technology represents years of research and development, bringing you unprecedented capabilities.
+Segment 3: [dramatic] The moment has finally arrived when dreams become reality and possibilities become limitless.
+Segment 4: [whisper] But there's something even more extraordinary waiting to be revealed in the next chapter.
+Segment 5: [triumphant] Welcome to the future - where your imagination is the only boundary to what's possible!
+
+TIMING GUIDELINES:
+- Total script duration: exactly 25 seconds
+- Each segment: 5 seconds (15-20 words maximum)
+- Choose emotions that match the content and create engaging progression
+- Ensure smooth emotional flow between segments
+- Create compelling narrative arc across all segments
+
+Focus on creating impactful, emotion-driven narration that works perfectly with ElevenLabs v3 voice synthesis.`,
+              visualPrompt: `Generate a visual concept for a video about: "${segmentationDto.prompt}". Create descriptions for 5 distinct visual segments, each representing a single, cohesive image concept. Each image should be visually compelling and support the overall narrative. Focus on visual composition and storytelling.`,
+              concept: concept,
+              negativePrompt: segmentationDto.negative_prompt,
+            });
+            console.log('GPT-5 script generation completed successfully');
+            modelUsed = 'gpt-4o';
+          } catch (gpt5Error) {
+            console.error('GPT-5 script generation failed:', gpt5Error.message);
+            console.error('GPT-5 error stack:', gpt5Error.stack);
+            throw gpt5Error;
+          }
         } else {
-          throw new BadRequestException('Invalid model specified. Choose either "gemini" or "openai".');
+          throw new BadRequestException(
+            'Invalid model specified. Choose "flash", "pro", "openai", or "gpt-5".',
+          );
         }
 
-          // Segment the generated script
+        // Segment the generated script
+        console.log('Starting script segmentation...');
+        console.log('Script to segment:', {
+          narrationLength: script.narration?.length || 0,
+          visualLength: script.visual?.length || 0,
+          animationLength: script.animation?.length || 0,
+          artStyleLength: script.artStyle?.length || 0,
+          modelUsed
+        });
 
-          const segmentedScript = await this.segmentGeneratedScript({
+        let segmentedScript;
+        try {
+          segmentedScript = await this.segmentGeneratedScript({
             ...script,
             negative_prompt: segmentationDto.negative_prompt,
-            model: modelUsed,
+            model: modelUsed.startsWith('gpt') ? 'gemini-2.5-flash' : modelUsed, // Use Gemini for segmentation
           });
-
-          // Save to database
-          console.log(`Saving segmentation to database`);
-          const savedSegmentation = await this.prisma.videoSegmentation.create({
-            data: {
-              prompt: segmentationDto.prompt,
-              concept: segmentationDto.concept,
-              negativePrompt: segmentationDto.negative_prompt,
-              artStyle: script.artStyle,
-              model: modelUsed,
-              projectId,
-              userId,
-              // Add credit tracking
-              creditTransactionId: creditTransactionId,
-              creditsUsed: new Decimal(3), // Segmentation uses fixed pricing
-            },
+          
+          console.log('Script segmentation completed successfully');
+          console.log('Segmented result:', {
+            segmentCount: segmentedScript.segments?.length || 0,
+            artStyleLength: segmentedScript.artStyle?.length || 0
           });
+        } catch (segmentationError) {
+          console.error('Script segmentation failed:', segmentationError.message);
+          console.error('Segmentation error stack:', segmentationError.stack);
+          throw segmentationError;
+        }
 
-          // Save individual segments
-          const savedSegments = await Promise.all(
-            segmentedScript.segments.map(async (segment, index) => {
-              const savedSegment =  await this.prisma.videoSegment.create({
-                data: {
-                  segmentId: `${index + 1}`,
-                  visual: segment.visual,
-                  narration: segment.narration,
-                  animation: segment.animation,
-                  videoSegmentationId: savedSegmentation.id,
-                },
-              });
-              
-              console.log(`✅ Saved segment ${index + 1} with database ID: ${savedSegment.id}`);
-              return savedSegment;
-            }),
-          );
+        // Generate one combined summary for all segments first
+        let combinedSummary: string | null = null;
+        try {
+          const allSegmentsContent = segmentedScript.segments.map((segment, index) => 
+            `Segment ${index + 1}:\nVisual: ${segment.visual}\nNarration: ${segment.narration}\nAnimation: ${segment.animation}`
+          ).join('\n\n');
+          
+          combinedSummary = await this.summaryService.generateSummary({
+            content: allSegmentsContent,
+            contentType: 'segment',
+            projectId,
+          }, userId);
+          console.log(`Generated combined summary for all ${segmentedScript.segments.length} segments`);
+        } catch (summaryError) {
+          console.warn(`Failed to generate combined summary for segments: ${summaryError.message}`);
+          // Continue without summary - don't fail the entire operation
+        }
 
-          // Save conversation history
-          await this.prisma.conversationHistory.create({
-            data: {
-              type: 'VIDEO_SEGMENTATION',
-              userInput: segmentationDto.prompt,
-              response: JSON.stringify({
-                segments: segmentedScript.segments,
-                artStyle: script.artStyle,
-                model: modelUsed,
-              }),
-              metadata: {
-                concept: segmentationDto.concept,
-                negativePrompt: segmentationDto.negative_prompt,
-                segmentCount: segmentedScript.segments.length,
-                savedSegmentationId: savedSegmentation.id,
-                savedSegmentIds: savedSegments.map((s) => s.id),
-              },
-              projectId,
-              userId,
-            },
-          });
-
-          console.log(
-            `Successfully saved segmentation: ${savedSegmentation.id} with ${savedSegments.length} segments`,
-          );
-
-          // Get user's new balance after credit deduction
-          const newBalance = await this.creditService.getUserBalance(userId);
-
-          // Map the segments with their actual database IDs
-          const segmentsWithDbIds = segmentedScript.segments.map((segment, index) => ({
-            ...segment,
-            id: savedSegments[index].id, // Use the actual database ID instead of seg-1, seg-2, etc.
-          }));
-
-          return {
-            segments: segmentsWithDbIds,
+        // Save to database with combined summary
+        console.log(`Saving segmentation to database`);
+        const savedSegmentation = await this.prisma.videoSegmentation.create({
+          data: {
+            prompt: segmentationDto.prompt,
+            concept: segmentationDto.concept,
+            negativePrompt: segmentationDto.negative_prompt,
             artStyle: script.artStyle,
             model: modelUsed,
-            credits: {
-              used: 3, // Segmentation uses fixed pricing
-              balance: newBalance.toNumber(),
+            summary: combinedSummary, // Store combined summary here
+            projectId,
+            userId,
+            // Add credit tracking
+            creditTransactionId: creditTransactionId,
+            creditsUsed: new Decimal(3), // Segmentation uses fixed pricing
+          },
+        });
+
+        // Save individual segments (without individual summaries)
+        const savedSegments = await Promise.all(
+          segmentedScript.segments.map(async (segment, index) => {
+            const savedSegment = await this.prisma.videoSegment.create({
+              data: {
+                segmentId: `${index + 1}`,
+                visual: segment.visual,
+                narration: segment.narration,
+                animation: segment.animation,
+                videoSegmentationId: savedSegmentation.id,
+              },
+            });
+
+            console.log(
+              `✅ Saved segment ${index + 1} with database ID: ${savedSegment.id}`,
+            );
+            return savedSegment;
+          }),
+        );
+
+        // Save conversation history
+        await this.prisma.conversationHistory.create({
+          data: {
+            type: 'VIDEO_SEGMENTATION',
+            userInput: segmentationDto.prompt,
+            response: JSON.stringify({
+              segments: segmentedScript.segments,
+              artStyle: script.artStyle,
+              model: modelUsed,
+            }),
+            metadata: {
+              concept: segmentationDto.concept,
+              negativePrompt: segmentationDto.negative_prompt,
+              segmentCount: segmentedScript.segments.length,
+              savedSegmentationId: savedSegmentation.id,
+              savedSegmentIds: savedSegments.map((s) => s.id),
             },
-          };
+            projectId,
+            userId,
+          },
+        });
+
+        console.log(
+          `Successfully saved segmentation: ${savedSegmentation.id} with ${savedSegments.length} segments`,
+        );
+
+        // Get user's new balance after credit deduction
+        const newBalance = await this.creditService.getUserBalance(userId);
+
+        // Map the segments with their actual database IDs (no individual summaries)
+        const segmentsWithDbIds = segmentedScript.segments.map(
+          (segment, index) => ({
+            ...segment,
+            id: savedSegments[index].id, // Use the actual database ID instead of seg-1, seg-2, etc.
+            // No individual summary field
+          }),
+        );
+
+        return {
+          segments: segmentsWithDbIds,
+          summary: savedSegmentation.summary, // Single combined summary from database
+          artStyle: script.artStyle,
+          model: modelUsed,
+          credits: {
+            used: 3, // Segmentation uses fixed pricing
+            balance: newBalance.toNumber(),
+          },
+        };
       } catch (parseError) {
-        console.error('Failed to parse agent result with Gemini:', parseError);
+        console.error('Failed to parse agent result:', parseError);
+        console.error('Parse error details:', parseError.message);
+        console.error('Parse error stack:', parseError.stack);
       }
 
       throw new HttpException(
@@ -583,6 +804,8 @@ Generate the visual prompt:`,
       );
     } catch (error) {
       console.error('Error during agent execution:', error);
+      console.error('Error message:', error.message);
+      console.error('Error stack:', error.stack);
 
       // Refund credits if they were deducted
       if (creditTransactionId) {
@@ -608,7 +831,7 @@ Generate the visual prompt:`,
 
       if (error instanceof HttpException) throw error;
       throw new HttpException(
-        'An unexpected error occurred.',
+        `Segmentation failed: ${error.message}`,
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -645,7 +868,8 @@ Generate the visual prompt:`,
       });
 
       console.log(
-        `Retrieved ${segmentations.length} video segmentations for user ${userId}${projectId ? ` in project ${projectId}` : ''
+        `Retrieved ${segmentations.length} video segmentations for user ${userId}${
+          projectId ? ` in project ${projectId}` : ''
         }`,
       );
 

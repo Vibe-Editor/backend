@@ -3,6 +3,7 @@
 ## Get User Credit Balance
 
 - `GET /credits/balance/:userId` - Get user's current credit balance (🔒 Protected)
+
   - **Parameters**: `userId` (string) - User ID in path
   - **Response**:
 
@@ -16,6 +17,7 @@
 ## Get User Credit Stats
 
 - `GET /credits/stats/:userId` - Get comprehensive credit statistics (🔒 Protected)
+
   - **Parameters**: `userId` (string) - User ID in path
   - **Response**:
 
@@ -40,6 +42,7 @@
 ## Get Credit History
 
 - `GET /credits/history/:userId` - Get paginated credit transaction history (🔒 Protected)
+
   - **Parameters**:
     - `userId` (string) - User ID in path
     - `page` (number, optional) - Page number (default: 1)
@@ -77,6 +80,7 @@
 ## Check Credits Before Operation
 
 - `GET /credits/check/:userId/:operationType/:modelName` - Check if user has sufficient credits (🔒 Protected)
+
   - **Parameters**:
     - `userId` (string) - User ID in path
     - `operationType` (string) - Operation type (e.g., "IMAGE_GENERATION", "VIDEO_GENERATION")
@@ -96,6 +100,7 @@
 ## Deduct Credits
 
 - `POST /credits/deduct` - Deduct credits for an operation (🔒 Protected)
+
   - **Request Body**:
 
   ```json
@@ -122,6 +127,7 @@
 ## Add Credits
 
 - `POST /credits/add` - Add credits to user account
+
   - **Request Body**:
 
   ```json
@@ -146,6 +152,7 @@
 ## Get Current Pricing
 
 - `GET /credits/pricing` - Get current operation pricing (🔒 Protected)
+
   - **Response**:
 
   ```json
