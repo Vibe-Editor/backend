@@ -51,7 +51,7 @@ import { QuestionsModule } from './modules/questions/questions.module';
     ContextModule,
     SummariesModule,
     VideoEditingModule,
-    QuestionsModule
+    QuestionsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
