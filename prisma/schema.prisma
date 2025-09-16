@@ -61,6 +61,39 @@ model Project {
   generatedVideos      GeneratedVideo[]
   generatedVoiceovers  GeneratedVoiceover[]
   characterGenerations CharacterGeneration[]
+
+  completedSteps    String[] @default([]) // Replaces the projectStates map
+  userPrompts       String[] @default([]) // Stores all user prompts for this project
+
+  // Add this new relation
+  videoPreferences     UserVideoPreferences?
+
+}
+
+
+model UserVideoPreferences {
+
+  id          String   @id @default(cuid())
+  projectId   String   @unique // One preference set per project
+  
+  // Required fields
+  videoType        String  // 'product_showcase', 'talking_head', 'third_person_ad', 'project_explainer'
+  userPrompt       String  // User's description of their video project (was userDescription)
+  
+  // 5 Preference Questions
+  visualStyle          String? // 'luxury_premium', 'clean_minimal', 'warm_natural', 'futuristic_tech'
+  lightingMood         String? // 'dramatic_cinematic', 'bright_professional', 'golden_hour', 'studio_controlled'
+  cameraStyle          String? // 'smooth_cinematic', 'dynamic_engaging', 'steady_professional', 'product_focused'
+  subjectFocus         String? // 'person_speaking', 'product_showcase', 'lifestyle_scene', 'abstract_concept'
+  locationEnvironment  String? // 'studio_minimal', 'office_professional', 'lifestyle_natural', 'luxury_premium'
+  
+  // Final computed config (stores all merged JSON values)
+  finalConfig Json?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
 
 // Credit system models
