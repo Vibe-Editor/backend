@@ -54,7 +54,7 @@ export class CreditController {
     }
 
     this.stripe = new Stripe(stripeKey, {
-      apiVersion: '2025-07-30.basil',
+      apiVersion: '2025-08-27.basil',
     });
 
     console.log('✅ Stripe initialized successfully');
