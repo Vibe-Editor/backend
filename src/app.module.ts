@@ -23,6 +23,7 @@ import { VoiceGenModule } from './modules/voice-gen/voice-gen.module';
 import { ContextModule } from './modules/context/context.module';
 import { SummariesModule } from './modules/summaries/summaries.module';
 import { VideoEditingModule } from './modules/video-editing/video-editing.module';
+import { QuestionsModule } from './modules/questions/questions.module';
 
 @Module({
   imports: [
@@ -49,7 +50,8 @@ import { VideoEditingModule } from './modules/video-editing/video-editing.module
     VoiceGenModule,
     ContextModule,
     SummariesModule,
-    VideoEditingModule
+    VideoEditingModule,
+    QuestionsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
