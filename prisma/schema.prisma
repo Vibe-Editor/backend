@@ -67,6 +67,7 @@ model Project {
 
   // Add this new relation
   videoPreferences     UserVideoPreferences?
+  userSegments        UserVideoSegment[]
 
 }
 
@@ -88,21 +89,45 @@ model UserVideoPreferences {
   locationEnvironment  String? // 'studio_minimal', 'office_professional', 'lifestyle_natural', 'luxury_premium'
   
   // Final computed config (stores all merged JSON values)
-  finalConfig Json?
+  finalConfig Json? // this is the updated json files of all the preferences
 
-  //store the string data for the individual segments
-
-  setTheScene         String?
-  ruinThings          String?
-  theBreakingPoint    String?
-  cleanUpTheMess      String?
-  wrapItUp            String?
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  //store the string data for the individual segments
+  wordCount   Int
+
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
+
+model UserVideoSegment {
+  id            String   @id @default(cuid())
+
+  type          String   // "setTheScene" | "ruinThings" | "theBreakingPoint" | ...
+  description   String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId     String   // new direct link
+  resources     SegmentResource[] @relation("SegmentResources")
+}
+
+
+model SegmentResource {
+  id            String   @id @default(cuid())
+  content       Json?    // for full prompt JSON
+  s3Key         String?  // for asset storage
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+
+  // M2M with UserVideoSegment
+  segments      UserVideoSegment[] @relation("SegmentResources")
+}
+
 
 // Credit system models
 model CreditTransaction {
