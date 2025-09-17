@@ -57,7 +57,7 @@ import { VideoTemplatesModule } from './modules/video-templates/video-templates.
     ContextModule,
     SummariesModule,
     VideoEditingModule,
-    AgentModuleV2
+    AgentModuleV2,
     QuestionsModule,
     PromptOptimizerModule,
     VideoTemplatesModule,

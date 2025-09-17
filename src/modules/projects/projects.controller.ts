@@ -232,14 +232,25 @@ export class ProjectsController {
     return this.projectsService.generateConceptWithPreferences(projectId, userId, authToken);
   }
 
-  @Put(':id/storyline/:segmentName')
+  @Put(':segmentId/storyline')
   updateStorylineSegment(
-    @Param('id') projectId: string,
-    @Param('segmentName') segmentName: 'setTheScene' | 'ruinThings' | 'theBreakingPoint' | 'cleanUpTheMess' | 'wrapItUp',
+    @Param('segmentId') userVideoSegmentId: string,
     @Body('content') content: string,
     @CurrentUser('id') userId: string,
   ) {
-    return this.projectsService.updateStorylineSegment(projectId, segmentName, content, userId);
+    return this.projectsService.updateStorylineSegmentById(userVideoSegmentId, content, userId);
+  }
+
+  @Put(':id/regenerate-segments')
+  async regenerateSegments(
+    @Param('id') projectId: string,
+    @Body('segmentIds') segmentIds: string[],
+    @Body('maxWordCount') maxWordCount: number,
+    @Headers('authorization') authorization: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    const authToken = authorization?.replace('Bearer ', '');
+    return this.projectsService.regenerateSegmentsWithWordLimit(segmentIds, maxWordCount, userId );
   }
 
 

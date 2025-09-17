@@ -15,6 +15,8 @@ import {
 import { CreateVideoPreferencesDto, UpdateVideoPreferencesDto } from './dto/video-preference.dto';
 import { VIDEO_PREFERENCE_OPTIONS } from './constants/video-preference-options';
 import axios from 'axios';
+import { ConceptWriterDto } from '../concept-writer/dto/concept-writer.dto';
+import OpenAI from 'openai';
 
 @Injectable()
 export class ProjectsService {
@@ -854,81 +856,131 @@ Visual Requirements:
 Research Context: ${JSON.stringify(webInfo)}`;
   }
 
-  async generateStorylineSegments() {
 
-  }
-
-  async updateStorylineSegment(
-    projectId: string,
-    segmentName: 'setTheScene' | 'ruinThings' | 'theBreakingPoint' | 'cleanUpTheMess' | 'wrapItUp',
+  async updateStorylineSegmentById(
+    userVideoSegmentId: string,
     newContent: string,
     userId: string,
   ) {
-    this.logger.log(`Updating ${segmentName} for project: ${projectId}`);
+    this.logger.log(`Updating segment with ID: ${userVideoSegmentId}`);
 
     try {
-      // Check if project exists and belongs to user
-      const project = await this.prisma.project.findFirst({
-        where: { id: projectId, userId },
+      // Find the segment by ID
+      const existingSegment = await this.prisma.userVideoSegment.findUnique({
+        where: { id: userVideoSegmentId },
+        include: { project: true }, // To verify ownership
       });
 
-      if (!project) {
-        throw new NotFoundException('Project not found');
+      if (!existingSegment) {
+        throw new NotFoundException(`Segment with ID ${userVideoSegmentId} not found`);
       }
 
-      // Check if preferences exist
-      const existingPreferences = await this.prisma.userVideoPreferences.findFirst({
-        where: { projectId },
-      });
-
-      if (!existingPreferences) {
-        throw new NotFoundException('Video preferences not found for this project');
+      // Ensure the user owns this segment
+      if (existingSegment.project.userId !== userId) {
+        throw new ForbiddenException(`You don't have access to update this segment`);
       }
 
-      // Update the specific segment
-      const updateData = { [segmentName]: newContent };
+      const segmentType = existingSegment.type;
+      const projectId = existingSegment.projectId;
 
-      const updatedPreferences = await this.prisma.userVideoPreferences.update({
-        where: { projectId },
-        data: updateData,
+      // Update the segment description
+      const updatedSegment = await this.prisma.userVideoSegment.update({
+        where: { id: userVideoSegmentId },
+        data: { description: newContent },
       });
 
       // Log the update in conversation history
       await this.prisma.conversationHistory.create({
         data: {
           type: 'PROJECT_CONTEXT_UPDATE',
-          userInput: `Updated ${segmentName} segment`,
+          userInput: `Updated ${segmentType} segment`,
           response: JSON.stringify({
             action: 'update_story_segment',
-            segmentName,
-            oldContent: existingPreferences[segmentName],
+            userVideoSegmentId,
+            segmentType,
+            oldContent: existingSegment.description,
             newContent,
           }),
-          metadata: {
-            segmentUpdated: segmentName,
-          },
+          metadata: { segmentUpdated: segmentType },
           projectId,
           userId,
         },
       });
 
-      this.logger.log(`Successfully updated ${segmentName} for project: ${projectId}`);
-
       return {
         success: true,
-        data: {
-          segmentName,
-          newContent,
-          updatedPreferences,
-        },
-        message: `${segmentName} segment updated successfully`,
+        data: { userVideoSegmentId, segmentType, newContent, updatedSegment },
+        message: `${segmentType} segment updated successfully`,
       };
-
     } catch (error) {
-      this.logger.error(`Failed to update ${segmentName} segment: ${error.message}`);
+      this.logger.error(`Failed to update segment ${userVideoSegmentId}: ${error.message}`);
       throw error;
     }
   }
+
+
+
+  private openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  });
+
+  async regenerateSegmentsWithWordLimit(
+    segmentIds: string[],
+    maxWords: number,
+    userId: string,
+
+  ) {
+    const updatedSegments = [];
+
+    for (const segmentId of segmentIds) {
+      const segment = await this.prisma.userVideoSegment.findUnique({
+        where: { id: segmentId },
+      });
+
+      if (!segment) continue;
+
+      try {
+        // 🔥 Direct GPT-5 call
+        const completion = await this.openai.chat.completions.create({
+          model: "gpt-5",
+          messages: [
+            {
+              role: "system",
+              content: `You are a helpful assistant. Regenerate the given video segment in under ${maxWords} words. Return ONLY plain text (no JSON, no markdown).`,
+            },
+            {
+              role: "user",
+              content: segment.description,
+            },
+          ],
+        });
+
+        const newContent =
+          completion.choices[0]?.message?.content?.trim() || null;
+
+        if (!newContent) {
+          throw new Error("No content returned from GPT-5");
+        }
+
+        // Update DB with new segment
+        const updatedSegment = await this.prisma.userVideoSegment.update({
+          where: { id: segment.id },
+          data: {
+            description: newContent,
+          },
+        });
+
+        updatedSegments.push(updatedSegment);
+      } catch (err) {
+        this.logger.error(
+          `Failed to regenerate segment ${segmentId}: ${(err as Error).message}`,
+        );
+      }
+    }
+
+    return updatedSegments;
+  }
+
 
 
   async findProjectSegmentations(

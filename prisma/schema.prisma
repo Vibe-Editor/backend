@@ -96,7 +96,7 @@ model UserVideoPreferences {
   updatedAt DateTime @updatedAt
 
   //store the string data for the individual segments
-  wordCount   Int
+  wordCount   Int @default(150)
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }

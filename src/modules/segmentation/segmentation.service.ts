@@ -521,56 +521,37 @@ Return ONLY a JSON object in this exact format:
         segmentationDto.model || 'gpt-5'
       );
 
-      // Update UserVideoPreferences with story segments
-      const updatedPreferences = await this.prisma.userVideoPreferences.update({
-        where: { projectId },
-        data: {
-          setTheScene: storySegments.setTheScene,
-          ruinThings: storySegments.ruinThings,
-          theBreakingPoint: storySegments.theBreakingPoint,
-          cleanUpTheMess: storySegments.cleanUpTheMess,
-          wrapItUp: storySegments.wrapItUp,
-        }
-      });
-
-      // Convert story segments to TypeSegment[] format - single field only
-      const segments: TypeSegment[] = [
-        {
-          id: 'seg-1',
-          visual: storySegments.setTheScene,
-          narration: '',
-          animation: '',
-          type: 'setTheScene'
-        },
-        {
-          id: 'seg-2',
-          visual: storySegments.ruinThings,
-          narration: '',
-          animation: '',
-          type: 'ruinThings'
-        },
-        {
-          id: 'seg-3',
-          visual: storySegments.theBreakingPoint,
-          narration: '',
-          animation: '',
-          type: 'theBreakingPoint'
-        },
-        {
-          id: 'seg-4',
-          visual: storySegments.cleanUpTheMess,
-          narration: '',
-          animation: '',
-          type: 'cleanUpTheMess'
-        },
-        {
-          id: 'seg-5',
-          visual: storySegments.wrapItUp,
-          narration: '',
-          animation: '',
-          type: 'wrapItUp'
-        }
+      // Create UserVideoSegment records instead of updating UserVideoPreferences
+      const segmentTypes = ['setTheScene', 'ruinThings', 'theBreakingPoint', 'cleanUpTheMess', 'wrapItUp'];
+      const segmentValues = [
+        storySegments.setTheScene,
+        storySegments.ruinThings,
+        storySegments.theBreakingPoint,
+        storySegments.cleanUpTheMess,
+        storySegments.wrapItUp
       ];
+
+      // Create UserVideoSegment records
+      const createdSegments = await Promise.all(
+        segmentTypes.map(async (type, index) => {
+          return await this.prisma.userVideoSegment.create({
+            data: {
+              type,
+              description: segmentValues[index],
+              projectId,
+            }
+          });
+        })
+      );
+
+      // Convert to TypeSegment[] format for response
+      const segments: TypeSegment[] = createdSegments.map((segment, index) => ({
+        id: segment.id, // Use actual database ID
+        visual: segment.description,
+        narration: '',
+        animation: '',
+        type: segment.type
+      }));
 
       // Save conversation history
       await this.prisma.conversationHistory.create({
@@ -582,6 +563,7 @@ Return ONLY a JSON object in this exact format:
             mode: 'story',
             concept: segmentationDto.concept,
             storySegments: storySegments,
+            createdSegmentIds: createdSegments.map(s => s.id),
           },
           projectId,
           userId,
