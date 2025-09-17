@@ -6,7 +6,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { PrismaClient } from '../../../generated/prisma';
+import { PrismaClient } from '@prisma/client';
 import { CreditService } from '../credits/credit.service';
 import { recraftImageGen } from './image-generation/recraft.model';
 import { ChatDto } from './dto/chat.dto';

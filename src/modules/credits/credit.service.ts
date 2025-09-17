@@ -8,7 +8,7 @@ import {
   PrismaClient,
   CreditTransactionType,
   CreditTransactionStatus,
-} from '../../../generated/prisma';
+} from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 
 const PRICING = {

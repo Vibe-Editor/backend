@@ -7,7 +7,7 @@ import {
 import { GetWebInfoDto } from './dto/get-web-info.dto';
 import { UpdateWebInfoDto } from './dto/update-web-info.dto';
 import { ProjectHelperService } from '../../common/services/project-helper.service';
-import { PrismaClient } from '../../../generated/prisma';
+import { PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { CreditService } from '../credits/credit.service';
 

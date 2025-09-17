@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import { Public } from '../../common/decorators/public.decorator';
 import { CreditService } from './credit.service';
-import { CreditTransactionType } from '../../../generated/prisma';
+import { CreditTransactionType } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import Stripe from 'stripe';
 
@@ -54,7 +54,7 @@ export class CreditController {
     }
 
     this.stripe = new Stripe(stripeKey, {
-      apiVersion: '2025-07-30.basil',
+      apiVersion: '2025-08-27.basil',
     });
 
     console.log('✅ Stripe initialized successfully');
