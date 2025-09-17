@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import { Public } from '../../common/decorators/public.decorator';
 import { CreditService } from './credit.service';
-import { CreditTransactionType } from '../../../generated/prisma';
+import { CreditTransactionType } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import Stripe from 'stripe';
 

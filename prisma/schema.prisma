@@ -1,6 +1,6 @@
 generator client {
   provider = "prisma-client-js"
-  output   = "../generated/prisma"
+  // output   = "../generated/prisma"
 }
 
 datasource db {
@@ -313,3 +313,14 @@ model CharacterGeneration {
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+
+model VideoTemplate {
+  id          String   @id @default(cuid())
+  description String
+  jsonPrompt  String   @db.Text
+  s3Key       String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([description])
+}

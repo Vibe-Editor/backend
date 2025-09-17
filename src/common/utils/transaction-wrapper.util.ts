@@ -1,5 +1,5 @@
 import { Logger, InternalServerErrorException } from '@nestjs/common';
-import { PrismaClient } from '../../../generated/prisma';
+import { PrismaClient } from '@prisma/client';
 
 /**
  * Transaction wrapper utility for consistent database transaction handling
