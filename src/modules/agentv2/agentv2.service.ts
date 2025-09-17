@@ -3,7 +3,7 @@ import { Agent, tool, run, RunState, RunResult, handoff } from '@openai/agents';
 import { z } from 'zod';
 import axios from 'axios';
 import { Subject, Observable } from 'rxjs';
-import { PrismaClient } from '../../../generated/prisma';
+import { PrismaClient } from '@prisma/client';
 
 
 export interface ApprovalRequest {

@@ -21,4 +21,10 @@ export class ConceptWriterDto {
   @IsString()
   @IsOptional()
   system_prompt?: string; // Add this line
+
+  @IsString()
+  @IsOptional()
+  @IsIn(['expand'])
+
+  mode?: string; // Add this line
 }
