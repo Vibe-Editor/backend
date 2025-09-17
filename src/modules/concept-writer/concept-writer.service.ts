@@ -41,12 +41,13 @@ export class ConceptWriterService {
       web_info,
       projectId,
       model = 'gpt-5',
+      system_prompt,
     } = conceptWriterDto;
     this.logger.log(
       `Using project ${projectId} for concept generation with model: ${model}`,
     );
 
-    const systemPrompt = `Generate 3-4 creative video concept ideas based on this prompt: "${prompt}"
+    const systemPrompt = system_prompt || `Generate 3-4 creative video concept ideas based on this prompt: "${prompt}"
 
     Keep in mind the latest information about the topic: ${web_info}
 

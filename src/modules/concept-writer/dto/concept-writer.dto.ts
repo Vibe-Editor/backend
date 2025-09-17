@@ -17,4 +17,8 @@ export class ConceptWriterDto {
   @IsOptional()
   @IsIn(['gemini-flash', 'gemini-pro', 'gpt-5'])
   model?: string = 'gpt-5';
+
+  @IsString()
+  @IsOptional()
+  system_prompt?: string; // Add this line
 }

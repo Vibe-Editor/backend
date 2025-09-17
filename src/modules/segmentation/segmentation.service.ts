@@ -447,6 +447,174 @@ Generate the visual prompt:`,
     return { segments: segments, artStyle: script.artStyle };
   }
 
+  // this is the function for the story arc segments
+  private async generateStorySegments(concept: string, model: string): Promise<{
+    setTheScene: string;
+    ruinThings: string;
+    theBreakingPoint: string;
+    cleanUpTheMess: string;
+    wrapItUp: string;
+  }> {
+    const prompt = `Break this video concept into exactly 5 story segments:
+
+CONCEPT: "${concept}"
+
+Create 5 distinct segments (4-5 sentences each) that follow this story structure:
+
+1. setTheScene: Opening hook that establishes the context 
+2. ruinThings: Introduce the problem/conflict/challenge 
+3. theBreakingPoint: Peak moment of tension/climax 
+4. cleanUpTheMess: How the solution/resolution begins 
+5. wrapItUp: Final conclusion/call-to-action 
+
+Return ONLY a JSON object in this exact format:
+{
+  "setTheScene": "one line here",
+  "ruinThings": "one line here", 
+  "theBreakingPoint": "one line here",
+  "cleanUpTheMess": "one line here",
+  "wrapItUp": "one line here"
+}`;
+
+    let response;
+    if (model === 'gpt-5' || model === 'openai') {
+      response = await this.openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: prompt }],
+        response_format: { type: 'json_object' },
+      });
+      const content = response.choices[0]?.message?.content;
+      return JSON.parse(content);
+    } else {
+      // Use Gemini
+      const geminiModel = model === 'flash' ? 'gemini-2.5-flash' : 'gemini-2.5-pro-preview-06-05';
+      response = await this.genAI.models.generateContent({
+        model: geminiModel,
+        contents: prompt,
+        config: {
+          responseMimeType: 'application/json',
+        },
+      });
+      return JSON.parse(response.text);
+    }
+  }
+
+  private async generateStoryMode(
+    segmentationDto: SegmentationDto,
+    userId: string,
+    projectId: string,
+    creditTransactionId: string
+  ): Promise<{
+    segments: TypeSegment[];
+    summary: string | null;
+    artStyle: string;
+    model: string;
+    credits: {
+      used: number;
+      balance: number;
+    };
+  }> {
+    try {
+      // Generate story segments
+      const storySegments = await this.generateStorySegments(
+        segmentationDto.concept || segmentationDto.prompt,
+        segmentationDto.model || 'gpt-5'
+      );
+
+      // Update UserVideoPreferences with story segments
+      const updatedPreferences = await this.prisma.userVideoPreferences.update({
+        where: { projectId },
+        data: {
+          setTheScene: storySegments.setTheScene,
+          ruinThings: storySegments.ruinThings,
+          theBreakingPoint: storySegments.theBreakingPoint,
+          cleanUpTheMess: storySegments.cleanUpTheMess,
+          wrapItUp: storySegments.wrapItUp,
+        }
+      });
+
+      // Convert story segments to TypeSegment[] format - single field only
+      const segments: TypeSegment[] = [
+        {
+          id: 'seg-1',
+          visual: storySegments.setTheScene,
+          narration: '',
+          animation: '',
+          type: 'setTheScene'
+        },
+        {
+          id: 'seg-2',
+          visual: storySegments.ruinThings,
+          narration: '',
+          animation: '',
+          type: 'ruinThings'
+        },
+        {
+          id: 'seg-3',
+          visual: storySegments.theBreakingPoint,
+          narration: '',
+          animation: '',
+          type: 'theBreakingPoint'
+        },
+        {
+          id: 'seg-4',
+          visual: storySegments.cleanUpTheMess,
+          narration: '',
+          animation: '',
+          type: 'cleanUpTheMess'
+        },
+        {
+          id: 'seg-5',
+          visual: storySegments.wrapItUp,
+          narration: '',
+          animation: '',
+          type: 'wrapItUp'
+        }
+      ];
+
+      // Save conversation history
+      await this.prisma.conversationHistory.create({
+        data: {
+          type: 'VIDEO_SEGMENTATION',
+          userInput: segmentationDto.prompt,
+          response: JSON.stringify(segments),
+          metadata: {
+            mode: 'story',
+            concept: segmentationDto.concept,
+            storySegments: storySegments,
+          },
+          projectId,
+          userId,
+        },
+      });
+
+      // Get user balance
+      const newBalance = await this.creditService.getUserBalance(userId);
+
+      return {
+        segments,
+        summary: `Story mode: Generated 5 narrative segments`,
+        artStyle: 'story-narrative',
+        model: segmentationDto.model || 'gpt-5',
+        credits: { used: 3, balance: newBalance.toNumber() }
+      };
+
+    } catch (error) {
+      // Refund credits on failure
+      await this.creditService.refundCredits(
+        userId,
+        'TEXT_OPERATIONS',
+        'segmentation',
+        `segmentation-${Date.now()}`,
+        creditTransactionId,
+        false,
+        `Refund for failed story segmentation: ${error.message}`,
+      );
+      throw error;
+    }
+  }
+
+
   async segmentScript(
     segmentationDto: SegmentationDto,
     userId: string,
@@ -483,6 +651,10 @@ Generate the visual prompt:`,
       `Successfully deducted credits for segmentation. Transaction ID: ${creditTransactionId}`,
     );
     // ===== END CREDIT DEDUCTION =====
+
+    if (segmentationDto.mode === 'story') {
+      return await this.generateStoryMode(segmentationDto, userId, projectId, creditTransactionId);
+    }
 
     // Determine model variant (default to gpt-5 if not provided)
     const selectedModel = segmentationDto.model || 'gpt-5';
@@ -676,7 +848,7 @@ Focus on creating impactful, emotion-driven narration that works perfectly with 
             negative_prompt: segmentationDto.negative_prompt,
             model: modelUsed.startsWith('gpt') ? 'gemini-2.5-flash' : modelUsed, // Use Gemini for segmentation
           });
-          
+
           console.log('Script segmentation completed successfully');
           console.log('Segmented result:', {
             segmentCount: segmentedScript.segments?.length || 0,
@@ -694,7 +866,7 @@ Focus on creating impactful, emotion-driven narration that works perfectly with 
           const allSegmentsContent = segmentedScript.segments.map((segment, index) => 
             `Segment ${index + 1}:\nVisual: ${segment.visual}\nNarration: ${segment.narration}\nAnimation: ${segment.animation}`
           ).join('\n\n');
-          
+
           combinedSummary = await this.summaryService.generateSummary({
             content: allSegmentsContent,
             contentType: 'segment',

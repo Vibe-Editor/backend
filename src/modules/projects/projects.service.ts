@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ForbiddenException,
   Logger,
+  BadRequestException,
 } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { CreateProjectDto } from './dto/create-project.dto';
@@ -11,11 +12,16 @@ import {
   ProjectResponse,
   ProjectWithStats,
 } from './interfaces/project.interface';
+import { CreateVideoPreferencesDto, UpdateVideoPreferencesDto } from './dto/video-preference.dto';
+import { VIDEO_PREFERENCE_OPTIONS } from './constants/video-preference-options';
+import axios from 'axios';
 
 @Injectable()
 export class ProjectsService {
   private readonly logger = new Logger(ProjectsService.name);
   private readonly prisma = new PrismaClient();
+  private baseUrl = "http://localhost:8080";
+  // private baseUrl = process.env.BASE_URL;
 
   /**
    * Safely parse JSON string, return original value if parsing fails
@@ -492,6 +498,438 @@ export class ProjectsService {
       throw error;
     }
   }
+
+
+  async createVideoPreferences(
+    projectId: string,
+    createDto: CreateVideoPreferencesDto,
+    userId: string,
+  ) {
+    this.logger.log(`Creating video preferences for project: ${projectId}`);
+
+    try {
+      // Check if project exists and belongs to user
+      const project = await this.prisma.project.findFirst({
+        where: { id: projectId, userId },
+      });
+
+      if (!project) {
+        throw new NotFoundException('Project not found');
+      }
+
+      // Check if preferences already exist for this project
+      const existingPreferences = await this.prisma.userVideoPreferences.findFirst({
+        where: { projectId },
+      });
+
+      if (existingPreferences) {
+        throw new BadRequestException('Video preferences already exist for this project');
+      }
+
+      // Build the final config from selected options
+      const finalConfig = this.buildFinalConfig({
+        userPrompt: createDto.user_prompt,
+        videoType: createDto.video_type,
+        visualStyle: createDto.visual_style,
+        lightingMood: createDto.lighting_mood,
+        cameraStyle: createDto.camera_style,
+        subjectFocus: createDto.subject_focus,
+        locationEnvironment: createDto.location_environment,
+      });
+
+      // Create video preferences
+      const videoPreferences = await this.prisma.userVideoPreferences.create({
+        data: {
+          projectId,
+          videoType: createDto.video_type,
+          userPrompt: createDto.user_prompt,
+          visualStyle: createDto.visual_style,
+          lightingMood: createDto.lighting_mood,
+          cameraStyle: createDto.camera_style,
+          subjectFocus: createDto.subject_focus,
+          locationEnvironment: createDto.location_environment,
+          finalConfig,
+        },
+      });
+
+      this.logger.log(`Video preferences created: ${videoPreferences.id}`);
+
+      return {
+        success: true,
+        data: videoPreferences,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to create video preferences: ${error.message}`);
+      throw error;
+    }
+  }
+
+  async updateVideoPreferences(
+    projectId: string,
+    updateDto: UpdateVideoPreferencesDto,
+    userId: string,
+  ) {
+    this.logger.log(`Updating video preferences for project: ${projectId}`);
+
+    try {
+      // Check if project exists and belongs to user
+      const project = await this.prisma.project.findFirst({
+        where: { id: projectId, userId },
+      });
+
+      if (!project) {
+        throw new NotFoundException('Project not found');
+      }
+
+      // Check if preferences exist
+      const existingPreferences = await this.prisma.userVideoPreferences.findFirst({
+        where: { projectId },
+      });
+
+      if (!existingPreferences) {
+        throw new NotFoundException('Video preferences not found for this project');
+      }
+
+      // Merge updated values with existing ones
+      const updatedData = {
+        ...existingPreferences,
+        ...Object.fromEntries(
+          Object.entries(updateDto).map(([key, value]) => [
+            key === 'user_prompt' ? 'userPrompt' :
+              key === 'video_type' ? 'videoType' :
+                key === 'visual_style' ? 'visualStyle' :
+                  key === 'lighting_mood' ? 'lightingMood' :
+                    key === 'camera_style' ? 'cameraStyle' :
+                      key === 'subject_focus' ? 'subjectFocus' :
+                        key === 'location_environment' ? 'locationEnvironment' : key,
+            value
+          ]).filter(([_, value]) => value !== undefined)
+        ),
+      };
+
+      // Rebuild final config with updated values
+      const finalConfig = this.buildFinalConfig({
+        userPrompt: updatedData.userPrompt,
+        videoType: updatedData.videoType,
+        visualStyle: updatedData.visualStyle,
+        lightingMood: updatedData.lightingMood,
+        cameraStyle: updatedData.cameraStyle,
+        subjectFocus: updatedData.subjectFocus,
+        locationEnvironment: updatedData.locationEnvironment,
+      });
+
+      // Update preferences
+      const videoPreferences = await this.prisma.userVideoPreferences.update({
+        where: { projectId },
+        data: {
+          ...(updateDto.user_prompt && { userPrompt: updateDto.user_prompt }),
+          ...(updateDto.video_type && { videoType: updateDto.video_type }),
+          ...(updateDto.visual_style && { visualStyle: updateDto.visual_style }),
+          ...(updateDto.lighting_mood && { lightingMood: updateDto.lighting_mood }),
+          ...(updateDto.camera_style && { cameraStyle: updateDto.camera_style }),
+          ...(updateDto.subject_focus && { subjectFocus: updateDto.subject_focus }),
+          ...(updateDto.location_environment && { locationEnvironment: updateDto.location_environment }),
+          finalConfig,
+        },
+      });
+
+      this.logger.log(`Video preferences updated: ${videoPreferences.id}`);
+
+      return {
+        success: true,
+        data: videoPreferences,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to update video preferences: ${error.message}`);
+      throw error;
+    }
+  }
+
+  async getVideoPreferences(projectId: string, userId: string) {
+    this.logger.log(`Getting video preferences for project: ${projectId}`);
+
+    try {
+      // Check if project exists and belongs to user
+      const project = await this.prisma.project.findFirst({
+        where: { id: projectId, userId },
+      });
+
+      if (!project) {
+        throw new NotFoundException('Project not found');
+      }
+
+      // Get video preferences
+      const videoPreferences = await this.prisma.userVideoPreferences.findFirst({
+        where: { projectId },
+      });
+
+      if (!videoPreferences) {
+        throw new NotFoundException('Video preferences not found for this project');
+      }
+
+      this.logger.log(`Video preferences found: ${videoPreferences.id}`);
+
+      return {
+        success: true,
+        data: videoPreferences,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to get video preferences: ${error.message}`);
+      throw error;
+    }
+  }
+
+  private buildFinalConfig(selections: {
+    userPrompt: string;
+    videoType: string;
+    visualStyle: string;
+    lightingMood: string;
+    cameraStyle: string;
+    subjectFocus: string;
+    locationEnvironment: string;
+  }): any {
+    // Get JSON values for each selected option
+    const visualStyleData = VIDEO_PREFERENCE_OPTIONS.visual_style[selections.visualStyle]?.json_values || {};
+    const lightingData = VIDEO_PREFERENCE_OPTIONS.lighting_mood[selections.lightingMood]?.json_values || {};
+    const cameraData = VIDEO_PREFERENCE_OPTIONS.camera_style[selections.cameraStyle]?.json_values || {};
+    const subjectData = VIDEO_PREFERENCE_OPTIONS.subject_focus[selections.subjectFocus]?.json_values || {};
+    const locationData = VIDEO_PREFERENCE_OPTIONS.location_environment[selections.locationEnvironment]?.json_values || {};
+
+    // Merge everything into final JSON structure
+    return {
+      shot: {
+        composition: visualStyleData.composition || cameraData.shot_style || "medium shot",
+        camera_motion: cameraData.camera_motion || "steady movement",
+        frame_rate: cameraData.frame_rate || "30fps",
+        film_grain: visualStyleData.film_grain || "natural digital tone",
+      },
+      subject: {
+        description: `${subjectData.subject_description} for ${selections.userPrompt}`,
+        wardrobe: subjectData.wardrobe || "contextual styling",
+        action: subjectData.action || "appropriate expressive action",
+      },
+      scene: {
+        location: locationData.location || "contextual location",
+        time_of_day: lightingData.time_of_day || "appropriate lighting",
+        environment: locationData.environment || lightingData.environment || "visually aligned environment",
+      },
+      audio: {
+        ambient: locationData.ambient || "fitting ambient sounds",
+        voice: {
+          tone: lightingData.tone || "brand-appropriate",
+          style: cameraData.voice_style || "clear delivery",
+        },
+      },
+      visual_rules: {
+        prohibited_elements: ["off-brand visuals", "clutter"],
+      },
+      brand_integration: {
+        platform_name: "User Brand",
+        visual_theme: visualStyleData.visual_theme || "creative branded",
+        color_palette: visualStyleData.color_palette || ["primary brand color", "secondary color", "accent"],
+        logo_appearance: "subtle integration",
+      },
+    };
+  }
+
+
+  async generateConceptWithPreferences(projectId: string, userId: string, authToken: string) {
+    // Get video preferences
+    const preferences = await this.prisma.userVideoPreferences.findFirst({
+      where: { projectId }
+    });
+
+    if (!preferences) {
+      throw new NotFoundException('Video preferences not found');
+    }
+
+    try {
+      // 1. Get web info using your existing service
+      this.logger.log(`Step 1/3: Getting web info for project ${projectId}`);
+      const webInfoResponse = await axios.post(`${this.baseUrl}/get-web-info`, {
+        prompt: preferences.userPrompt,
+        projectId,
+        userId
+      }, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`,
+        },
+        timeout: 30000
+      });
+
+      // 2. Generate concept using your existing service with custom system prompt
+      this.logger.log(`Step 2/3: Generating concept for project ${projectId}`);
+      const conceptResponse = await axios.post(`${this.baseUrl}/concept-writer`, {
+        prompt: this.buildVideoConceptPrompt(preferences, webInfoResponse.data),
+        web_info: JSON.stringify(webInfoResponse.data),
+        projectId,
+        userId,
+        model: 'gpt-5',
+        system_prompt: this.buildVideoSystemPrompt(preferences)
+      }, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`,
+        },
+        timeout: 60000
+      });
+
+      // 3. Generate story segments using the concept
+      this.logger.log(`Step 3/3: Generating story segments for project ${projectId}`);
+      const segmentationResponse = await axios.post(`${this.baseUrl}/segmentation`, {
+        prompt: preferences.userPrompt,
+        concept: conceptResponse.data.concepts[0].concept, // Use the generated concept
+        projectId,
+        userId,
+        model: 'gpt-5',
+        mode: 'story'
+      }, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`,
+        },
+        timeout: 60000
+      });
+
+      this.logger.log(`Successfully completed all 3 steps for project ${projectId}`);
+
+      return {
+        success: true,
+        data: {
+          concept: conceptResponse.data.concepts[0],
+          storySegments: segmentationResponse.data.segments,
+          credits: segmentationResponse.data.credits
+        }
+      };
+
+    } catch (error) {
+      // Determine which step failed based on error context
+      let failedStep = 'unknown';
+      if (error.config?.url?.includes('/get-web-info')) {
+        failedStep = 'Step 1/3: Web info generation';
+      } else if (error.config?.url?.includes('/concept-writer')) {
+        failedStep = 'Step 2/3: Concept generation';
+      } else if (error.config?.url?.includes('/segmentation')) {
+        failedStep = 'Step 3/3: Story segmentation';
+      }
+
+      this.logger.error(`Failed at ${failedStep} for project ${projectId}: ${error.message}`);
+      throw new Error(`Failed to generate concept with preferences at ${failedStep}: ${error.message}`);
+    }
+  }
+
+  private buildVideoSystemPrompt(preferences: any): string {
+    return `Create ONE video concept for: "${preferences.userPrompt}"
+
+  Use these visual settings:
+    - Video Type: ${preferences.videoType}
+    - Style: ${preferences.visualStyle}
+    - Lighting: ${preferences.lightingMood}  
+    - Camera: ${preferences.cameraStyle}
+    - Subject: ${preferences.subjectFocus}
+    - Location: ${preferences.locationEnvironment}
+
+  Return JSON:
+  {
+    "concepts": [{
+      "title": "Title about the iPhone app",
+      "concept": "5-6 line concept about showcasing the iPhone app with these visual settings",
+      "tone": "Professional and clean",
+      "goal": "Showcase the iPhone app effectively"
+    }]
+  }`;
+  }
+
+  private buildVideoConceptPrompt(preferences: any, webInfo: any): string {
+    return `${preferences.userPrompt}
+
+Visual Requirements:
+- Style: ${preferences.visualStyle}
+- Lighting: ${preferences.lightingMood} 
+- Camera: ${preferences.cameraStyle}
+- Subject: ${preferences.subjectFocus}
+- Location: ${preferences.locationEnvironment}
+
+Research Context: ${JSON.stringify(webInfo)}`;
+  }
+
+  async generateStorylineSegments() {
+
+  }
+
+  async updateStorylineSegment(
+    projectId: string,
+    segmentName: 'setTheScene' | 'ruinThings' | 'theBreakingPoint' | 'cleanUpTheMess' | 'wrapItUp',
+    newContent: string,
+    userId: string,
+  ) {
+    this.logger.log(`Updating ${segmentName} for project: ${projectId}`);
+
+    try {
+      // Check if project exists and belongs to user
+      const project = await this.prisma.project.findFirst({
+        where: { id: projectId, userId },
+      });
+
+      if (!project) {
+        throw new NotFoundException('Project not found');
+      }
+
+      // Check if preferences exist
+      const existingPreferences = await this.prisma.userVideoPreferences.findFirst({
+        where: { projectId },
+      });
+
+      if (!existingPreferences) {
+        throw new NotFoundException('Video preferences not found for this project');
+      }
+
+      // Update the specific segment
+      const updateData = { [segmentName]: newContent };
+
+      const updatedPreferences = await this.prisma.userVideoPreferences.update({
+        where: { projectId },
+        data: updateData,
+      });
+
+      // Log the update in conversation history
+      await this.prisma.conversationHistory.create({
+        data: {
+          type: 'PROJECT_CONTEXT_UPDATE',
+          userInput: `Updated ${segmentName} segment`,
+          response: JSON.stringify({
+            action: 'update_story_segment',
+            segmentName,
+            oldContent: existingPreferences[segmentName],
+            newContent,
+          }),
+          metadata: {
+            segmentUpdated: segmentName,
+          },
+          projectId,
+          userId,
+        },
+      });
+
+      this.logger.log(`Successfully updated ${segmentName} for project: ${projectId}`);
+
+      return {
+        success: true,
+        data: {
+          segmentName,
+          newContent,
+          updatedPreferences,
+        },
+        message: `${segmentName} segment updated successfully`,
+      };
+
+    } catch (error) {
+      this.logger.error(`Failed to update ${segmentName} segment: ${error.message}`);
+      throw error;
+    }
+  }
+
 
   async findProjectSegmentations(
     id: string,
