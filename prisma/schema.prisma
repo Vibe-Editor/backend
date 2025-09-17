@@ -89,6 +89,14 @@ model UserVideoPreferences {
   
   // Final computed config (stores all merged JSON values)
   finalConfig Json?
+
+  //store the string data for the individual segments
+
+  setTheScene         String?
+  ruinThings          String?
+  theBreakingPoint    String?
+  cleanUpTheMess      String?
+  wrapItUp            String?
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -14,11 +14,14 @@ import {
 } from './interfaces/project.interface';
 import { CreateVideoPreferencesDto, UpdateVideoPreferencesDto } from './dto/video-preference.dto';
 import { VIDEO_PREFERENCE_OPTIONS } from './constants/video-preference-options';
+import axios from 'axios';
 
 @Injectable()
 export class ProjectsService {
   private readonly logger = new Logger(ProjectsService.name);
   private readonly prisma = new PrismaClient();
+  private baseUrl = "http://localhost:8080";
+  // private baseUrl = process.env.BASE_URL;
 
   /**
    * Safely parse JSON string, return original value if parsing fails
@@ -728,6 +731,205 @@ export class ProjectsService {
       },
     };
   }
+
+
+  async generateConceptWithPreferences(projectId: string, userId: string, authToken: string) {
+    // Get video preferences
+    const preferences = await this.prisma.userVideoPreferences.findFirst({
+      where: { projectId }
+    });
+
+    if (!preferences) {
+      throw new NotFoundException('Video preferences not found');
+    }
+
+    try {
+      // 1. Get web info using your existing service
+      this.logger.log(`Step 1/3: Getting web info for project ${projectId}`);
+      const webInfoResponse = await axios.post(`${this.baseUrl}/get-web-info`, {
+        prompt: preferences.userPrompt,
+        projectId,
+        userId
+      }, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`,
+        },
+        timeout: 30000
+      });
+
+      // 2. Generate concept using your existing service with custom system prompt
+      this.logger.log(`Step 2/3: Generating concept for project ${projectId}`);
+      const conceptResponse = await axios.post(`${this.baseUrl}/concept-writer`, {
+        prompt: this.buildVideoConceptPrompt(preferences, webInfoResponse.data),
+        web_info: JSON.stringify(webInfoResponse.data),
+        projectId,
+        userId,
+        model: 'gpt-5',
+        system_prompt: this.buildVideoSystemPrompt(preferences)
+      }, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`,
+        },
+        timeout: 60000
+      });
+
+      // 3. Generate story segments using the concept
+      this.logger.log(`Step 3/3: Generating story segments for project ${projectId}`);
+      const segmentationResponse = await axios.post(`${this.baseUrl}/segmentation`, {
+        prompt: preferences.userPrompt,
+        concept: conceptResponse.data.concepts[0].concept, // Use the generated concept
+        projectId,
+        userId,
+        model: 'gpt-5',
+        mode: 'story'
+      }, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`,
+        },
+        timeout: 60000
+      });
+
+      this.logger.log(`Successfully completed all 3 steps for project ${projectId}`);
+
+      return {
+        success: true,
+        data: {
+          concept: conceptResponse.data.concepts[0],
+          storySegments: segmentationResponse.data.segments,
+          credits: segmentationResponse.data.credits
+        }
+      };
+
+    } catch (error) {
+      // Determine which step failed based on error context
+      let failedStep = 'unknown';
+      if (error.config?.url?.includes('/get-web-info')) {
+        failedStep = 'Step 1/3: Web info generation';
+      } else if (error.config?.url?.includes('/concept-writer')) {
+        failedStep = 'Step 2/3: Concept generation';
+      } else if (error.config?.url?.includes('/segmentation')) {
+        failedStep = 'Step 3/3: Story segmentation';
+      }
+
+      this.logger.error(`Failed at ${failedStep} for project ${projectId}: ${error.message}`);
+      throw new Error(`Failed to generate concept with preferences at ${failedStep}: ${error.message}`);
+    }
+  }
+
+  private buildVideoSystemPrompt(preferences: any): string {
+    return `Create ONE video concept for: "${preferences.userPrompt}"
+
+  Use these visual settings:
+    - Video Type: ${preferences.videoType}
+    - Style: ${preferences.visualStyle}
+    - Lighting: ${preferences.lightingMood}  
+    - Camera: ${preferences.cameraStyle}
+    - Subject: ${preferences.subjectFocus}
+    - Location: ${preferences.locationEnvironment}
+
+  Return JSON:
+  {
+    "concepts": [{
+      "title": "Title about the iPhone app",
+      "concept": "5-6 line concept about showcasing the iPhone app with these visual settings",
+      "tone": "Professional and clean",
+      "goal": "Showcase the iPhone app effectively"
+    }]
+  }`;
+  }
+
+  private buildVideoConceptPrompt(preferences: any, webInfo: any): string {
+    return `${preferences.userPrompt}
+
+Visual Requirements:
+- Style: ${preferences.visualStyle}
+- Lighting: ${preferences.lightingMood} 
+- Camera: ${preferences.cameraStyle}
+- Subject: ${preferences.subjectFocus}
+- Location: ${preferences.locationEnvironment}
+
+Research Context: ${JSON.stringify(webInfo)}`;
+  }
+
+  async generateStorylineSegments() {
+
+  }
+
+  async updateStorylineSegment(
+    projectId: string,
+    segmentName: 'setTheScene' | 'ruinThings' | 'theBreakingPoint' | 'cleanUpTheMess' | 'wrapItUp',
+    newContent: string,
+    userId: string,
+  ) {
+    this.logger.log(`Updating ${segmentName} for project: ${projectId}`);
+
+    try {
+      // Check if project exists and belongs to user
+      const project = await this.prisma.project.findFirst({
+        where: { id: projectId, userId },
+      });
+
+      if (!project) {
+        throw new NotFoundException('Project not found');
+      }
+
+      // Check if preferences exist
+      const existingPreferences = await this.prisma.userVideoPreferences.findFirst({
+        where: { projectId },
+      });
+
+      if (!existingPreferences) {
+        throw new NotFoundException('Video preferences not found for this project');
+      }
+
+      // Update the specific segment
+      const updateData = { [segmentName]: newContent };
+
+      const updatedPreferences = await this.prisma.userVideoPreferences.update({
+        where: { projectId },
+        data: updateData,
+      });
+
+      // Log the update in conversation history
+      await this.prisma.conversationHistory.create({
+        data: {
+          type: 'PROJECT_CONTEXT_UPDATE',
+          userInput: `Updated ${segmentName} segment`,
+          response: JSON.stringify({
+            action: 'update_story_segment',
+            segmentName,
+            oldContent: existingPreferences[segmentName],
+            newContent,
+          }),
+          metadata: {
+            segmentUpdated: segmentName,
+          },
+          projectId,
+          userId,
+        },
+      });
+
+      this.logger.log(`Successfully updated ${segmentName} for project: ${projectId}`);
+
+      return {
+        success: true,
+        data: {
+          segmentName,
+          newContent,
+          updatedPreferences,
+        },
+        message: `${segmentName} segment updated successfully`,
+      };
+
+    } catch (error) {
+      this.logger.error(`Failed to update ${segmentName} segment: ${error.message}`);
+      throw error;
+    }
+  }
+
 
   async findProjectSegmentations(
     id: string,
