@@ -5,7 +5,7 @@ import {
   InternalServerErrorException,
   OnModuleDestroy,
 } from '@nestjs/common';
-import { PrismaClient } from '../../../generated/prisma';
+import { PrismaClient } from '@prisma/client';
 import { CreditService } from '../credits/credit.service';
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import { uploadAudioToS3 } from '../video-gen/s3/s3.service';

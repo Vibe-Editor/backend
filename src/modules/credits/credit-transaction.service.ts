@@ -8,7 +8,7 @@ import {
   CreditTransactionType,
   CreditTransactionStatus,
   CreditTransaction,
-} from '../../../generated/prisma';
+} from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 
 export interface CreateTransactionData {

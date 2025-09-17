@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { GoogleGenAI } from '@google/genai';
-import { PrismaClient } from '../../../generated/prisma';
+import { PrismaClient } from '@prisma/client';
 import { CreditService } from '../credits/credit.service';
 import { CreateSummaryDto } from './dto/create-summary.dto';
 import { UpdateSummaryDto } from './dto/update-summary.dto';

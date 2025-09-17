@@ -10,7 +10,7 @@ import { UpdateImageGenDto } from './dto/update-image-gen.dto';
 import { GoogleGenAI } from '@google/genai';
 import { Agent, handoff, run } from '@openai/agents';
 import { ProjectHelperService } from '../../common/services/project-helper.service';
-import { PrismaClient } from '../../../generated/prisma';
+import { PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { createRecraftAgent } from './agents/recraft.agent';
 import { createImagenAgent } from './agents/imagen.agent';

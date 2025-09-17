@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { uploadVideoToS3 } from '../video-gen/s3/s3.service';
 import { Subject, Observable } from 'rxjs';
 import axios from 'axios';
-import { PrismaClient } from '../../../generated/prisma';
+import { PrismaClient } from '@prisma/client';
 
 export interface TextToVideoResult {
   s3_key: string;

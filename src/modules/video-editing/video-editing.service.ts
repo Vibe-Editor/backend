@@ -7,7 +7,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { PrismaClient } from '../../../generated/prisma';
+import { PrismaClient } from '@prisma/client';
 import { CreditService } from '../credits/credit.service';
 import {
   VideoEditingRequestDto,

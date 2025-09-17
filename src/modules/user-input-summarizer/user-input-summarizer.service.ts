@@ -9,7 +9,7 @@ import { GoogleGenAI } from '@google/genai';
 import { UserInputSummarizerDto } from './dto/user-input-summarizer.dto';
 import { z } from 'zod';
 import { ProjectHelperService } from '../../common/services/project-helper.service';
-import { PrismaClient } from '../../../generated/prisma';
+import { PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { CreditService } from '../credits/credit.service';
 

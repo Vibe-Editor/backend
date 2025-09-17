@@ -10,7 +10,7 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { Request, Response } from 'express';
-import { User } from '../../../generated/prisma';
+import { User } from '@prisma/client';
 import { CurrentUser } from '../../common/decorators/user.decorator';
 import { ConfigService } from '@nestjs/config';
 

@@ -24,7 +24,11 @@ import { ContextModule } from './modules/context/context.module';
 import { SummariesModule } from './modules/summaries/summaries.module';
 import { VideoEditingModule } from './modules/video-editing/video-editing.module';
 import { QuestionsModule } from './modules/questions/questions.module';
+
 import { PromptOptimizerModule } from './modules/prompt-optimizer/prompt-optimizer.module';
+
+import { VideoTemplatesModule } from './modules/video-templates/video-templates.module';
+
 
 @Module({
   imports: [
@@ -54,6 +58,8 @@ import { PromptOptimizerModule } from './modules/prompt-optimizer/prompt-optimiz
     VideoEditingModule,
     QuestionsModule,
     PromptOptimizerModule,
+    VideoTemplatesModule,
+
   ],
   controllers: [AppController],
   providers: [AppService],
