@@ -9,7 +9,7 @@ import { GoogleGenAI } from '@google/genai';
 import { VideoGenDto } from './dto/video-gen.dto';
 import { UpdateVideoGenDto } from './dto/update-video-gen.dto';
 import { Agent, handoff, run } from '@openai/agents';
-import { PrismaClient } from '../../../generated/prisma';
+import { PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { createVeo2Agent } from './agents/veo2.agent';
 import { createRunwayMLAgent } from './agents/runwayml.agent';

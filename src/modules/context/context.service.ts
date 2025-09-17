@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { GoogleGenAI } from '@google/genai';
 import { ProjectHelperService } from '../../common/services/project-helper.service';
-import { PrismaClient } from '../../../generated/prisma';
+import { PrismaClient } from '@prisma/client';
 import { CreditService } from '../credits/credit.service';
 import { createHash } from 'crypto';
 

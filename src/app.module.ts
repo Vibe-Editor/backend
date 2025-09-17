@@ -24,6 +24,7 @@ import { ContextModule } from './modules/context/context.module';
 import { SummariesModule } from './modules/summaries/summaries.module';
 import { VideoEditingModule } from './modules/video-editing/video-editing.module';
 import { QuestionsModule } from './modules/questions/questions.module';
+import { VideoTemplatesModule } from './modules/video-templates/video-templates.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { QuestionsModule } from './modules/questions/questions.module';
     SummariesModule,
     VideoEditingModule,
     QuestionsModule,
+    VideoTemplatesModule,
   ],
   controllers: [AppController],
   providers: [AppService],
