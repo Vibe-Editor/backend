@@ -13,6 +13,7 @@ import { CurrentUser } from '../../common/decorators/user.decorator';
 import { Public } from 'src/common/decorators/public.decorator';
 
 @Controller('prompt-optimizer')
+// @UseGuards(JwtAuthGuard)
 @Public()
 export class PromptOptimizerController {
   constructor(private readonly promptOptimizerService: PromptOptimizerService) {}
