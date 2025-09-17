@@ -9,7 +9,9 @@ import {
   UseGuards,
   Request,
   Query,
+  Put,
 } from '@nestjs/common';
+import { Headers } from '@nestjs/common';
 import { ProjectsService } from './projects.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
@@ -218,6 +220,26 @@ export class ProjectsController {
     @CurrentUser('id') userId: string,
   ) {
     return this.projectsService.getVideoPreferences(projectId, userId);
+  }
+
+  @Post(':id/generate-concept-with-preferences')
+  generateConceptWithPreferences(
+    @Param('id') projectId: string,
+    @CurrentUser('id') userId: string,
+    @Headers('authorization') authorization: string,
+  ) {
+    const authToken = authorization?.replace('Bearer ', '');
+    return this.projectsService.generateConceptWithPreferences(projectId, userId, authToken);
+  }
+
+  @Put(':id/storyline/:segmentName')
+  updateStorylineSegment(
+    @Param('id') projectId: string,
+    @Param('segmentName') segmentName: 'setTheScene' | 'ruinThings' | 'theBreakingPoint' | 'cleanUpTheMess' | 'wrapItUp',
+    @Body('content') content: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.projectsService.updateStorylineSegment(projectId, segmentName, content, userId);
   }
 
 
