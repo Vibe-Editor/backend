@@ -448,7 +448,7 @@ Generate the visual prompt:`,
   }
 
   // this is the function for the story arc segments
-  private async generateStorySegments(concept: string, model: string): Promise<{
+  private async generateStorySegments(userPrompt:string , concept: string, model: string): Promise<{
     setTheScene: string;
     ruinThings: string;
     theBreakingPoint: string;
@@ -458,32 +458,36 @@ Generate the visual prompt:`,
     const prompt = `Break this video concept into exactly 5 story segments:
 
 CONCEPT: "${concept}"
+user prompt: "${userPrompt}" Use this info to keep story segments closer to story info the user has give, in initial prompt 
 
-Create 5 distinct segments (4-5 sentences each) that follow this story structure:
+Create 5 distinct segments that follow this story structure. Each segment must be exactly 150 words long.
 
-1. setTheScene: Opening hook that establishes the context 
-2. ruinThings: Introduce the problem/conflict/challenge 
-3. theBreakingPoint: Peak moment of tension/climax 
-4. cleanUpTheMess: How the solution/resolution begins 
-5. wrapItUp: Final conclusion/call-to-action 
+1. setTheScene: Opening hook that establishes the context (write exactly 150 words)
+2. ruinThings: Introduce the problem/conflict/challenge (write exactly 150 words)
+3. theBreakingPoint: Peak moment of tension/climax (write exactly 150 words)
+4. cleanUpTheMess: How the solution/resolution begins (write exactly 150 words)
+5. wrapItUp: Final conclusion/call-to-action (write exactly 150 words)
+
+IMPORTANT: Each segment must be a full 150-word narrative, not a one-line summary. Write detailed, engaging content for each segment.
 
 Return ONLY a JSON object in this exact format:
 {
-  "setTheScene": "one line here",
-  "ruinThings": "one line here", 
-  "theBreakingPoint": "one line here",
-  "cleanUpTheMess": "one line here",
-  "wrapItUp": "one line here"
+  "setTheScene": "Write the full 150-word opening segment here that establishes context and hooks the viewer...",
+  "ruinThings": "Write the full 150-word problem segment here that introduces conflict...",
+  "theBreakingPoint": "Write the full 150-word climax segment here that shows peak tension...",
+  "cleanUpTheMess": "Write the full 150-word resolution segment here that begins solving the problem...",
+  "wrapItUp": "Write the full 150-word conclusion segment here that provides closure and call-to-action..."
 }`;
 
     let response;
     if (model === 'gpt-5' || model === 'openai') {
       response = await this.openai.chat.completions.create({
-        model: 'gpt-4o',
+        model: 'gpt-5-chat-latest',
         messages: [{ role: 'user', content: prompt }],
         response_format: { type: 'json_object' },
       });
       const content = response.choices[0]?.message?.content;
+      console.log("this is the content of the api call" , content)
       return JSON.parse(content);
     } else {
       // Use Gemini
@@ -517,8 +521,7 @@ Return ONLY a JSON object in this exact format:
     try {
       // Generate story segments
       const storySegments = await this.generateStorySegments(
-        segmentationDto.concept || segmentationDto.prompt,
-        segmentationDto.model || 'gpt-5'
+         segmentationDto.prompt, segmentationDto.concept, 'gpt-5'
       );
 
       // Create UserVideoSegment records instead of updating UserVideoPreferences

@@ -229,7 +229,7 @@ export class ProjectsController {
     @Headers('authorization') authorization: string,
   ) {
     const authToken = authorization?.replace('Bearer ', '');
-    return this.projectsService.generateConceptWithPreferences(projectId, userId, authToken);
+    return this.projectsService.generateConceptWithPreferences(projectId, userId, authToken); // actually generates the concept and individual video story segments as well
   }
 
   @Put(':segmentId/storyline')
