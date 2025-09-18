@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
-import { VideoTemplateResponseDto } from './dto/video-template.dto';
+import { VideoTemplateResponseDto, CreateVideoTemplateDto } from './dto/video-template.dto';
 
 @Injectable()
 export class VideoTemplatesService {
@@ -206,5 +206,33 @@ Based on the user's description, recommend the 4 best matching templates. Consid
       createdAt: template.createdAt,
       updatedAt: template.updatedAt,
     }));
+  }
+
+  async createTemplate(createTemplateDto: CreateVideoTemplateDto): Promise<VideoTemplateResponseDto> {
+    try {
+      this.logger.log(`Creating new video template: ${createTemplateDto.description.substring(0, 50)}...`);
+      
+      const template = await this.prisma.videoTemplate.create({
+        data: {
+          description: createTemplateDto.description,
+          jsonPrompt: createTemplateDto.jsonPrompt,
+          s3Key: createTemplateDto.s3Key,
+        },
+      });
+
+      this.logger.log(`Successfully created video template with ID: ${template.id}`);
+
+      return {
+        id: template.id,
+        description: template.description,
+        jsonPrompt: template.jsonPrompt,
+        s3Key: template.s3Key,
+        createdAt: template.createdAt,
+        updatedAt: template.updatedAt,
+      };
+    } catch (error) {
+      this.logger.error('Error creating video template:', error);
+      throw error;
+    }
   }
 }

@@ -6,6 +6,20 @@ export class FindSimilarTemplatesDto {
   description: string;
 }
 
+export class CreateVideoTemplateDto {
+  @IsString()
+  @IsNotEmpty()
+  description: string;
+
+  @IsString()
+  @IsNotEmpty()
+  jsonPrompt: string;
+
+  @IsString()
+  @IsNotEmpty()
+  s3Key: string;
+}
+
 export class VideoTemplateResponseDto {
   id: string;
   description: string;
