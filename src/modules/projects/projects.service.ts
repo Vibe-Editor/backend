@@ -18,15 +18,15 @@ import {
 } from './dto/video-preference.dto';
 import { VIDEO_PREFERENCE_OPTIONS } from './constants/video-preference-options';
 import axios from 'axios';
-import { ConceptWriterDto } from '../concept-writer/dto/concept-writer.dto';
 import OpenAI from 'openai';
+import { CreditService } from '../credits/credit.service';
 
 @Injectable()
 export class ProjectsService {
   private readonly logger = new Logger(ProjectsService.name);
   private readonly prisma = new PrismaClient();
   private baseUrl = process.env.BASE_URL;
-
+  // private baseUrl = 'http://localhost:8080'
   /**
    * Safely parse JSON string, return original value if parsing fails
    */
@@ -39,6 +39,10 @@ export class ProjectsService {
       return jsonString;
     }
   }
+
+  constructor(
+    private readonly creditService: CreditService,
+  ) {}
 
   async create(
     createProjectDto: CreateProjectDto,
@@ -1007,55 +1011,240 @@ Research Context: ${JSON.stringify(webInfo)}`;
     maxWords: number,
     userId: string,
   ) {
-    const updatedSegments = [];
+    this.logger.log(
+      `Starting regeneration of ${segmentIds.length} segments with ${maxWords} word limit for user: ${userId}`,
+    );
 
-    for (const segmentId of segmentIds) {
-      const segment = await this.prisma.userVideoSegment.findUnique({
-        where: { id: segmentId },
+    const startTime = Date.now();
+
+    // ===== CREDIT DEDUCTION =====
+    this.logger.log(`Deducting credits for segment regeneration`);
+
+    // Deduct credits first - 10 credits per regeneration operation
+    const creditTransactionId = await this.creditService.deductCredits(
+      userId,
+      'TEXT_OPERATIONS',
+      'segmentation',
+      `regeneration-${Date.now()}`,
+      false,
+      `Segment regeneration for ${segmentIds.length} segments`,
+    );
+
+    this.logger.log(
+      `Successfully deducted 10 credits for regeneration. Transaction ID: ${creditTransactionId}`,
+    );
+    // ===== END CREDIT DEDUCTION =====
+
+    try {
+      // 🔥 Single DB call to get all segments at once
+      this.logger.log(`Fetching all ${segmentIds.length} segments for user ${userId}`);
+
+      const segments = await this.prisma.userVideoSegment.findMany({
+        where: {
+          id: { in: segmentIds },
+          project: {
+            userId: userId, // Security check - only user's segments through project
+          },
+        },
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
       });
 
-      if (!segment) continue;
+      this.logger.log(`Found ${segments.length} valid segments out of ${segmentIds.length} requested`);
 
-      try {
-        // 🔥 Direct GPT-5 call
-        const completion = await this.openai.chat.completions.create({
-          model: 'gpt-5',
-          messages: [
-            {
-              role: 'system',
-              content: `You are a helpful assistant. Regenerate the given video segment in under ${maxWords} words. Return ONLY plain text (no JSON, no markdown).`,
-            },
-            {
-              role: 'user',
-              content: segment.description,
-            },
-          ],
-        });
+      if (segments.length === 0) {
+        this.logger.warn(`No valid segments found for user ${userId}`);
 
-        const newContent =
-          completion.choices[0]?.message?.content?.trim() || null;
-
-        if (!newContent) {
-          throw new Error('No content returned from GPT-5');
-        }
-
-        // Update DB with new segment
-        const updatedSegment = await this.prisma.userVideoSegment.update({
-          where: { id: segment.id },
-          data: {
-            description: newContent,
-          },
-        });
-
-        updatedSegments.push(updatedSegment);
-      } catch (err) {
-        this.logger.error(
-          `Failed to regenerate segment ${segmentId}: ${(err as Error).message}`,
+        // Refund credits if no valid segments found
+        await this.creditService.refundCredits(
+          userId,
+          'TEXT_OPERATIONS',
+          'segmentation',
+          `regeneration-${Date.now()}`,
+          creditTransactionId,
+          false,
+          'Refund for regeneration - no valid segments found',
         );
-      }
-    }
 
-    return updatedSegments;
+        return [];
+      }
+
+      // Log any missing segments
+      const foundSegmentIds = new Set(segments.map(s => s.id));
+      const missingSegments = segmentIds.filter(id => !foundSegmentIds.has(id));
+      if (missingSegments.length > 0) {
+        this.logger.warn(`Missing/unauthorized segments: ${missingSegments.join(', ')}`);
+      }
+
+      // Get the project ID for conversation history (use the first segment's project)
+      const projectId = segments[0]?.projectId;
+
+      // Process all GPT calls concurrently (no DB updates yet)
+      const gptPromises = segments.map(async (segment, index) => {
+        this.logger.log(`Processing GPT call ${index + 1}/${segments.length}: ${segment.id}`);
+
+        try {
+          this.logger.log(`Calling GPT-latest for segment ${segment.id} regeneration`);
+
+          // 🔥 Direct GPT-5 call
+          const completion = await this.openai.chat.completions.create({
+            model: 'gpt-5-chat-latest',
+            messages: [
+              {
+                role: 'system',
+                content: `You are a helpful assistant. Regenerate the given video segment in exactly ${maxWords} words. Return ONLY plain text (no JSON, no markdown).`,
+              },
+              {
+                role: 'user',
+                content: segment.description,
+              },
+            ],
+          });
+
+          const newContent = completion.choices[0]?.message?.content?.trim() || null;
+
+          if (!newContent) {
+            throw new Error('No content returned from GPT-5');
+          }
+
+          this.logger.log(`GPT-5 successfully regenerated content for segment ${segment.id}`);
+
+          return {
+            segmentId: segment.id,
+            segmentType: segment.type,
+            originalContent: segment.description,
+            newContent,
+            success: true,
+          };
+
+        } catch (err) {
+          this.logger.error(
+            `Failed GPT call for segment ${segment.id}: ${(err as Error).message}`,
+          );
+          return {
+            segmentId: segment.id,
+            segmentType: segment.type,
+            originalContent: segment.description,
+            newContent: null,
+            success: false,
+            error: (err as Error).message,
+          };
+        }
+      });
+
+      this.logger.log(`Waiting for all ${segments.length} GPT calls to complete`);
+
+      // Wait for all GPT calls to complete
+      const gptResults = await Promise.allSettled(gptPromises);
+      const successfulResults = gptResults
+        .filter(result => result.status === 'fulfilled' && result.value.success)
+        .map(result => (result as PromiseFulfilledResult<any>).value);
+
+      this.logger.log(`${successfulResults.length} GPT calls succeeded, preparing bulk database update`);
+
+      if (successfulResults.length === 0) {
+        this.logger.warn('No successful GPT regenerations, refunding credits and skipping database updates');
+
+        // Refund credits if no successful regenerations
+        await this.creditService.refundCredits(
+          userId,
+          'TEXT_OPERATIONS',
+          'segmentation',
+          `regeneration-${Date.now()}`,
+          creditTransactionId,
+          false,
+          'Refund for regeneration - all GPT calls failed',
+        );
+
+        return [];
+      }
+
+      // 🔥 Bulk update all segments in a single transaction
+      this.logger.log(`Performing bulk update for ${successfulResults.length} segments`);
+
+      const updatePromises = successfulResults.map(result =>
+        this.prisma.userVideoSegment.update({
+          where: { id: result.segmentId },
+          data: {
+            description: result.newContent,
+            updatedAt: new Date(), // Explicitly update timestamp
+          },
+        })
+      );
+
+      // Execute all updates concurrently
+      const updateResults = await Promise.allSettled(updatePromises);
+      const successfulUpdates = updateResults
+        .filter(result => result.status === 'fulfilled')
+        .map(result => (result as PromiseFulfilledResult<any>).value);
+
+      const processingTime = Date.now() - startTime;
+      const gptSuccessCount = successfulResults.length;
+      const gptFailureCount = segments.length - gptSuccessCount;
+      const dbSuccessCount = successfulUpdates.length;
+      const dbFailureCount = successfulResults.length - dbSuccessCount;
+      const totalRequestedCount = segmentIds.length;
+
+      // Get user's new balance after credit deduction
+      const newBalance = await this.creditService.getUserBalance(userId);
+
+      this.logger.log(
+        `Regeneration completed in ${processingTime}ms. GPT Success: ${gptSuccessCount}, GPT Failed: ${gptFailureCount}, DB Success: ${dbSuccessCount}, DB Failed: ${dbFailureCount}, Found: ${segments.length}, Requested: ${totalRequestedCount}. Credits used: 10, New balance: ${newBalance.toNumber()}`,
+      );
+
+      if (gptFailureCount > 0) {
+        this.logger.warn(`${gptFailureCount} segments failed GPT regeneration`);
+      }
+
+      if (dbFailureCount > 0) {
+        this.logger.warn(`${dbFailureCount} segments failed database update`);
+      }
+
+      if (missingSegments.length > 0) {
+        this.logger.warn(`${missingSegments.length} segments were not found or unauthorized`);
+      }
+
+      // Add credits info to response
+      const response = successfulUpdates.map(segment => ({
+        ...segment,
+        credits: {
+          used: 10,
+          balance: newBalance.toNumber(),
+        },
+      }));
+
+      return response;
+
+    } catch (error) {
+      const processingTime = Date.now() - startTime;
+      this.logger.error(
+        `Failed to regenerate segments after ${processingTime}ms: ${(error as Error).message}`,
+      );
+
+      // Refund credits on failure
+      try {
+        await this.creditService.refundCredits(
+          userId,
+          'TEXT_OPERATIONS',
+          'segmentation',
+          `regeneration-${Date.now()}`,
+          creditTransactionId,
+          false,
+          `Refund for failed regeneration: ${error.message}`,
+        );
+        this.logger.log(`Successfully refunded 10 credits for failed regeneration. User: ${userId}`);
+      } catch (refundError) {
+        this.logger.error(`Failed to refund credits for regeneration: ${refundError.message}`);
+      }
+
+      throw error;
+    }
   }
 
   async findProjectSegmentations(
