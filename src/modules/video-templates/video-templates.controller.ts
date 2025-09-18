@@ -1,6 +1,6 @@
-import { Controller, Post, Body, Get, Logger, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body, Get, Logger, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
 import { VideoTemplatesService } from './video-templates.service';
-import { FindSimilarTemplatesDto, SimilarTemplatesResponseDto, VideoTemplateResponseDto } from './dto/video-template.dto';
+import { FindSimilarTemplatesDto, SimilarTemplatesResponseDto, VideoTemplateResponseDto, CreateVideoTemplateDto } from './dto/video-template.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/user.decorator';
 
@@ -32,5 +32,15 @@ export class VideoTemplatesController {
   async getAllTemplates(@CurrentUser() user: any): Promise<VideoTemplateResponseDto[]> {
     this.logger.log(`User ${user.id} fetching all video templates`);
     return this.videoTemplatesService.getAllTemplates();
+  }
+
+  @Post()
+  @HttpCode(HttpStatus.CREATED)
+  async createTemplate(
+    @Body() createTemplateDto: CreateVideoTemplateDto,
+    @CurrentUser() user: any,
+  ): Promise<VideoTemplateResponseDto> {
+    this.logger.log(`User ${user.id} creating new video template: "${createTemplateDto.description.substring(0, 50)}..."`);
+    return this.videoTemplatesService.createTemplate(createTemplateDto);
   }
 }
