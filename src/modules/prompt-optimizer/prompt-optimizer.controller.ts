@@ -10,11 +10,9 @@ import { VideoGenWithOptimizationDto } from './dto/video-gen-with-optimization.d
 import { OptimizeAndGenerateVideoDto } from './dto/optimize-and-generate-video.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/user.decorator';
-import { Public } from 'src/common/decorators/public.decorator';
 
 @Controller('prompt-optimizer')
-// @UseGuards(JwtAuthGuard)
-@Public()
+@UseGuards(JwtAuthGuard)
 export class PromptOptimizerController {
   constructor(private readonly promptOptimizerService: PromptOptimizerService) {}
 
