@@ -61,3 +61,14 @@ export class UpdateVideoPreferencesDto {
   @IsString()
   location_environment?: string;
 }
+
+
+export class CreateBasicConceptDto {
+  @IsString()
+  @IsNotEmpty()
+  userPrompt: string;
+
+  @IsString()
+  @IsNotEmpty()
+  videoType: string; // Add this field
+}
