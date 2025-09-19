@@ -284,7 +284,7 @@ Please optimize this prompt according to the description and user preferences. R
 
       throw new InternalServerErrorException(
         'Failed to generate video with optimized prompt: ' +
-          (error as Error).message,
+        (error as Error).message,
       );
     }
   }
@@ -461,6 +461,9 @@ Please optimize this prompt according to the description and user preferences. R
         creditsUsed: creditCheck.requiredCredits,
       });
 
+      // Move WORKFLOW_VIDEOS_GENERATED to top
+      await this.updateWorkflowStep(dto.projectId, 'WORKFLOW_VIDEOS_GENERATED');
+
       return {
         optimizedPrompt,
         s3Key: videoResult.s3Keys[0], // Return the first (and only) S3 key
@@ -494,10 +497,28 @@ Please optimize this prompt according to the description and user preferences. R
 
       throw new InternalServerErrorException(
         'Failed to optimize prompt and generate video: ' +
-          (error as Error).message,
+        (error as Error).message,
       );
     }
   }
+
+  // Add this helper method
+  private async updateWorkflowStep(projectId: string, step: string): Promise<void> {
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+      select: { completedSteps: true }
+    });
+
+    const currentSteps = project?.completedSteps || [];
+    const filteredSteps = currentSteps.filter(s => s !== step);
+    const updatedSteps = [step, ...filteredSteps];
+
+    await this.prisma.project.update({
+      where: { id: projectId },
+      data: { completedSteps: updatedSteps }
+    });
+  }
+
 
   private async saveToDatabase(params: {
     optimizedPrompt: string;

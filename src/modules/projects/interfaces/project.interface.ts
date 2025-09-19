@@ -18,4 +18,5 @@ export interface ProjectWithStats extends ProjectResponse {
     generatedVideos: number;
     generatedVoiceovers: number;
   };
+  workflowSteps?: string[] | null;
 }

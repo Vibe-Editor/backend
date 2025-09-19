@@ -21,11 +21,20 @@ import axios from 'axios';
 import OpenAI from 'openai';
 import { CreditService } from '../credits/credit.service';
 
+export const WORKFLOW_STEPS = {
+  INITIAL_SETUP: 'WORKFLOW_INITIAL_SETUP',
+  PREFERENCES_SET: 'WORKFLOW_PREFERENCES_SET',
+  SEGMENTS_GENERATED: 'WORKFLOW_SEGMENTS_GENERATED',
+  VIDEOS_GENERATED: 'WORKFLOW_VIDEOS_GENERATED',
+} as const;
+
 @Injectable()
 export class ProjectsService {
   private readonly logger = new Logger(ProjectsService.name);
   private readonly prisma = new PrismaClient();
   private baseUrl = process.env.BASE_URL;
+  private readonly openai: OpenAI;
+
   // private baseUrl = 'http://localhost:8080'
   /**
    * Safely parse JSON string, return original value if parsing fails
@@ -42,7 +51,13 @@ export class ProjectsService {
 
   constructor(
     private readonly creditService: CreditService,
-  ) {}
+  ) {
+
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error('OPENAI_API_KEY environment variable not set.');
+    }
+    this.openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  }
 
   async create(
     createProjectDto: CreateProjectDto,
@@ -122,9 +137,11 @@ export class ProjectsService {
       if (!project) {
         throw new NotFoundException('Project not found');
       }
+      // this is for workflow status
+      const workflowSteps = this.getWorkflowStepsOnly(project.completedSteps);
 
       this.logger.log(`Project found: ${project.id}`);
-      return project;
+      return { ...project, workflowSteps };
     } catch (error) {
       this.logger.error(`Failed to fetch project: ${error.message}`);
       throw error;
@@ -204,6 +221,7 @@ export class ProjectsService {
       }));
 
       this.logger.log(`Project with all content found: ${project.id}`);
+      const workflowSteps = this.getWorkflowStepsOnly(project.completedSteps);
 
       return {
         success: true,
@@ -211,7 +229,9 @@ export class ProjectsService {
           ...project,
           conversations: parsedConversations,
           selectedSegmentation,
+          workflowSteps
         },
+
       };
     } catch (error) {
       this.logger.error(
@@ -507,176 +527,6 @@ export class ProjectsService {
     }
   }
 
-  async createVideoPreferences(
-    projectId: string,
-    createDto: CreateVideoPreferencesDto,
-    userId: string,
-  ) {
-    this.logger.log(`Creating video preferences for project: ${projectId}`);
-
-    try {
-      // Check if project exists and belongs to user
-      const project = await this.prisma.project.findFirst({
-        where: { id: projectId, userId },
-      });
-
-      if (!project) {
-        throw new NotFoundException('Project not found');
-      }
-
-      // Check if preferences already exist for this project
-      const existingPreferences =
-        await this.prisma.userVideoPreferences.findFirst({
-          where: { projectId },
-        });
-
-      if (existingPreferences) {
-        throw new BadRequestException(
-          'Video preferences already exist for this project',
-        );
-      }
-
-      // Build the final config from selected options
-      const finalConfig = this.buildFinalConfig({
-        userPrompt: createDto.user_prompt,
-        videoType: createDto.video_type,
-        visualStyle: createDto.visual_style,
-        lightingMood: createDto.lighting_mood,
-        cameraStyle: createDto.camera_style,
-        subjectFocus: createDto.subject_focus,
-        locationEnvironment: createDto.location_environment,
-      });
-
-      // Create video preferences
-      const videoPreferences = await this.prisma.userVideoPreferences.create({
-        data: {
-          projectId,
-          videoType: createDto.video_type,
-          userPrompt: createDto.user_prompt,
-          visualStyle: createDto.visual_style,
-          lightingMood: createDto.lighting_mood,
-          cameraStyle: createDto.camera_style,
-          subjectFocus: createDto.subject_focus,
-          locationEnvironment: createDto.location_environment,
-          finalConfig,
-        },
-      });
-
-      this.logger.log(`Video preferences created: ${videoPreferences.id}`);
-
-      return {
-        success: true,
-        data: videoPreferences,
-      };
-    } catch (error) {
-      this.logger.error(`Failed to create video preferences: ${error.message}`);
-      throw error;
-    }
-  }
-
-  async updateVideoPreferences(
-    projectId: string,
-    updateDto: UpdateVideoPreferencesDto,
-    userId: string,
-  ) {
-    this.logger.log(`Updating video preferences for project: ${projectId}`);
-
-    try {
-      // Check if project exists and belongs to user
-      const project = await this.prisma.project.findFirst({
-        where: { id: projectId, userId },
-      });
-
-      if (!project) {
-        throw new NotFoundException('Project not found');
-      }
-
-      // Check if preferences exist
-      const existingPreferences =
-        await this.prisma.userVideoPreferences.findFirst({
-          where: { projectId },
-        });
-
-      if (!existingPreferences) {
-        throw new NotFoundException(
-          'Video preferences not found for this project',
-        );
-      }
-
-      // Merge updated values with existing ones
-      const updatedData = {
-        ...existingPreferences,
-        ...Object.fromEntries(
-          Object.entries(updateDto)
-            .map(([key, value]) => [
-              key === 'user_prompt'
-                ? 'userPrompt'
-                : key === 'video_type'
-                  ? 'videoType'
-                  : key === 'visual_style'
-                    ? 'visualStyle'
-                    : key === 'lighting_mood'
-                      ? 'lightingMood'
-                      : key === 'camera_style'
-                        ? 'cameraStyle'
-                        : key === 'subject_focus'
-                          ? 'subjectFocus'
-                          : key === 'location_environment'
-                            ? 'locationEnvironment'
-                            : key,
-              value,
-            ])
-            .filter(([_, value]) => value !== undefined),
-        ),
-      };
-
-      // Rebuild final config with updated values
-      const finalConfig = this.buildFinalConfig({
-        userPrompt: updatedData.userPrompt,
-        videoType: updatedData.videoType,
-        visualStyle: updatedData.visualStyle,
-        lightingMood: updatedData.lightingMood,
-        cameraStyle: updatedData.cameraStyle,
-        subjectFocus: updatedData.subjectFocus,
-        locationEnvironment: updatedData.locationEnvironment,
-      });
-
-      // Update preferences
-      const videoPreferences = await this.prisma.userVideoPreferences.update({
-        where: { projectId },
-        data: {
-          ...(updateDto.user_prompt && { userPrompt: updateDto.user_prompt }),
-          ...(updateDto.video_type && { videoType: updateDto.video_type }),
-          ...(updateDto.visual_style && {
-            visualStyle: updateDto.visual_style,
-          }),
-          ...(updateDto.lighting_mood && {
-            lightingMood: updateDto.lighting_mood,
-          }),
-          ...(updateDto.camera_style && {
-            cameraStyle: updateDto.camera_style,
-          }),
-          ...(updateDto.subject_focus && {
-            subjectFocus: updateDto.subject_focus,
-          }),
-          ...(updateDto.location_environment && {
-            locationEnvironment: updateDto.location_environment,
-          }),
-          finalConfig,
-        },
-      });
-
-      this.logger.log(`Video preferences updated: ${videoPreferences.id}`);
-
-      return {
-        success: true,
-        data: videoPreferences,
-      };
-    } catch (error) {
-      this.logger.error(`Failed to update video preferences: ${error.message}`);
-      throw error;
-    }
-  }
 
   async getVideoPreferences(projectId: string, userId: string) {
     this.logger.log(`Getting video preferences for project: ${projectId}`);
@@ -875,6 +725,9 @@ export class ProjectsService {
 
       this.logger.log(`Successfully generated basic concept for project ${projectId}`);
 
+      // Move WORKFLOW_INITIAL_SETUP to top (most recent)
+      await this.updateWorkflowStep(projectId, 'WORKFLOW_INITIAL_SETUP');
+
       return {
         success: true,
         data: {
@@ -931,18 +784,21 @@ export class ProjectsService {
       });
 
       // Save or update preferences
-      const preferences =  await this.prisma.userVideoPreferences.update({
-          where: { projectId },
-          data: {
-            visualStyle: preferencesDto.visual_style,
-            lightingMood: preferencesDto.lighting_mood,
-            cameraStyle: preferencesDto.camera_style,
-            subjectFocus: preferencesDto.subject_focus,
-            locationEnvironment: preferencesDto.location_environment,
-            finalConfig,
-          }
-        })
-        
+      const preferences = await this.prisma.userVideoPreferences.update({
+        where: { projectId },
+        data: {
+          visualStyle: preferencesDto.visual_style,
+          lightingMood: preferencesDto.lighting_mood,
+          cameraStyle: preferencesDto.camera_style,
+          subjectFocus: preferencesDto.subject_focus,
+          locationEnvironment: preferencesDto.location_environment,
+          finalConfig,
+        }
+      })
+
+      // Move WORKFLOW_PREFERENCES_SET to top after preferences are updated
+      await this.updateWorkflowStep(projectId, 'WORKFLOW_PREFERENCES_SET');
+
 
       if (!preferences) {
         throw new NotFoundException('Video preferences not found for this project');
@@ -990,6 +846,10 @@ export class ProjectsService {
       );
 
       this.logger.log(`Successfully generated segments with visual preferences for project ${projectId}`);
+
+      // Move WORKFLOW_SEGMENTS_GENERATED to top after successful segmentation
+      await this.updateWorkflowStep(projectId, 'WORKFLOW_SEGMENTS_GENERATED');
+
 
       return {
         success: true,
@@ -1113,9 +973,6 @@ Research Context: ${JSON.stringify(webInfo)}`;
     }
   }
 
-  private openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-  });
 
   async regenerateSegmentsWithWordLimit(
     segmentIds: string[],
@@ -1330,6 +1187,10 @@ Research Context: ${JSON.stringify(webInfo)}`;
         },
       }));
 
+      // Move WORKFLOW_SEGMENTS_GENERATED to top after successful segmentation
+      await this.updateWorkflowStep(projectId, 'WORKFLOW_SEGMENTS_GENERATED');
+
+
       return response;
 
     } catch (error) {
@@ -1356,6 +1217,41 @@ Research Context: ${JSON.stringify(webInfo)}`;
 
       throw error;
     }
+  }
+
+
+  // Helper function to move workflow state to top (most recent first)
+  private async updateWorkflowStep(projectId: string, step: string): Promise<void> {
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+      select: { completedSteps: true }
+    });
+
+    const currentSteps = project?.completedSteps || [];
+
+    // Remove the step if it already exists (to avoid duplicates)
+    const filteredSteps = currentSteps.filter(s => s !== step);
+
+    // Add the step to the beginning (most recent first)
+    const updatedSteps = [step, ...filteredSteps];
+
+    await this.prisma.project.update({
+      where: { id: projectId },
+      data: {
+        completedSteps: updatedSteps
+      }
+    });
+  }
+
+  private getWorkflowStepsOnly(completedSteps: string[]): string[] {
+    const workflowSteps = [
+      WORKFLOW_STEPS.INITIAL_SETUP,
+      WORKFLOW_STEPS.PREFERENCES_SET,
+      WORKFLOW_STEPS.SEGMENTS_GENERATED,
+      WORKFLOW_STEPS.VIDEOS_GENERATED,
+    ];
+
+    return completedSteps.filter(step => workflowSteps.includes(step as any));
   }
 
   async findProjectSegmentations(
