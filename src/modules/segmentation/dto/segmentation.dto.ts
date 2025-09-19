@@ -26,4 +26,16 @@ export class SegmentationDto {
   @IsOptional()
   @IsIn(['story'])
   mode?: 'story'; 
+
+
+  @IsOptional()
+  preferences?: {
+    visualStyle?: string;
+    lightingMood?: string;
+    cameraStyle?: string;
+    subjectFocus?: string;
+    locationEnvironment?: string;
+    finalConfig?: any;
+    wordCount: number;
+  };
 }

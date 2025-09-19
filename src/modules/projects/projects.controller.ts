@@ -17,12 +17,12 @@ import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/user.decorator';
-import { CreateVideoPreferencesDto, UpdateVideoPreferencesDto } from './dto/video-preference.dto';
+import { CreateBasicConceptDto, CreateVideoPreferencesDto, UpdateVideoPreferencesDto } from './dto/video-preference.dto';
 
 @Controller('projects')
 @UseGuards(JwtAuthGuard)
 export class ProjectsController {
-  constructor(private readonly projectsService: ProjectsService) {}
+  constructor(private readonly projectsService: ProjectsService) { }
 
   @Post()
   create(
@@ -222,14 +222,33 @@ export class ProjectsController {
     return this.projectsService.getVideoPreferences(projectId, userId);
   }
 
-  @Post(':id/generate-concept-with-preferences')
-  generateConceptWithPreferences(
+
+  @Post(':id/generate-basic-concept')
+  generateBasicConcept(
     @Param('id') projectId: string,
+    @Body() createBasicConceptDto: CreateBasicConceptDto, // Change this
     @CurrentUser('id') userId: string,
     @Headers('authorization') authorization: string,
   ) {
     const authToken = authorization?.replace('Bearer ', '');
-    return this.projectsService.generateConceptWithPreferences(projectId, userId, authToken); // actually generates the concept and individual video story segments as well
+    return this.projectsService.generateBasicConcept(projectId, createBasicConceptDto.userPrompt, userId, authToken , createBasicConceptDto.videoType);
+  }
+
+
+  @Post(':id/generate-segments-with-preferences')
+  generateSegmentsWithPreferences(
+    @Param('id') projectId: string,
+    @CurrentUser('id') userId: string,
+    @Headers('authorization') authorization: string,
+    @Body() preferencesDto: CreateVideoPreferencesDto, // ADD THIS
+  ) {
+    const authToken = authorization?.replace('Bearer ', '');
+    return this.projectsService.generateSegmentsWithPreferences(
+      projectId,
+      userId,
+      authToken,
+      preferencesDto // PASS THIS
+    );
   }
 
   @Put(':segmentId/storyline')

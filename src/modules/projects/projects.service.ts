@@ -788,27 +788,47 @@ export class ProjectsService {
     };
   }
 
-  async generateConceptWithPreferences(
+  // First function: Generate basic concept from user prompt
+  async generateBasicConcept(
     projectId: string,
+    userPrompt: string,
     userId: string,
     authToken: string,
+    videoType: string,
   ) {
-    // Get video preferences
-    const preferences = await this.prisma.userVideoPreferences.findFirst({
-      where: { projectId },
-    });
-
-    if (!preferences) {
-      throw new NotFoundException('Video preferences not found');
-    }
+    this.logger.log(`Step 1/2: Getting web info for project ${projectId}`);
 
     try {
-      // 1. Get web info using your existing service
-      this.logger.log(`Step 1/3: Getting web info for project ${projectId}`);
+
+      const existingPreferences = await this.prisma.userVideoPreferences.findFirst({
+        where: { projectId },
+      });
+
+      if (existingPreferences) {
+        // Update existing with userPrompt and videoType
+        await this.prisma.userVideoPreferences.update({
+          where: { projectId },
+          data: {
+            userPrompt,
+            videoType // Save both fields
+          }
+        });
+      } else {
+        // Create new with userPrompt and videoType
+        await this.prisma.userVideoPreferences.create({
+          data: {
+            projectId,
+            userPrompt,
+            videoType, // Save both fields
+          }
+        });
+      }
+
+      // 1. Get web info
       const webInfoResponse = await axios.post(
         `${this.baseUrl}/get-web-info`,
         {
-          prompt: preferences.userPrompt,
+          prompt: userPrompt,
           projectId,
           userId,
         },
@@ -817,24 +837,32 @@ export class ProjectsService {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${authToken}`,
           },
-          timeout: 30000,
+          timeout: 60000,
         },
       );
 
-      // 2. Generate concept using your existing service with custom system prompt
-      this.logger.log(`Step 2/3: Generating concept for project ${projectId}`);
+      // 2. Generate basic concept (without user preferences)
+      this.logger.log(`Step 2/2: Generating basic concept for project ${projectId}`);
       const conceptResponse = await axios.post(
         `${this.baseUrl}/concept-writer`,
         {
-          prompt: this.buildVideoConceptPrompt(
-            preferences,
-            webInfoResponse.data,
-          ),
+          prompt: userPrompt,
           web_info: JSON.stringify(webInfoResponse.data),
           projectId,
           userId,
           model: 'gpt-5',
-          system_prompt: this.buildVideoSystemPrompt(preferences),
+          // Basic system prompt without preferences
+          system_prompt: `Create ONE video concept for: "${userPrompt}"
+        
+        Return JSON:
+        {
+          "concepts": [{
+            "title": "Video title",
+            "concept": "5-6 line concept description",
+            "tone": "Appropriate tone",
+            "goal": "Video objective"
+          }]
+        }`,
         },
         {
           headers: {
@@ -845,60 +873,143 @@ export class ProjectsService {
         },
       );
 
-      // 3. Generate story segments using the concept
-      this.logger.log(
-        `Step 3/3: Generating story segments for project ${projectId}`,
-      );
-      const segmentationResponse = await axios.post(
-        `${this.baseUrl}/segmentation`,
-        {
-          prompt: preferences.userPrompt,
-          concept: conceptResponse.data.concepts[0].concept, // Use the generated concept
-          projectId,
-          userId,
-          model: 'gpt-5',
-          mode: 'story',
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${authToken}`,
-          },
-          timeout: 60000,
-        },
-      );
-
-      this.logger.log(
-        `Successfully completed all 3 steps for project ${projectId}`,
-      );
+      this.logger.log(`Successfully generated basic concept for project ${projectId}`);
 
       return {
         success: true,
         data: {
+          webInfo: webInfoResponse.data,
           concept: conceptResponse.data.concepts[0],
-          storySegments: segmentationResponse.data.segments,
-          credits: segmentationResponse.data.credits,
+          credits: conceptResponse.data.credits,
         },
       };
     } catch (error) {
-      // Determine which step failed based on error context
       let failedStep = 'unknown';
       if (error.config?.url?.includes('/get-web-info')) {
-        failedStep = 'Step 1/3: Web info generation';
+        failedStep = 'Step 1/2: Web info generation';
       } else if (error.config?.url?.includes('/concept-writer')) {
-        failedStep = 'Step 2/3: Concept generation';
-      } else if (error.config?.url?.includes('/segmentation')) {
-        failedStep = 'Step 3/3: Story segmentation';
+        failedStep = 'Step 2/2: Basic concept generation';
       }
 
       this.logger.error(
         `Failed at ${failedStep} for project ${projectId}: ${error.message}`,
       );
       throw new Error(
-        `Failed to generate concept with preferences at ${failedStep}: ${error.message}`,
+        `Failed to generate basic concept at ${failedStep}: ${error.message}`,
       );
     }
   }
+
+
+  // generateSegmentsWithPreferences function
+  async generateSegmentsWithPreferences(
+    projectId: string,
+    userId: string,
+    authToken: string,
+    preferencesDto: CreateVideoPreferencesDto, // ADD THIS
+  ) {
+    this.logger.log(`Generating segments with preferences for project ${projectId}`);
+
+    try {
+      const existingPreferences = await this.prisma.userVideoPreferences.findFirst({
+        where: { projectId },
+      });
+
+      if (!existingPreferences) {
+        throw new NotFoundException('No basic concept generated yet. Please generate basic concept first.');
+      }
+
+      // Build finalConfig
+      const finalConfig = this.buildFinalConfig({
+        userPrompt: existingPreferences.userPrompt,
+        videoType: existingPreferences.videoType,
+        visualStyle: preferencesDto.visual_style,
+        lightingMood: preferencesDto.lighting_mood,
+        cameraStyle: preferencesDto.camera_style,
+        subjectFocus: preferencesDto.subject_focus,
+        locationEnvironment: preferencesDto.location_environment,
+      });
+
+      // Save or update preferences
+      const preferences =  await this.prisma.userVideoPreferences.update({
+          where: { projectId },
+          data: {
+            visualStyle: preferencesDto.visual_style,
+            lightingMood: preferencesDto.lighting_mood,
+            cameraStyle: preferencesDto.camera_style,
+            subjectFocus: preferencesDto.subject_focus,
+            locationEnvironment: preferencesDto.location_environment,
+            finalConfig,
+          }
+        })
+        
+
+      if (!preferences) {
+        throw new NotFoundException('Video preferences not found for this project');
+      }
+
+      // Get the latest concept for this project
+      const latestConcept = await this.prisma.videoConcept.findFirst({
+        where: { projectId, userId },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (!latestConcept) {
+        throw new NotFoundException('No concept found for this project. Please generate a basic concept first.');
+      }
+
+      // Generate story segments using concept + preferences WITH finalConfig
+      this.logger.log(`Generating story segments with visual preferences for project ${projectId}`);
+      const segmentationResponse = await axios.post(
+        `${this.baseUrl}/segmentation`,
+        {
+          prompt: preferences.userPrompt,
+          concept: latestConcept.concept,
+          projectId,
+          userId,
+          model: 'gpt-5',
+          mode: 'story',
+          // Pass the full finalConfig JSON and word count
+          preferences: {
+            visualStyle: preferences.visualStyle,
+            lightingMood: preferences.lightingMood,
+            cameraStyle: preferences.cameraStyle,
+            subjectFocus: preferences.subjectFocus,
+            locationEnvironment: preferences.locationEnvironment,
+            finalConfig: preferences.finalConfig, // Pass the rich JSON
+            wordCount: preferences.wordCount || 150, // Pass word count
+          },
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${authToken}`,
+          },
+          timeout: 60000,
+        },
+      );
+
+      this.logger.log(`Successfully generated segments with visual preferences for project ${projectId}`);
+
+      return {
+        success: true,
+        data: {
+          // concept: latestConcept,
+          // preferences,
+          storySegments: segmentationResponse.data.segments,
+          credits: segmentationResponse.data.credits,
+        },
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to generate segments with preferences for project ${projectId}: ${error.message}`,
+      );
+      throw new Error(
+        `Failed to generate segments with preferences: ${error.message}`,
+      );
+    }
+  }
+
 
   private buildVideoSystemPrompt(preferences: any): string {
     return `Create ONE video concept for: "${preferences.userPrompt}"
