@@ -187,33 +187,6 @@ export class ProjectsController {
   }
 
 
-  // Updated Controller Methods
-  @Post(':id/video-preferences')
-  createVideoPreferences(
-    @Param('id') projectId: string,
-    @Body() createVideoPreferencesDto: CreateVideoPreferencesDto,
-    @CurrentUser('id') userId: string,
-  ) {
-    return this.projectsService.createVideoPreferences(
-      projectId,
-      createVideoPreferencesDto,
-      userId
-    );
-  }
-
-  @Patch(':id/video-preferences')
-  updateVideoPreferences(
-    @Param('id') projectId: string,
-    @Body() updateVideoPreferencesDto: UpdateVideoPreferencesDto,
-    @CurrentUser('id') userId: string,
-  ) {
-    return this.projectsService.updateVideoPreferences(
-      projectId,
-      updateVideoPreferencesDto,
-      userId
-    );
-  }
-
   @Get(':id/video-preferences')
   getVideoPreferences(
     @Param('id') projectId: string,

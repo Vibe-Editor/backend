@@ -62,8 +62,10 @@ model Project {
   generatedVoiceovers  GeneratedVoiceover[]
   characterGenerations CharacterGeneration[]
 
-  completedSteps    String[] @default([]) // Replaces the projectStates map
-  userPrompts       String[] @default([]) // Stores all user prompts for this project
+  completedSteps    String[] @default([]) // this is to track if the user steps in agentv2 routes && and the new user preferences and story arc thingy
+  userPrompts       String[] @default([]) // Stores all user prompts for this project in the agentv2 route
+
+
 
   // Add this new relation
   videoPreferences     UserVideoPreferences?
