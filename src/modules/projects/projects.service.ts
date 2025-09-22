@@ -23,7 +23,6 @@ import { CreditService } from '../credits/credit.service';
 
 export const WORKFLOW_STEPS = {
   INITIAL_SETUP: 'WORKFLOW_INITIAL_SETUP',
-  PREFERENCES_SET: 'WORKFLOW_PREFERENCES_SET',
   SEGMENTS_GENERATED: 'WORKFLOW_SEGMENTS_GENERATED',
   VIDEOS_GENERATED: 'WORKFLOW_VIDEOS_GENERATED',
 } as const;
@@ -137,15 +136,70 @@ export class ProjectsService {
       if (!project) {
         throw new NotFoundException('Project not found');
       }
+
+      const highestStep = this.getHighestWorkflowStep(project.completedSteps);
+      let stepData = null;
+      let dataType = null;
+
+      switch (highestStep) {
+        case 'WORKFLOW_INITIAL_SETUP':
+          stepData = await this.getInitialSetupData(id, userId);
+          dataType = 'initial_setup';
+          break;
+        case 'WORKFLOW_SEGMENTS_GENERATED':
+          stepData = await this.getSegmentsData(id);
+          dataType = 'segments';
+          break;
+        case 'WORKFLOW_VIDEOS_GENERATED':
+          stepData = await this.getVideosData(id);
+          dataType = 'videos';
+          break;
+      }
+
       // this is for workflow status
       const workflowSteps = this.getWorkflowStepsOnly(project.completedSteps);
 
       this.logger.log(`Project found: ${project.id}`);
-      return { ...project, workflowSteps };
+      return { ...project, workflowSteps, stepData:{type : dataType, data : stepData} };
     } catch (error) {
       this.logger.error(`Failed to fetch project: ${error.message}`);
       throw error;
     }
+  }
+
+  private async getInitialSetupData(projectId: string, userId: string) {
+    // Get latest concept + web research
+    const concept = await this.prisma.videoConcept.findFirst({
+      where: { projectId, userId },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    const webResearch = await this.prisma.webResearchQuery.findFirst({
+      where: { projectId, userId },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    return { concept, webResearch };
+  }
+
+  private async getSegmentsData(projectId: string) {
+    return await this.prisma.userVideoSegment.findMany({
+      where: { projectId },
+      orderBy: { createdAt: 'asc' }
+    });
+  }
+
+  private async getVideosData(projectId: string) {
+    const videos = await this.prisma.generatedVideo.findMany({
+      where: { projectId },
+      include: { videoFiles: true }
+    });
+
+    const segments = await this.prisma.userVideoSegment.findMany({
+      where: { projectId }
+    });
+
+    return { videos, segments };
   }
 
   async findOneWithAllContent(id: string, userId: string) {
@@ -796,9 +850,6 @@ export class ProjectsService {
         }
       })
 
-      // Move WORKFLOW_PREFERENCES_SET to top after preferences are updated
-      await this.updateWorkflowStep(projectId, 'WORKFLOW_PREFERENCES_SET');
-
 
       if (!preferences) {
         throw new NotFoundException('Video preferences not found for this project');
@@ -1246,12 +1297,27 @@ Research Context: ${JSON.stringify(webInfo)}`;
   private getWorkflowStepsOnly(completedSteps: string[]): string[] {
     const workflowSteps = [
       WORKFLOW_STEPS.INITIAL_SETUP,
-      WORKFLOW_STEPS.PREFERENCES_SET,
       WORKFLOW_STEPS.SEGMENTS_GENERATED,
       WORKFLOW_STEPS.VIDEOS_GENERATED,
     ];
 
     return completedSteps.filter(step => workflowSteps.includes(step as any));
+  }
+
+  private getHighestWorkflowStep(completedSteps: string[]): string | null {
+    const workflowSteps = [
+      'WORKFLOW_INITIAL_SETUP',
+      'WORKFLOW_SEGMENTS_GENERATED',
+      'WORKFLOW_VIDEOS_GENERATED'
+    ];
+
+    // Find the highest step that exists in completedSteps
+    for (const step of completedSteps) {
+      if (workflowSteps.includes(step)) {
+        return step; // Return the first (most recent) workflow step found
+      }
+    }
+    return null;
   }
 
   async findProjectSegmentations(
