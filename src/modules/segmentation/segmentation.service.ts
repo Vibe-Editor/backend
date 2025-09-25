@@ -14,6 +14,7 @@ import { SummariesService } from '../summaries/summaries.service';
 import { PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { CreditService } from '../credits/credit.service';
+import { CreateSegmentDto } from './dto/create-segment.dto';
 
 @Injectable()
 export class SegmentationService {
@@ -36,6 +37,26 @@ export class SegmentationService {
     this.openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   }
 
+  async createSingleSegment(dto: CreateSegmentDto, userId: string) {
+    const project = await this.prisma.project.findFirst({
+      where: { id: dto.projectId, userId },
+      select: { id: true },
+    });
+    if (!project) {
+      throw new Error('Project not found or access denied');
+    }
+
+    const segment = await this.prisma.userVideoSegment.create({
+      data: {
+        type: dto.type,
+        description: dto.description,
+        projectId: dto.projectId,
+      },
+      select: { id: true },
+    });
+
+    return { id: segment.id };
+  }
   private async generateScriptWithGemini(options: {
     narrationPrompt: string;
     visualPrompt: string;
