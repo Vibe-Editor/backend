@@ -74,7 +74,7 @@ export class VideoTemplatesService {
             Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
           },
           body: JSON.stringify({
-            model: 'gpt-4o',
+            model: 'gpt-5-nano',
             messages: [
               { role: 'system', content: systemPrompt },
               { role: 'user', content: userPrompt },
