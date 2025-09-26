@@ -414,6 +414,115 @@ export class ProjectsService {
     }
   }
 
+
+  async getProjectSegments(projectId: string, userId: string) {
+    // Verify project ownership
+    const project = await this.prisma.project.findFirst({
+      where: {
+        id: projectId,
+        userId
+      },
+    });
+
+    if (!project) {
+      throw new NotFoundException('Project not found or access denied');
+    }
+
+    // Get all segments for this project
+    const segments = await this.prisma.userVideoSegment.findMany({
+      where: {
+        projectId,
+        project: { userId } // Double check ownership
+      },
+      select: {
+        id: true,
+        type: true,
+        description: true,
+        createdAt: true,
+        updatedAt: true,
+        projectId: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return {
+      projectId,
+      segments,
+      count: segments.length,
+    };
+  }
+
+  async getSegmentVideos(segmentId: string, userId: string) {
+    // First check if segment exists and belongs to user
+    const segment = await this.prisma.userVideoSegment.findFirst({
+      where: {
+        id: segmentId,
+      },
+      include: {
+        project: {
+          select: {
+            id: true,
+            userId: true,
+          }
+        },
+        resources: {
+          select: {
+            id: true,
+            content: true,
+            s3Key: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
+      },
+    });
+
+    if (!segment) {
+      throw new NotFoundException('Segment not found');
+    }
+
+    // Check if user owns the project that contains this segment
+    if (segment.project.userId !== userId) {
+      throw new ForbiddenException('Access denied - segment does not belong to you');
+    }
+
+    // Format response with description from content JSON and add segmentId
+    const videos = segment.resources.map(resource => ({
+      id: resource.id,
+      description: this.extractDescription(resource.content),
+      jsonPrompt: resource.content,
+      segmentId: segmentId,
+      s3Key: resource.s3Key,
+      createdAt: resource.createdAt,
+      updatedAt: resource.updatedAt,
+    }));
+
+    return {
+      segmentId,
+      projectId: segment.project.id,
+      videos,
+      count: videos.length,
+    };
+  }
+
+  private extractDescription(content: any): string {
+    if (!content) return 'No description available';
+
+    // Try different possible keys where description might be stored
+    if (typeof content === 'object') {
+      return content.description ||
+        content.prompt ||
+        content.userInput ||
+        'Generated video content';
+    }
+
+    if (typeof content === 'string') {
+      return content.substring(0, 100) + (content.length > 100 ? '...' : '');
+    }
+
+    return 'Generated video content';
+  }
+
   async findProjectImages(
     id: string,
     userId: string,

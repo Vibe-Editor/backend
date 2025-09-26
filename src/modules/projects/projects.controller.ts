@@ -204,7 +204,7 @@ export class ProjectsController {
     @Headers('authorization') authorization: string,
   ) {
     const authToken = authorization?.replace('Bearer ', '');
-    return this.projectsService.generateBasicConcept(projectId, createBasicConceptDto.userPrompt, userId, authToken , createBasicConceptDto.videoType);
+    return this.projectsService.generateBasicConcept(projectId, createBasicConceptDto.userPrompt, userId, authToken, createBasicConceptDto.videoType);
   }
 
 
@@ -222,6 +222,22 @@ export class ProjectsController {
       authToken,
       preferencesDto // PASS THIS
     );
+  }
+
+  @Post(':id/segments')
+  async getProjectSegments(
+    @Param('id') projectId: string,
+    @CurrentUser('id') userId: string
+  ) {
+    return this.projectsService.getProjectSegments(projectId, userId);
+  }
+
+  @Post('segment/:segmentId/videos')
+  async getSegmentVideos(
+    @Param('segmentId') segmentId: string,
+    @CurrentUser('id') userId: string
+  ) {
+    return this.projectsService.getSegmentVideos(segmentId, userId);
   }
 
   @Put(':segmentId/storyline')
@@ -242,7 +258,7 @@ export class ProjectsController {
     @CurrentUser('id') userId: string,
   ) {
     const authToken = authorization?.replace('Bearer ', '');
-    return this.projectsService.regenerateSegmentsWithWordLimit(segmentIds, maxWordCount, userId );
+    return this.projectsService.regenerateSegmentsWithWordLimit(segmentIds, maxWordCount, userId);
   }
 
 
