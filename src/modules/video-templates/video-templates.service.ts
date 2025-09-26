@@ -193,19 +193,38 @@ Based on the user's description, recommend the 4 best matching templates. Consid
     }
   }
 
-  async getAllTemplates(): Promise<VideoTemplateResponseDto[]> {
-    const templates = await this.prisma.videoTemplate.findMany({
-      orderBy: { createdAt: 'desc' },
-    });
+  async getAllTemplates(page: number = 1, limit: number = 10): Promise<{
+    data: VideoTemplateResponseDto[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }> {
+    const skip = (page - 1) * limit;
 
-    return templates.map((template) => ({
-      id: template.id,
-      description: template.description,
-      jsonPrompt: template.jsonPrompt,
-      s3Key: template.s3Key,
-      createdAt: template.createdAt,
-      updatedAt: template.updatedAt,
-    }));
+    const [templates, total] = await Promise.all([
+      this.prisma.videoTemplate.findMany({
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.videoTemplate.count(),
+    ]);
+
+    return {
+      data: templates.map((template) => ({
+        id: template.id,
+        description: template.description,
+        jsonPrompt: template.jsonPrompt,
+        s3Key: template.s3Key,
+        createdAt: template.createdAt,
+        updatedAt: template.updatedAt,
+      })),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
   async createTemplate(createTemplateDto: CreateVideoTemplateDto): Promise<VideoTemplateResponseDto> {

@@ -369,7 +369,7 @@ Please optimize this prompt according to the description and user preferences. R
   async optimizeAndGenerateVideo(
     dto: OptimizeAndGenerateVideoDto,
     userId: string,
-  ): Promise<{ optimizedPrompt: string; s3Key: string }> {
+  ): Promise<{ optimizedPrompt: string; s3Key: string; segmentId:string; description:string; }> {
     const { jsonPrompt, description, userPreferences, segmentId, projectId } =
       dto;
 
@@ -466,6 +466,8 @@ Please optimize this prompt according to the description and user preferences. R
 
       return {
         optimizedPrompt,
+        segmentId,
+        description:segment.description,
         s3Key: videoResult.s3Keys[0], // Return the first (and only) S3 key
       };
     } catch (error) {
