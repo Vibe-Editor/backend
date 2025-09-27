@@ -467,7 +467,7 @@ Please optimize this prompt according to the description and user preferences. R
       return {
         optimizedPrompt,
         segmentId,
-        description:segment.description,
+        description: description, 
         s3Key: videoResult.s3Keys[0], // Return the first (and only) S3 key
       };
     } catch (error) {
