@@ -687,9 +687,9 @@ export class VideoGenService {
   }
 
   async generateImageToVideo(imageToVideoDto: ImageToVideoDto, userId: string) {
-    const { id, prompt, duration = '8s', projectId } = imageToVideoDto;
+    const { imageS3Key, segmentId, prompt, duration = '8s', projectId } = imageToVideoDto;
     
-    this.logger.log(`Starting image-to-video generation for user: ${userId}, id: ${id}`);
+    this.logger.log(`Starting image-to-video generation for user: ${userId}, segmentId: ${segmentId}`);
 
     const startTime = Date.now();
     let creditTransactionId: string | null = null;
@@ -712,18 +712,18 @@ export class VideoGenService {
         userId,
         'VIDEO_GENERATION',
         'veo3',
-        id,
+        segmentId,
         false,
-        `Image-to-video generation using Veo3 for id: ${id}`,
+        `Image-to-video generation using Veo3 for segmentId: ${segmentId}`,
       );
 
       this.logger.log(`Credits deducted successfully. Transaction ID: ${creditTransactionId}`);
 
       const result = await generateVeo3ImageToVideo(
-        id,
+        imageS3Key,
         prompt,
         duration,
-        id,
+        segmentId,
         projectId || 'default',
       );
 
@@ -731,8 +731,8 @@ export class VideoGenService {
         data: {
           animationPrompt: prompt,
           artStyle: 'realistic',
-          imageS3Key: id,
-          uuid: id,
+          imageS3Key: imageS3Key,
+          uuid: segmentId,
           success: true,
           model: result.model,
           totalVideos: 1,
@@ -757,7 +757,7 @@ export class VideoGenService {
         `Image-to-video generation completed successfully in ${totalTime}ms`,
         {
           s3Key: result.s3Key,
-          id,
+          segmentId,
           userId,
         },
       );
@@ -782,7 +782,7 @@ export class VideoGenService {
             userId,
             'VIDEO_GENERATION',
             'veo3',
-            id,
+            segmentId,
             creditTransactionId,
             false,
             `Refund for failed image-to-video generation`,

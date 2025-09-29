@@ -1,11 +1,8 @@
-import { Controller, Post, Body, Get, Logger, UseGuards, HttpCode, HttpStatus, Query } from '@nestjs/common';
+import { Controller, Post, Body, Get, Logger, HttpCode, HttpStatus, Query } from '@nestjs/common';
 import { VideoTemplatesService } from './video-templates.service';
 import { FindSimilarTemplatesDto, SimilarTemplatesResponseDto, VideoTemplateResponseDto, CreateVideoTemplateDto } from './dto/video-template.dto';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { CurrentUser } from '../../common/decorators/user.decorator';
 
 @Controller('video-templates')
-@UseGuards(JwtAuthGuard)
 export class VideoTemplatesController {
   private readonly logger = new Logger(VideoTemplatesController.name);
 
@@ -14,9 +11,8 @@ export class VideoTemplatesController {
   @Post('find-similar')
   async findSimilarTemplates(
     @Body() findSimilarTemplatesDto: FindSimilarTemplatesDto,
-    @CurrentUser() user: any,
   ): Promise<SimilarTemplatesResponseDto> {
-    this.logger.log(`User ${user.id} finding similar templates for: "${findSimilarTemplatesDto.description}"`);
+    this.logger.log(`Finding similar templates for: "${findSimilarTemplatesDto.description}"`);
     const templates = await this.videoTemplatesService.findSimilarTemplates(
       findSimilarTemplatesDto.description,
     );
@@ -29,7 +25,6 @@ export class VideoTemplatesController {
 
   @Get()
   async getAllTemplates(
-    @CurrentUser() user: any,
     @Query('page') page: string = '1',
     @Query('limit') limit: string = '10'
   ): Promise<{
@@ -39,7 +34,7 @@ export class VideoTemplatesController {
     limit: number;
     totalPages: number;
   }> {
-    this.logger.log(`User ${user.id} fetching video templates - page: ${page}, limit: ${limit}`);
+    this.logger.log(`Fetching video templates - page: ${page}, limit: ${limit}`);
 
     const pageNum = parseInt(page, 10) || 1;
     const limitNum = parseInt(limit, 10) || 10;
@@ -51,9 +46,8 @@ export class VideoTemplatesController {
   @HttpCode(HttpStatus.CREATED)
   async createTemplate(
     @Body() createTemplateDto: CreateVideoTemplateDto,
-    @CurrentUser() user: any,
   ): Promise<VideoTemplateResponseDto> {
-    this.logger.log(`User ${user.id} creating new video template: "${createTemplateDto.description.substring(0, 50)}..."`);
+    this.logger.log(`Creating new video template: "${createTemplateDto.description.substring(0, 50)}..."`);
     return this.videoTemplatesService.createTemplate(createTemplateDto);
   }
 }
