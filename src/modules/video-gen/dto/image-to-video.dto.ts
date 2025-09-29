@@ -3,7 +3,11 @@ import { IsString, IsNotEmpty, IsOptional, IsIn } from 'class-validator';
 export class ImageToVideoDto {
   @IsString()
   @IsNotEmpty()
-  id: string;
+  imageS3Key: string;
+
+  @IsString()
+  @IsNotEmpty()
+  segmentId: string;
 
   @IsString()
   @IsNotEmpty()

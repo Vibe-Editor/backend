@@ -25,7 +25,8 @@ This endpoint allows users to generate videos from existing images using Google'
 
 ```json
 {
-  "id": "string",
+  "imageS3Key": "string",
+  "segmentId": "string",
   "prompt": "string", 
   "duration": "string",
   "projectId": "string"
@@ -34,12 +35,13 @@ This endpoint allows users to generate videos from existing images using Google'
 
 ### Request Parameters
 
-| Parameter   | Type   | Required | Description                                     | Validation                    |
-| ----------- | ------ | -------- | ----------------------------------------------- | ----------------------------- |
-| `id`        | string | Yes      | S3 key of the source image                      | Non-empty string              |
-| `prompt`    | string | Yes      | Animation prompt for video generation           | Non-empty string              |
-| `duration`  | string | No       | Video duration                                  | Must be '5s', '8s', or '10s'  |
-| `projectId` | string | No       | Project identifier for organization             | Optional string               |
+| Parameter    | Type   | Required | Description                                     | Validation                    |
+| ------------ | ------ | -------- | ----------------------------------------------- | ----------------------------- |
+| `imageS3Key` | string | Yes      | S3 key of the source image                      | Non-empty string              |
+| `segmentId`  | string | Yes      | Unique identifier for the segment/operation     | Non-empty string              |
+| `prompt`     | string | Yes      | Animation prompt for video generation           | Non-empty string              |
+| `duration`   | string | No       | Video duration                                  | Must be '5s', '8s', or '10s'  |
+| `projectId`  | string | No       | Project identifier for organization             | Optional string               |
 
 ## Response
 
@@ -86,7 +88,7 @@ This endpoint allows users to generate videos from existing images using Google'
 ```json
 {
   "statusCode": 400,
-  "message": ["id should not be empty", "prompt should not be empty"],
+  "message": ["imageS3Key should not be empty", "segmentId should not be empty", "prompt should not be empty"],
   "error": "Bad Request"
 }
 ```
@@ -109,7 +111,8 @@ curl -X POST "https://api.usuals.ai/video-gen/image-to-video" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -d '{
-    "id": "images/user123/source-image.png",
+    "imageS3Key": "images/user123/source-image.png",
+    "segmentId": "segment-123",
     "prompt": "A beautiful sunset over the ocean with gentle waves",
     "duration": "8s",
     "projectId": "project-456"
@@ -123,7 +126,8 @@ curl -X POST "https://api.usuals.ai/video-gen/image-to-video" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -d '{
-    "id": "images/user123/source-image.png",
+    "imageS3Key": "images/user123/source-image.png",
+    "segmentId": "segment-123",
     "prompt": "Animate this image with subtle motion"
   }'
 ```
@@ -151,7 +155,8 @@ curl -X POST "https://api.usuals.ai/video-gen/image-to-video" \
 
 ## Notes
 
-- The `id` parameter should be a valid S3 key pointing to an existing image
+- The `imageS3Key` parameter should be a valid S3 key pointing to an existing image
+- The `segmentId` parameter should be a unique identifier for tracking and organizing the generation
 - Images are automatically converted to base64 for processing
 - Generated videos are stored in S3 with automatic key generation
 - All generations are logged for audit and debugging purposes
