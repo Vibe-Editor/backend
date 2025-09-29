@@ -16,6 +16,8 @@ import { createRunwayMLAgent } from './agents/runwayml.agent';
 import { createKlingAgent } from './agents/kling.agent';
 import { createVeo3Agent } from './agents/veo3.agent';
 import { CreditService } from '../credits/credit.service';
+import { ImageToVideoDto } from './dto/image-to-video.dto';
+import { generateVeo3ImageToVideo } from './services/veo3-image-to-video.service';
 
 export interface VideoGenerationResult {
   s3Keys: string[];
@@ -680,6 +682,123 @@ export class VideoGenService {
       }
       throw new InternalServerErrorException(
         `Failed to update video: ${error.message}`,
+      );
+    }
+  }
+
+  async generateImageToVideo(imageToVideoDto: ImageToVideoDto, userId: string) {
+    const { id, prompt, duration = '8s', projectId } = imageToVideoDto;
+    
+    this.logger.log(`Starting image-to-video generation for user: ${userId}, id: ${id}`);
+
+    const startTime = Date.now();
+    let creditTransactionId: string | null = null;
+
+    try {
+      const creditCheck = await this.creditService.checkUserCredits(
+        userId,
+        'VIDEO_GENERATION',
+        'veo3',
+        false,
+      );
+
+      if (!creditCheck.hasEnoughCredits) {
+        throw new BadRequestException(
+          `Insufficient credits. Required: ${creditCheck.requiredCredits}, Available: ${creditCheck.currentBalance.toNumber()}`,
+        );
+      }
+
+      creditTransactionId = await this.creditService.deductCredits(
+        userId,
+        'VIDEO_GENERATION',
+        'veo3',
+        id,
+        false,
+        `Image-to-video generation using Veo3 for id: ${id}`,
+      );
+
+      this.logger.log(`Credits deducted successfully. Transaction ID: ${creditTransactionId}`);
+
+      const result = await generateVeo3ImageToVideo(
+        id,
+        prompt,
+        duration,
+        id,
+        projectId || 'default',
+      );
+
+      const savedVideo = await this.prisma.generatedVideo.create({
+        data: {
+          animationPrompt: prompt,
+          artStyle: 'realistic',
+          imageS3Key: id,
+          uuid: id,
+          success: true,
+          model: result.model,
+          totalVideos: 1,
+          projectId: projectId || 'default',
+          userId: userId,
+          creditsUsed: new Decimal(creditCheck.requiredCredits),
+          creditTransactionId: creditTransactionId,
+        },
+      });
+
+      await this.prisma.generatedVideoFile.create({
+        data: {
+          s3Key: result.s3Key,
+          generatedVideoId: savedVideo.id,
+        },
+      });
+
+      const newBalance = await this.creditService.getUserBalance(userId);
+      const totalTime = Date.now() - startTime;
+
+      this.logger.log(
+        `Image-to-video generation completed successfully in ${totalTime}ms`,
+        {
+          s3Key: result.s3Key,
+          id,
+          userId,
+        },
+      );
+
+      return {
+        success: true,
+        s3Key: result.s3Key,
+        model: result.model,
+        credits: {
+          used: creditCheck.requiredCredits,
+          balance: newBalance.toNumber(),
+        },
+        duration: duration,
+        generationTime: totalTime,
+      };
+    } catch (error) {
+      this.logger.error(`Image-to-video generation failed: ${error.message}`);
+
+      if (creditTransactionId) {
+        try {
+          await this.creditService.refundCredits(
+            userId,
+            'VIDEO_GENERATION',
+            'veo3',
+            id,
+            creditTransactionId,
+            false,
+            `Refund for failed image-to-video generation`,
+          );
+          this.logger.log(`Credits refunded for transaction: ${creditTransactionId}`);
+        } catch (refundError) {
+          this.logger.error(`Failed to refund credits: ${refundError.message}`);
+        }
+      }
+
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+
+      throw new InternalServerErrorException(
+        `Image-to-video generation failed: ${error.message}`,
       );
     }
   }
