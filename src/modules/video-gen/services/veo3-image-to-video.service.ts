@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { getImageFromS3AsBase64, uploadVideoToS3 } from '../s3/s3.service';
+import { uploadVideoToS3 } from '../s3/s3.service';
 import 'dotenv/config';
 
 const logger = new Logger('Veo3ImageToVideoService');
@@ -32,14 +32,24 @@ export async function generateVeo3ImageToVideo(
     finalPrompt = prompt.substring(0, maxPromptLength).trim();
   }
 
-  try {
-    logger.log(`Fetching image from S3: ${imageS3Key}`);
-    const imageBase64 = await getImageFromS3AsBase64(imageS3Key);
-    logger.log(
-      `Successfully converted image to base64 (${imageBase64.length} chars)`,
-    );
+  // Determine the proper image URL for Veo3 API
+  let imageUrl: string;
+  if (imageS3Key.startsWith('https://')) {
+    // Already a full URL (CloudFront URL)
+    imageUrl = imageS3Key;
+    logger.log(`Using provided CloudFront URL: ${imageUrl}`);
+  } else {
+    // Convert S3 key to CloudFront URL
+    const cloudFrontDomain = process.env.CLOUDFRONT_DOMAIN || 'ds0fghatf06yb.cloudfront.net';
+    // Decode any URL encoding in the S3 key, then re-encode for URL
+    const decodedKey = decodeURIComponent(imageS3Key);
+    imageUrl = `https://${cloudFrontDomain}/${encodeURIComponent(decodedKey)}`;
+    logger.log(`Generated CloudFront URL from S3 key: ${imageUrl}`);
+  }
 
+  try {
     logger.log('Starting Veo3 image-to-video generation with Fal.ai');
+    logger.log(`Using image URL: ${imageUrl}`);
 
     const response = await fetch('https://fal.run/fal-ai/veo3', {
       method: 'POST',
@@ -49,7 +59,7 @@ export async function generateVeo3ImageToVideo(
       },
       body: JSON.stringify({
         prompt: finalPrompt,
-        image_url: `data:image/png;base64,${imageBase64}`,
+        image_url: imageUrl,
         duration: duration,
         aspect_ratio: '16:9',
         num_inference_steps: 25,
