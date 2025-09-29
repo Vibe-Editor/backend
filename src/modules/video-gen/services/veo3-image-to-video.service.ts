@@ -15,6 +15,9 @@ export async function generateVeo3ImageToVideo(
   duration: string = '8s',
   segmentId: string,
   projectId: string,
+  aspect_ratio: string = '16:9',
+  resolution: string = '720p',
+  generate_audio: boolean = true,
 ): Promise<ImageToVideoResult> {
   logger.log(`Starting Veo3 image-to-video generation for segment: ${segmentId}`);
 
@@ -51,7 +54,7 @@ export async function generateVeo3ImageToVideo(
     logger.log('Starting Veo3 image-to-video generation with Fal.ai');
     logger.log(`Using image URL: ${imageUrl}`);
 
-    const response = await fetch('https://fal.run/fal-ai/veo3', {
+    const response = await fetch('https://fal.run/fal-ai/veo3/image-to-video', {
       method: 'POST',
       headers: {
         Authorization: `Key ${process.env.FAL_KEY}`,
@@ -61,9 +64,9 @@ export async function generateVeo3ImageToVideo(
         prompt: finalPrompt,
         image_url: imageUrl,
         duration: duration,
-        aspect_ratio: '16:9',
-        num_inference_steps: 25,
-        guidance_scale: 3.5,
+        aspect_ratio: aspect_ratio,
+        resolution: resolution,
+        generate_audio: generate_audio,
       }),
     });
 
