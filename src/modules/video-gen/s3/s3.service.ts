@@ -20,14 +20,34 @@ const s3Client = new S3Client({
 
 export async function getImageFromS3AsBase64(s3Key: string): Promise<string> {
   const startTime = Date.now();
+  
+  // Handle URL-encoded S3 keys and CloudFront URLs
+  let actualS3Key = s3Key;
+  if (s3Key.startsWith('https://')) {
+    try {
+      const url = new URL(s3Key);
+      actualS3Key = decodeURIComponent(url.pathname.substring(1)); // Remove leading slash and decode
+      logger.debug(`Extracted S3 key from CloudFront URL: ${actualS3Key}`);
+    } catch (error) {
+      logger.error(`Failed to parse CloudFront URL: ${s3Key}`);
+      throw new InternalServerErrorException('Invalid image URL format');
+    }
+  } else {
+    // Decode URL encoding for direct S3 keys
+    actualS3Key = decodeURIComponent(s3Key);
+    if (actualS3Key !== s3Key) {
+      logger.debug(`Decoded S3 key: ${s3Key} -> ${actualS3Key}`);
+    }
+  }
+  
   try {
     logger.debug(
-      `Downloading image from S3 bucket: ${process.env.S3_BUCKET_NAME}, key: ${s3Key}`,
+      `Downloading image from S3 bucket: ${process.env.S3_BUCKET_NAME}, key: ${actualS3Key}`,
     );
 
     const command = new GetObjectCommand({
       Bucket: process.env.S3_BUCKET_NAME,
-      Key: s3Key,
+      Key: actualS3Key,
     });
 
     const response = await s3Client.send(command);
@@ -49,7 +69,8 @@ export async function getImageFromS3AsBase64(s3Key: string): Promise<string> {
   } catch (error) {
     const downloadTime = Date.now() - startTime;
     logger.error(`Failed to fetch image from S3 after ${downloadTime}ms`, {
-      s3Key,
+      originalS3Key: s3Key,
+      actualS3Key,
       bucket: process.env.S3_BUCKET_NAME,
       error: error.message,
     });
