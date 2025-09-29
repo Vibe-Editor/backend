@@ -29,19 +29,25 @@ This endpoint allows users to generate videos from existing images using Google'
   "segmentId": "string",
   "prompt": "string", 
   "duration": "string",
+  "aspect_ratio": "string",
+  "resolution": "string",
+  "generate_audio": "boolean",
   "projectId": "string"
 }
 ```
 
 ### Request Parameters
 
-| Parameter    | Type   | Required | Description                                     | Validation                    |
-| ------------ | ------ | -------- | ----------------------------------------------- | ----------------------------- |
-| `imageS3Key` | string | Yes      | S3 key of the source image                      | Non-empty string              |
-| `segmentId`  | string | Yes      | Unique identifier for the segment/operation     | Non-empty string              |
-| `prompt`     | string | Yes      | Animation prompt for video generation           | Non-empty string              |
-| `duration`   | string | No       | Video duration                                  | Must be '5s', '8s', or '10s'  |
-| `projectId`  | string | No       | Project identifier for organization             | Optional string               |
+| Parameter       | Type    | Required | Description                                     | Validation                    |
+| --------------- | ------- | -------- | ----------------------------------------------- | ----------------------------- |
+| `imageS3Key`    | string  | Yes      | S3 key of the source image                      | Non-empty string              |
+| `segmentId`     | string  | Yes      | Unique identifier for the segment/operation     | Non-empty string              |
+| `prompt`        | string  | Yes      | Animation prompt for video generation           | Non-empty string              |
+| `duration`      | string  | No       | Video duration                                  | Must be '8s' (default: '8s') |
+| `aspect_ratio`  | string  | No       | Video aspect ratio                              | 'auto', '16:9', '9:16' (default: '16:9') |
+| `resolution`    | string  | No       | Video resolution                                | '720p', '1080p' (default: '720p') |
+| `generate_audio`| boolean | No       | Whether to generate audio                       | true/false (default: true)    |
+| `projectId`     | string  | No       | Project identifier for organization             | Optional string               |
 
 ## Response
 
@@ -115,6 +121,9 @@ curl -X POST "https://api.usuals.ai/video-gen/image-to-video" \
     "segmentId": "segment-123",
     "prompt": "A beautiful sunset over the ocean with gentle waves",
     "duration": "8s",
+    "aspect_ratio": "16:9",
+    "resolution": "720p",
+    "generate_audio": true,
     "projectId": "project-456"
   }'
 ```

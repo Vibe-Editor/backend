@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsIn } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsIn, IsBoolean } from 'class-validator';
 
 export class ImageToVideoDto {
   @IsString()
@@ -15,8 +15,22 @@ export class ImageToVideoDto {
 
   @IsString()
   @IsOptional()
-  @IsIn(['5s', '8s', '10s'])
+  @IsIn(['8s'])
   duration?: string = '8s';
+
+  @IsString()
+  @IsOptional()
+  @IsIn(['auto', '16:9', '9:16'])
+  aspect_ratio?: string = '16:9';
+
+  @IsString()
+  @IsOptional()
+  @IsIn(['720p', '1080p'])
+  resolution?: string = '720p';
+
+  @IsBoolean()
+  @IsOptional()
+  generate_audio?: boolean = true;
 
   @IsString()
   @IsOptional()

@@ -687,7 +687,16 @@ export class VideoGenService {
   }
 
   async generateImageToVideo(imageToVideoDto: ImageToVideoDto, userId: string) {
-    const { imageS3Key, segmentId, prompt, duration = '8s', projectId } = imageToVideoDto;
+    const { 
+      imageS3Key, 
+      segmentId, 
+      prompt, 
+      duration = '8s', 
+      projectId,
+      aspect_ratio = '16:9',
+      resolution = '720p',
+      generate_audio = true
+    } = imageToVideoDto;
     
     this.logger.log(`Starting image-to-video generation for user: ${userId}, segmentId: ${segmentId}`);
 
@@ -725,6 +734,9 @@ export class VideoGenService {
         duration,
         segmentId,
         projectId || 'default',
+        aspect_ratio,
+        resolution,
+        generate_audio,
       );
 
       const savedVideo = await this.prisma.generatedVideo.create({
