@@ -1,12 +1,8 @@
-import { Controller, Post, Body, Get, Logger, HttpCode, HttpStatus, Query, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body, Get, Logger, HttpCode, HttpStatus, Query } from '@nestjs/common';
 import { VideoTemplatesService } from './video-templates.service';
 import { FindSimilarTemplatesDto, SimilarTemplatesResponseDto, VideoTemplateResponseDto, CreateVideoTemplateDto } from './dto/video-template.dto';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { Public } from '../../common/decorators/public.decorator';
-import { CurrentUser } from '../../common/decorators/user.decorator';
 
 @Controller('video-templates')
-@UseGuards(JwtAuthGuard)
 export class VideoTemplatesController {
   private readonly logger = new Logger(VideoTemplatesController.name);
 
@@ -28,7 +24,6 @@ export class VideoTemplatesController {
   }
 
   @Get()
-  @Public()
   async getAllTemplates(
     @Query('page') page: string = '1',
     @Query('limit') limit: string = '10'
@@ -51,9 +46,8 @@ export class VideoTemplatesController {
   @HttpCode(HttpStatus.CREATED)
   async createTemplate(
     @Body() createTemplateDto: CreateVideoTemplateDto,
-    @CurrentUser() user: any,
   ): Promise<VideoTemplateResponseDto> {
-    this.logger.log(`User ${user.id} creating new video template: "${createTemplateDto.description.substring(0, 50)}..."`);
+    this.logger.log(`Creating new video template: "${createTemplateDto.description.substring(0, 50)}..."`);
     return this.videoTemplatesService.createTemplate(createTemplateDto);
   }
 }
