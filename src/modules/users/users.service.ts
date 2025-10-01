@@ -44,6 +44,7 @@ export class UsersService {
             googleId: userData.googleId,
             name: userData.name,
             avatar: userData.avatar,
+            credits: 500, // Explicitly set starting credits
           },
         });
       }
