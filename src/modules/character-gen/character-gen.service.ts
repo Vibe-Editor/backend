@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import { run } from '@openai/agents';
 import { ProjectHelperService } from '../../common/services/project-helper.service';
-import { PrismaClient } from '../../../generated/prisma';
+import { PrismaClient } from '@prisma/client';
 import { CreditService } from '../credits/credit.service';
 import { createOpenAIEditAgent } from './agents/openai-edit.agent';
 import { createRecraftImg2ImgAgent } from './agents/recraft-img2img.agent';

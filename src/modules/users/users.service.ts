@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaClient, User } from '../../../generated/prisma';
+import { PrismaClient, User } from '@prisma/client';
 
 @Injectable()
 export class UsersService {
@@ -44,6 +44,7 @@ export class UsersService {
             googleId: userData.googleId,
             name: userData.name,
             avatar: userData.avatar,
+            credits: 500, // Explicitly set starting credits
           },
         });
       }

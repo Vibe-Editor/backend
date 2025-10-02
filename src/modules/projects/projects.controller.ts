@@ -17,12 +17,12 @@ import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/user.decorator';
-import { CreateVideoPreferencesDto, UpdateVideoPreferencesDto } from './dto/video-preference.dto';
+import { CreateBasicConceptDto, CreateVideoPreferencesDto, UpdateVideoPreferencesDto } from './dto/video-preference.dto';
 
 @Controller('projects')
 @UseGuards(JwtAuthGuard)
 export class ProjectsController {
-  constructor(private readonly projectsService: ProjectsService) {}
+  constructor(private readonly projectsService: ProjectsService) { }
 
   @Post()
   create(
@@ -187,33 +187,6 @@ export class ProjectsController {
   }
 
 
-  // Updated Controller Methods
-  @Post(':id/video-preferences')
-  createVideoPreferences(
-    @Param('id') projectId: string,
-    @Body() createVideoPreferencesDto: CreateVideoPreferencesDto,
-    @CurrentUser('id') userId: string,
-  ) {
-    return this.projectsService.createVideoPreferences(
-      projectId,
-      createVideoPreferencesDto,
-      userId
-    );
-  }
-
-  @Patch(':id/video-preferences')
-  updateVideoPreferences(
-    @Param('id') projectId: string,
-    @Body() updateVideoPreferencesDto: UpdateVideoPreferencesDto,
-    @CurrentUser('id') userId: string,
-  ) {
-    return this.projectsService.updateVideoPreferences(
-      projectId,
-      updateVideoPreferencesDto,
-      userId
-    );
-  }
-
   @Get(':id/video-preferences')
   getVideoPreferences(
     @Param('id') projectId: string,
@@ -222,24 +195,70 @@ export class ProjectsController {
     return this.projectsService.getVideoPreferences(projectId, userId);
   }
 
-  @Post(':id/generate-concept-with-preferences')
-  generateConceptWithPreferences(
+
+  @Post(':id/generate-basic-concept')
+  generateBasicConcept(
     @Param('id') projectId: string,
+    @Body() createBasicConceptDto: CreateBasicConceptDto, // Change this
     @CurrentUser('id') userId: string,
     @Headers('authorization') authorization: string,
   ) {
     const authToken = authorization?.replace('Bearer ', '');
-    return this.projectsService.generateConceptWithPreferences(projectId, userId, authToken);
+    return this.projectsService.generateBasicConcept(projectId, createBasicConceptDto.userPrompt, userId, authToken, createBasicConceptDto.videoType);
   }
 
-  @Put(':id/storyline/:segmentName')
-  updateStorylineSegment(
+
+  @Post(':id/generate-segments-with-preferences')
+  generateSegmentsWithPreferences(
     @Param('id') projectId: string,
-    @Param('segmentName') segmentName: 'setTheScene' | 'ruinThings' | 'theBreakingPoint' | 'cleanUpTheMess' | 'wrapItUp',
+    @CurrentUser('id') userId: string,
+    @Headers('authorization') authorization: string,
+    @Body() preferencesDto: CreateVideoPreferencesDto, // ADD THIS
+  ) {
+    const authToken = authorization?.replace('Bearer ', '');
+    return this.projectsService.generateSegmentsWithPreferences(
+      projectId,
+      userId,
+      authToken,
+      preferencesDto // PASS THIS
+    );
+  }
+
+  @Post(':id/segments')
+  async getProjectSegments(
+    @Param('id') projectId: string,
+    @CurrentUser('id') userId: string
+  ) {
+    return this.projectsService.getProjectSegments(projectId, userId);
+  }
+
+  @Post('segment/:segmentId/videos')
+  async getSegmentVideos(
+    @Param('segmentId') segmentId: string,
+    @CurrentUser('id') userId: string
+  ) {
+    return this.projectsService.getSegmentVideos(segmentId, userId);
+  }
+
+  @Put(':segmentId/storyline')
+  updateStorylineSegment(
+    @Param('segmentId') userVideoSegmentId: string,
     @Body('content') content: string,
     @CurrentUser('id') userId: string,
   ) {
-    return this.projectsService.updateStorylineSegment(projectId, segmentName, content, userId);
+    return this.projectsService.updateStorylineSegmentById(userVideoSegmentId, content, userId);
+  }
+
+  @Put(':id/regenerate-segments')
+  async regenerateSegments(
+    @Param('id') projectId: string,
+    @Body('segmentIds') segmentIds: string[],
+    @Body('maxWordCount') maxWordCount: number,
+    @Headers('authorization') authorization: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    const authToken = authorization?.replace('Bearer ', '');
+    return this.projectsService.regenerateSegmentsWithWordLimit(segmentIds, maxWordCount, userId);
   }
 
 

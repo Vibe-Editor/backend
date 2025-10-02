@@ -24,6 +24,12 @@ import { ContextModule } from './modules/context/context.module';
 import { SummariesModule } from './modules/summaries/summaries.module';
 import { VideoEditingModule } from './modules/video-editing/video-editing.module';
 import { AgentModuleV2 } from './modules/agentv2/agentv2.module';
+import { QuestionsModule } from './modules/questions/questions.module';
+
+import { PromptOptimizerModule } from './modules/prompt-optimizer/prompt-optimizer.module';
+
+import { VideoTemplatesModule } from './modules/video-templates/video-templates.module';
+
 
 @Module({
   imports: [
@@ -51,7 +57,11 @@ import { AgentModuleV2 } from './modules/agentv2/agentv2.module';
     ContextModule,
     SummariesModule,
     VideoEditingModule,
-    AgentModuleV2
+    AgentModuleV2,
+    QuestionsModule,
+    PromptOptimizerModule,
+    VideoTemplatesModule,
+
   ],
   controllers: [AppController],
   providers: [AppService],

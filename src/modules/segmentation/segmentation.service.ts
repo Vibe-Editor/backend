@@ -11,9 +11,10 @@ import { TypeSegment } from './segment.interface';
 import OpenAI from 'openai';
 import { ProjectHelperService } from '../../common/services/project-helper.service';
 import { SummariesService } from '../summaries/summaries.service';
-import { PrismaClient } from '../../../generated/prisma';
+import { PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { CreditService } from '../credits/credit.service';
+import { CreateSegmentDto } from './dto/create-segment.dto';
 
 @Injectable()
 export class SegmentationService {
@@ -36,6 +37,26 @@ export class SegmentationService {
     this.openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   }
 
+  async createSingleSegment(dto: CreateSegmentDto, userId: string) {
+    const project = await this.prisma.project.findFirst({
+      where: { id: dto.projectId, userId },
+      select: { id: true },
+    });
+    if (!project) {
+      throw new Error('Project not found or access denied');
+    }
+
+    const segment = await this.prisma.userVideoSegment.create({
+      data: {
+        type: dto.type,
+        description: dto.description,
+        projectId: dto.projectId,
+      },
+      select: { id: true },
+    });
+
+    return { id: segment.id };
+  }
   private async generateScriptWithGemini(options: {
     narrationPrompt: string;
     visualPrompt: string;
@@ -448,7 +469,7 @@ Generate the visual prompt:`,
   }
 
   // this is the function for the story arc segments
-  private async generateStorySegments(concept: string, model: string): Promise<{
+  private async generateStorySegments(userPrompt:string , concept: string, model: string): Promise<{
     setTheScene: string;
     ruinThings: string;
     theBreakingPoint: string;
@@ -458,32 +479,36 @@ Generate the visual prompt:`,
     const prompt = `Break this video concept into exactly 5 story segments:
 
 CONCEPT: "${concept}"
+user prompt: "${userPrompt}" Use this info to keep story segments closer to story info the user has give, in initial prompt 
 
-Create 5 distinct segments (4-5 sentences each) that follow this story structure:
+Create 5 distinct segments that follow this story structure. Each segment must be exactly 150 words long.
 
-1. setTheScene: Opening hook that establishes the context 
-2. ruinThings: Introduce the problem/conflict/challenge 
-3. theBreakingPoint: Peak moment of tension/climax 
-4. cleanUpTheMess: How the solution/resolution begins 
-5. wrapItUp: Final conclusion/call-to-action 
+1. setTheScene: Opening hook that establishes the context (write exactly 150 words)
+2. ruinThings: Introduce the problem/conflict/challenge (write exactly 150 words)
+3. theBreakingPoint: Peak moment of tension/climax (write exactly 150 words)
+4. cleanUpTheMess: How the solution/resolution begins (write exactly 150 words)
+5. wrapItUp: Final conclusion/call-to-action (write exactly 150 words)
+
+IMPORTANT: Each segment must be a full 150-word narrative, not a one-line summary. Write detailed, engaging content for each segment.
 
 Return ONLY a JSON object in this exact format:
 {
-  "setTheScene": "one line here",
-  "ruinThings": "one line here", 
-  "theBreakingPoint": "one line here",
-  "cleanUpTheMess": "one line here",
-  "wrapItUp": "one line here"
+  "setTheScene": "Write the full 150-word opening segment here that establishes context and hooks the viewer...",
+  "ruinThings": "Write the full 150-word problem segment here that introduces conflict...",
+  "theBreakingPoint": "Write the full 150-word climax segment here that shows peak tension...",
+  "cleanUpTheMess": "Write the full 150-word resolution segment here that begins solving the problem...",
+  "wrapItUp": "Write the full 150-word conclusion segment here that provides closure and call-to-action..."
 }`;
 
     let response;
     if (model === 'gpt-5' || model === 'openai') {
       response = await this.openai.chat.completions.create({
-        model: 'gpt-4o',
+        model: 'gpt-5-chat-latest',
         messages: [{ role: 'user', content: prompt }],
         response_format: { type: 'json_object' },
       });
       const content = response.choices[0]?.message?.content;
+      console.log("this is the content of the api call" , content)
       return JSON.parse(content);
     } else {
       // Use Gemini
@@ -499,120 +524,239 @@ Return ONLY a JSON object in this exact format:
     }
   }
 
-  private async generateStoryMode(
-    segmentationDto: SegmentationDto,
-    userId: string,
-    projectId: string,
-    creditTransactionId: string
-  ): Promise<{
-    segments: TypeSegment[];
-    summary: string | null;
-    artStyle: string;
-    model: string;
-    credits: {
-      used: number;
-      balance: number;
-    };
-  }> {
-    try {
-      // Generate story segments
-      const storySegments = await this.generateStorySegments(
-        segmentationDto.concept || segmentationDto.prompt,
-        segmentationDto.model || 'gpt-5'
-      );
+private async generateStoryMode(
+  segmentationDto: SegmentationDto,
+  userId: string,
+  projectId: string,
+  creditTransactionId: string
+): Promise<{
+  segments: TypeSegment[];
+  summary: string | null;
+  artStyle: string;
+  model: string;
+  credits: {
+    used: number;
+    balance: number;
+  };
+}> {
+  try {
+    // Extract preferences and finalConfig from DTO
+    const preferences = segmentationDto.preferences;
+    const finalConfig = preferences?.finalConfig;
+    const wordCount = preferences?.wordCount || 150;
 
-      // Update UserVideoPreferences with story segments
-      const updatedPreferences = await this.prisma.userVideoPreferences.update({
-        where: { projectId },
-        data: {
-          setTheScene: storySegments.setTheScene,
-          ruinThings: storySegments.ruinThings,
-          theBreakingPoint: storySegments.theBreakingPoint,
-          cleanUpTheMess: storySegments.cleanUpTheMess,
-          wrapItUp: storySegments.wrapItUp,
-        }
-      });
+    console.log(`Generating story segments with visual preferences. Word count: ${wordCount}`);
 
-      // Convert story segments to TypeSegment[] format - single field only
-      const segments: TypeSegment[] = [
-        {
-          id: 'seg-1',
-          visual: storySegments.setTheScene,
-          narration: '',
-          animation: '',
-          type: 'setTheScene'
+    // Generate story segments WITH visual preferences
+    const storySegments = await this.generateStorySegmentsWithVisualConfig(
+      segmentationDto.prompt,
+      segmentationDto.concept,
+      'gpt-5',
+      finalConfig,
+      preferences,
+      wordCount
+    );
+
+    // Create UserVideoSegment records
+    const segmentTypes = ['setTheScene', 'ruinThings', 'theBreakingPoint', 'cleanUpTheMess', 'wrapItUp'];
+    const segmentValues = [
+      storySegments.setTheScene,
+      storySegments.ruinThings,
+      storySegments.theBreakingPoint,
+      storySegments.cleanUpTheMess,
+      storySegments.wrapItUp
+    ];
+
+    const createdSegments = await Promise.all(
+      segmentTypes.map(async (type, index) => {
+        return await this.prisma.userVideoSegment.create({
+          data: {
+            type,
+            description: segmentValues[index],
+            projectId,
+          }
+        });
+      })
+    );
+
+    // Convert to TypeSegment[] format for response
+    const segments: TypeSegment[] = createdSegments.map((segment, index) => ({
+      id: segment.id,
+      visual: segment.description,
+      narration: '',
+      animation: '',
+      type: segment.type
+    }));
+
+    // Save conversation history with preferences metadata
+    await this.prisma.conversationHistory.create({
+      data: {
+        type: 'VIDEO_SEGMENTATION',
+        userInput: segmentationDto.prompt,
+        response: JSON.stringify(segments),
+        metadata: {
+          mode: 'story',
+          concept: segmentationDto.concept,
+          storySegments: storySegments,
+          createdSegmentIds: createdSegments.map(s => s.id),
+          visualPreferences: preferences ? {
+            visualStyle: preferences.visualStyle,
+            lightingMood: preferences.lightingMood,
+            cameraStyle: preferences.cameraStyle,
+            subjectFocus: preferences.subjectFocus,
+            locationEnvironment: preferences.locationEnvironment,
+            wordCount: wordCount,
+          } : null,
         },
-        {
-          id: 'seg-2',
-          visual: storySegments.ruinThings,
-          narration: '',
-          animation: '',
-          type: 'ruinThings'
-        },
-        {
-          id: 'seg-3',
-          visual: storySegments.theBreakingPoint,
-          narration: '',
-          animation: '',
-          type: 'theBreakingPoint'
-        },
-        {
-          id: 'seg-4',
-          visual: storySegments.cleanUpTheMess,
-          narration: '',
-          animation: '',
-          type: 'cleanUpTheMess'
-        },
-        {
-          id: 'seg-5',
-          visual: storySegments.wrapItUp,
-          narration: '',
-          animation: '',
-          type: 'wrapItUp'
-        }
-      ];
-
-      // Save conversation history
-      await this.prisma.conversationHistory.create({
-        data: {
-          type: 'VIDEO_SEGMENTATION',
-          userInput: segmentationDto.prompt,
-          response: JSON.stringify(segments),
-          metadata: {
-            mode: 'story',
-            concept: segmentationDto.concept,
-            storySegments: storySegments,
-          },
-          projectId,
-          userId,
-        },
-      });
-
-      // Get user balance
-      const newBalance = await this.creditService.getUserBalance(userId);
-
-      return {
-        segments,
-        summary: `Story mode: Generated 5 narrative segments`,
-        artStyle: 'story-narrative',
-        model: segmentationDto.model || 'gpt-5',
-        credits: { used: 3, balance: newBalance.toNumber() }
-      };
-
-    } catch (error) {
-      // Refund credits on failure
-      await this.creditService.refundCredits(
+        projectId,
         userId,
-        'TEXT_OPERATIONS',
-        'segmentation',
-        `segmentation-${Date.now()}`,
-        creditTransactionId,
-        false,
-        `Refund for failed story segmentation: ${error.message}`,
-      );
-      throw error;
-    }
+      },
+    });
+
+    // Get user balance
+    const newBalance = await this.creditService.getUserBalance(userId);
+
+    return {
+      segments,
+      summary: preferences
+        ? `Story mode: Generated 5 narrative segments (${wordCount} words each) with ${preferences.visualStyle} visual style`
+        : `Story mode: Generated 5 narrative segments (${wordCount} words each)`,
+      artStyle: preferences?.visualStyle || 'story-narrative',
+      model: segmentationDto.model || 'gpt-5',
+      credits: { used: 3, balance: newBalance.toNumber() }
+    };
+
+  } catch (error) {
+    // Refund credits on failure
+    await this.creditService.refundCredits(
+      userId,
+      'TEXT_OPERATIONS',
+      'segmentation',
+      `segmentation-${Date.now()}`,
+      creditTransactionId,
+      false,
+      `Refund for failed story segmentation: ${error.message}`,
+    );
+    throw error;
   }
+}
+
+private async generateStorySegmentsWithVisualConfig(
+  userPrompt: string,
+  concept: string,
+  model: string,
+  finalConfig: any,
+  preferences: any,
+  wordCount: number = 150
+): Promise<{
+  setTheScene: string;
+  ruinThings: string;
+  theBreakingPoint: string;
+  cleanUpTheMess: string;
+  wrapItUp: string;
+}> {
+
+  // Build rich visual context from finalConfig
+  let visualContext = '';
+  
+  if (finalConfig && preferences) {
+    visualContext = `
+
+VISUAL STYLING REQUIREMENTS:
+- Visual Style: ${preferences.visualStyle || 'Default'}
+- Lighting Mood: ${preferences.lightingMood || 'Default'}  
+- Camera Style: ${preferences.cameraStyle || 'Default'}
+- Subject Focus: ${preferences.subjectFocus || 'Default'}
+- Location Environment: ${preferences.locationEnvironment || 'Default'}
+
+DETAILED VISUAL CONFIGURATION:
+Shot Details:
+${finalConfig.shot ? `
+- Composition: ${finalConfig.shot.composition}
+- Camera Motion: ${finalConfig.shot.camera_motion}  
+- Frame Rate: ${finalConfig.shot.frame_rate}
+- Film Grain: ${finalConfig.shot.film_grain}` : 'No shot details available'}
+
+Subject Details:
+${finalConfig.subject ? `
+- Description: ${finalConfig.subject.description}
+- Wardrobe: ${finalConfig.subject.wardrobe}
+- Action: ${finalConfig.subject.action}` : 'No subject details available'}
+
+Scene Details:
+${finalConfig.scene ? `
+- Location: ${finalConfig.scene.location}
+- Time of Day: ${finalConfig.scene.time_of_day}
+- Environment: ${finalConfig.scene.environment}` : 'No scene details available'}
+
+Audio Details:
+${finalConfig.audio ? `
+- Ambient: ${finalConfig.audio.ambient}
+- Voice Tone: ${finalConfig.audio.voice?.tone}
+- Voice Style: ${finalConfig.audio.voice?.style}` : 'No audio details available'}
+
+Visual Theme: ${finalConfig.brand_integration?.visual_theme || 'Default theme'}
+Color Palette: ${finalConfig.brand_integration?.color_palette?.join(', ') || 'Default colors'}
+
+CRITICAL INSTRUCTION: Each segment must incorporate these specific visual elements, camera movements, lighting conditions, environment details, and styling preferences into the narrative descriptions.`;
+  }
+
+  const prompt = `Break this video concept into exactly 5 visually-detailed story segments:
+
+CONCEPT: "${concept}"
+USER PROMPT: "${userPrompt}"${visualContext}
+
+Create 5 distinct segments that follow this story structure. Each segment must be exactly ${wordCount} words and MUST incorporate the visual styling requirements above.
+
+1. setTheScene: Opening hook with specific visual setting (exactly ${wordCount} words)
+2. ruinThings: Problem introduction with visual tension (exactly ${wordCount} words)  
+3. theBreakingPoint: Climax moment with dramatic visuals (exactly ${wordCount} words)
+4. cleanUpTheMess: Solution with visual resolution (exactly ${wordCount} words)
+5. wrapItUp: Conclusion with final visual impact (exactly ${wordCount} words)
+
+${finalConfig ? `
+VISUAL INTEGRATION REQUIREMENTS:
+- Include specific camera movements: ${finalConfig.shot?.camera_motion}
+- Show lighting mood: ${finalConfig.scene?.time_of_day} with ${finalConfig.shot?.film_grain}
+- Feature environment: ${finalConfig.scene?.location} with ${finalConfig.scene?.environment}
+- Subject styling: ${finalConfig.subject?.description} doing ${finalConfig.subject?.action}
+- Use color palette: ${finalConfig.brand_integration?.color_palette?.join(', ')}
+
+Each segment should read like a detailed film scene description that a cinematographer could use to shoot the video.
+` : 'Focus on clear narrative progression with visual storytelling.'}
+
+Return ONLY a JSON object in this exact format:
+{
+  "setTheScene": "Write exactly ${wordCount} words describing the opening with specific visual details...",
+  "ruinThings": "Write exactly ${wordCount} words describing the problem with visual tension...",
+  "theBreakingPoint": "Write exactly ${wordCount} words describing the climax with dramatic visuals...",
+  "cleanUpTheMess": "Write exactly ${wordCount} words describing the solution with visual resolution...", 
+  "wrapItUp": "Write exactly ${wordCount} words describing the conclusion with final visual impact..."
+}`;
+
+  let response;
+  if (model === 'gpt-5' || model === 'openai') {
+    response = await this.openai.chat.completions.create({
+      model: 'gpt-5-chat-latest',
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' },
+    });
+    const content = response.choices[0]?.message?.content;
+    console.log("Generated visually-styled story segments with preferences");
+    return JSON.parse(content);
+  } else {
+    // Use Gemini fallback
+    const geminiModel = model === 'flash' ? 'gemini-2.5-flash' : 'gemini-2.5-pro-preview-06-05';
+    response = await this.genAI.models.generateContent({
+      model: geminiModel,
+      contents: prompt,
+      config: {
+        responseMimeType: 'application/json',
+      },
+    });
+    return JSON.parse(response.text);
+  }
+}
 
 
   async segmentScript(

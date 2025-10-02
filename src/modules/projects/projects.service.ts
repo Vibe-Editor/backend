@@ -5,24 +5,36 @@ import {
   Logger,
   BadRequestException,
 } from '@nestjs/common';
-import { PrismaClient } from '../../../generated/prisma';
+import { PrismaClient } from '@prisma/client';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import {
   ProjectResponse,
   ProjectWithStats,
 } from './interfaces/project.interface';
-import { CreateVideoPreferencesDto, UpdateVideoPreferencesDto } from './dto/video-preference.dto';
+import {
+  CreateVideoPreferencesDto,
+  UpdateVideoPreferencesDto,
+} from './dto/video-preference.dto';
 import { VIDEO_PREFERENCE_OPTIONS } from './constants/video-preference-options';
 import axios from 'axios';
+import OpenAI from 'openai';
+import { CreditService } from '../credits/credit.service';
+
+export const WORKFLOW_STEPS = {
+  INITIAL_SETUP: 'WORKFLOW_INITIAL_SETUP',
+  SEGMENTS_GENERATED: 'WORKFLOW_SEGMENTS_GENERATED',
+  VIDEOS_GENERATED: 'WORKFLOW_VIDEOS_GENERATED',
+} as const;
 
 @Injectable()
 export class ProjectsService {
   private readonly logger = new Logger(ProjectsService.name);
   private readonly prisma = new PrismaClient();
-  private baseUrl = "http://localhost:8080";
-  // private baseUrl = process.env.BASE_URL;
+  private baseUrl = process.env.BASE_URL;
+  private readonly openai: OpenAI;
 
+  // private baseUrl = 'http://localhost:8080'
   /**
    * Safely parse JSON string, return original value if parsing fails
    */
@@ -34,6 +46,16 @@ export class ProjectsService {
       // This handles cases where the field might not be JSON
       return jsonString;
     }
+  }
+
+  constructor(
+    private readonly creditService: CreditService,
+  ) {
+
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error('OPENAI_API_KEY environment variable not set.');
+    }
+    this.openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   }
 
   async create(
@@ -115,12 +137,69 @@ export class ProjectsService {
         throw new NotFoundException('Project not found');
       }
 
+      const highestStep = this.getHighestWorkflowStep(project.completedSteps);
+      let stepData = null;
+      let dataType = null;
+
+      switch (highestStep) {
+        case 'WORKFLOW_INITIAL_SETUP':
+          stepData = await this.getInitialSetupData(id, userId);
+          dataType = 'initial_setup';
+          break;
+        case 'WORKFLOW_SEGMENTS_GENERATED':
+          stepData = await this.getSegmentsData(id);
+          dataType = 'segments';
+          break;
+        case 'WORKFLOW_VIDEOS_GENERATED':
+          stepData = await this.getVideosData(id);
+          dataType = 'videos';
+          break;
+      }
+
+      // this is for workflow status
+      const workflowSteps = this.getWorkflowStepsOnly(project.completedSteps);
+
       this.logger.log(`Project found: ${project.id}`);
-      return project;
+      return { ...project, workflowSteps, stepData:{type : dataType, data : stepData} };
     } catch (error) {
       this.logger.error(`Failed to fetch project: ${error.message}`);
       throw error;
     }
+  }
+
+  private async getInitialSetupData(projectId: string, userId: string) {
+    // Get latest concept + web research
+    const concept = await this.prisma.videoConcept.findFirst({
+      where: { projectId, userId },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    const webResearch = await this.prisma.webResearchQuery.findFirst({
+      where: { projectId, userId },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    return { concept, webResearch };
+  }
+
+  private async getSegmentsData(projectId: string) {
+    return await this.prisma.userVideoSegment.findMany({
+      where: { projectId },
+      orderBy: { createdAt: 'asc' }
+    });
+  }
+
+  private async getVideosData(projectId: string) {
+    const videos = await this.prisma.generatedVideo.findMany({
+      where: { projectId },
+      include: { videoFiles: true }
+    });
+
+    const segments = await this.prisma.userVideoSegment.findMany({
+      where: { projectId }
+    });
+
+    return { videos, segments };
   }
 
   async findOneWithAllContent(id: string, userId: string) {
@@ -196,6 +275,7 @@ export class ProjectsService {
       }));
 
       this.logger.log(`Project with all content found: ${project.id}`);
+      const workflowSteps = this.getWorkflowStepsOnly(project.completedSteps);
 
       return {
         success: true,
@@ -203,7 +283,9 @@ export class ProjectsService {
           ...project,
           conversations: parsedConversations,
           selectedSegmentation,
+          workflowSteps
         },
+
       };
     } catch (error) {
       this.logger.error(
@@ -330,6 +412,115 @@ export class ProjectsService {
       this.logger.error(`Failed to fetch project concepts: ${error.message}`);
       throw error;
     }
+  }
+
+
+  async getProjectSegments(projectId: string, userId: string) {
+    // Verify project ownership
+    const project = await this.prisma.project.findFirst({
+      where: {
+        id: projectId,
+        userId
+      },
+    });
+
+    if (!project) {
+      throw new NotFoundException('Project not found or access denied');
+    }
+
+    // Get all segments for this project
+    const segments = await this.prisma.userVideoSegment.findMany({
+      where: {
+        projectId,
+        project: { userId } // Double check ownership
+      },
+      select: {
+        id: true,
+        type: true,
+        description: true,
+        createdAt: true,
+        updatedAt: true,
+        projectId: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return {
+      projectId,
+      segments,
+      count: segments.length,
+    };
+  }
+
+  async getSegmentVideos(segmentId: string, userId: string) {
+    // First check if segment exists and belongs to user
+    const segment = await this.prisma.userVideoSegment.findFirst({
+      where: {
+        id: segmentId,
+      },
+      include: {
+        project: {
+          select: {
+            id: true,
+            userId: true,
+          }
+        },
+        resources: {
+          select: {
+            id: true,
+            content: true,
+            s3Key: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
+      },
+    });
+
+    if (!segment) {
+      throw new NotFoundException('Segment not found');
+    }
+
+    // Check if user owns the project that contains this segment
+    if (segment.project.userId !== userId) {
+      throw new ForbiddenException('Access denied - segment does not belong to you');
+    }
+
+    // Format response with description from content JSON and add segmentId
+    const videos = segment.resources.map(resource => ({
+      id: resource.id,
+      description: this.extractDescription(resource.content),
+      jsonPrompt: resource.content,
+      segmentId: segmentId,
+      s3Key: resource.s3Key,
+      createdAt: resource.createdAt,
+      updatedAt: resource.updatedAt,
+    }));
+
+    return {
+      segmentId,
+      projectId: segment.project.id,
+      videos,
+      count: videos.length,
+    };
+  }
+
+  private extractDescription(content: any): string {
+    if (!content) return 'No description available';
+
+    // Try different possible keys where description might be stored
+    if (typeof content === 'object') {
+      return content.description ||
+        content.prompt ||
+        content.userInput ||
+        'Generated video content';
+    }
+
+    if (typeof content === 'string') {
+      return content.substring(0, 100) + (content.length > 100 ? '...' : '');
+    }
+
+    return 'Generated video content';
   }
 
   async findProjectImages(
@@ -500,151 +691,6 @@ export class ProjectsService {
   }
 
 
-  async createVideoPreferences(
-    projectId: string,
-    createDto: CreateVideoPreferencesDto,
-    userId: string,
-  ) {
-    this.logger.log(`Creating video preferences for project: ${projectId}`);
-
-    try {
-      // Check if project exists and belongs to user
-      const project = await this.prisma.project.findFirst({
-        where: { id: projectId, userId },
-      });
-
-      if (!project) {
-        throw new NotFoundException('Project not found');
-      }
-
-      // Check if preferences already exist for this project
-      const existingPreferences = await this.prisma.userVideoPreferences.findFirst({
-        where: { projectId },
-      });
-
-      if (existingPreferences) {
-        throw new BadRequestException('Video preferences already exist for this project');
-      }
-
-      // Build the final config from selected options
-      const finalConfig = this.buildFinalConfig({
-        userPrompt: createDto.user_prompt,
-        videoType: createDto.video_type,
-        visualStyle: createDto.visual_style,
-        lightingMood: createDto.lighting_mood,
-        cameraStyle: createDto.camera_style,
-        subjectFocus: createDto.subject_focus,
-        locationEnvironment: createDto.location_environment,
-      });
-
-      // Create video preferences
-      const videoPreferences = await this.prisma.userVideoPreferences.create({
-        data: {
-          projectId,
-          videoType: createDto.video_type,
-          userPrompt: createDto.user_prompt,
-          visualStyle: createDto.visual_style,
-          lightingMood: createDto.lighting_mood,
-          cameraStyle: createDto.camera_style,
-          subjectFocus: createDto.subject_focus,
-          locationEnvironment: createDto.location_environment,
-          finalConfig,
-        },
-      });
-
-      this.logger.log(`Video preferences created: ${videoPreferences.id}`);
-
-      return {
-        success: true,
-        data: videoPreferences,
-      };
-    } catch (error) {
-      this.logger.error(`Failed to create video preferences: ${error.message}`);
-      throw error;
-    }
-  }
-
-  async updateVideoPreferences(
-    projectId: string,
-    updateDto: UpdateVideoPreferencesDto,
-    userId: string,
-  ) {
-    this.logger.log(`Updating video preferences for project: ${projectId}`);
-
-    try {
-      // Check if project exists and belongs to user
-      const project = await this.prisma.project.findFirst({
-        where: { id: projectId, userId },
-      });
-
-      if (!project) {
-        throw new NotFoundException('Project not found');
-      }
-
-      // Check if preferences exist
-      const existingPreferences = await this.prisma.userVideoPreferences.findFirst({
-        where: { projectId },
-      });
-
-      if (!existingPreferences) {
-        throw new NotFoundException('Video preferences not found for this project');
-      }
-
-      // Merge updated values with existing ones
-      const updatedData = {
-        ...existingPreferences,
-        ...Object.fromEntries(
-          Object.entries(updateDto).map(([key, value]) => [
-            key === 'user_prompt' ? 'userPrompt' :
-              key === 'video_type' ? 'videoType' :
-                key === 'visual_style' ? 'visualStyle' :
-                  key === 'lighting_mood' ? 'lightingMood' :
-                    key === 'camera_style' ? 'cameraStyle' :
-                      key === 'subject_focus' ? 'subjectFocus' :
-                        key === 'location_environment' ? 'locationEnvironment' : key,
-            value
-          ]).filter(([_, value]) => value !== undefined)
-        ),
-      };
-
-      // Rebuild final config with updated values
-      const finalConfig = this.buildFinalConfig({
-        userPrompt: updatedData.userPrompt,
-        videoType: updatedData.videoType,
-        visualStyle: updatedData.visualStyle,
-        lightingMood: updatedData.lightingMood,
-        cameraStyle: updatedData.cameraStyle,
-        subjectFocus: updatedData.subjectFocus,
-        locationEnvironment: updatedData.locationEnvironment,
-      });
-
-      // Update preferences
-      const videoPreferences = await this.prisma.userVideoPreferences.update({
-        where: { projectId },
-        data: {
-          ...(updateDto.user_prompt && { userPrompt: updateDto.user_prompt }),
-          ...(updateDto.video_type && { videoType: updateDto.video_type }),
-          ...(updateDto.visual_style && { visualStyle: updateDto.visual_style }),
-          ...(updateDto.lighting_mood && { lightingMood: updateDto.lighting_mood }),
-          ...(updateDto.camera_style && { cameraStyle: updateDto.camera_style }),
-          ...(updateDto.subject_focus && { subjectFocus: updateDto.subject_focus }),
-          ...(updateDto.location_environment && { locationEnvironment: updateDto.location_environment }),
-          finalConfig,
-        },
-      });
-
-      this.logger.log(`Video preferences updated: ${videoPreferences.id}`);
-
-      return {
-        success: true,
-        data: videoPreferences,
-      };
-    } catch (error) {
-      this.logger.error(`Failed to update video preferences: ${error.message}`);
-      throw error;
-    }
-  }
-
   async getVideoPreferences(projectId: string, userId: string) {
     this.logger.log(`Getting video preferences for project: ${projectId}`);
 
@@ -659,12 +705,16 @@ export class ProjectsService {
       }
 
       // Get video preferences
-      const videoPreferences = await this.prisma.userVideoPreferences.findFirst({
-        where: { projectId },
-      });
+      const videoPreferences = await this.prisma.userVideoPreferences.findFirst(
+        {
+          where: { projectId },
+        },
+      );
 
       if (!videoPreferences) {
-        throw new NotFoundException('Video preferences not found for this project');
+        throw new NotFoundException(
+          'Video preferences not found for this project',
+        );
       }
 
       this.logger.log(`Video preferences found: ${videoPreferences.id}`);
@@ -689,135 +739,297 @@ export class ProjectsService {
     locationEnvironment: string;
   }): any {
     // Get JSON values for each selected option
-    const visualStyleData = VIDEO_PREFERENCE_OPTIONS.visual_style[selections.visualStyle]?.json_values || {};
-    const lightingData = VIDEO_PREFERENCE_OPTIONS.lighting_mood[selections.lightingMood]?.json_values || {};
-    const cameraData = VIDEO_PREFERENCE_OPTIONS.camera_style[selections.cameraStyle]?.json_values || {};
-    const subjectData = VIDEO_PREFERENCE_OPTIONS.subject_focus[selections.subjectFocus]?.json_values || {};
-    const locationData = VIDEO_PREFERENCE_OPTIONS.location_environment[selections.locationEnvironment]?.json_values || {};
+    const visualStyleData =
+      VIDEO_PREFERENCE_OPTIONS.visual_style[selections.visualStyle]
+        ?.json_values || {};
+    const lightingData =
+      VIDEO_PREFERENCE_OPTIONS.lighting_mood[selections.lightingMood]
+        ?.json_values || {};
+    const cameraData =
+      VIDEO_PREFERENCE_OPTIONS.camera_style[selections.cameraStyle]
+        ?.json_values || {};
+    const subjectData =
+      VIDEO_PREFERENCE_OPTIONS.subject_focus[selections.subjectFocus]
+        ?.json_values || {};
+    const locationData =
+      VIDEO_PREFERENCE_OPTIONS.location_environment[
+        selections.locationEnvironment
+      ]?.json_values || {};
 
     // Merge everything into final JSON structure
     return {
       shot: {
-        composition: visualStyleData.composition || cameraData.shot_style || "medium shot",
-        camera_motion: cameraData.camera_motion || "steady movement",
-        frame_rate: cameraData.frame_rate || "30fps",
-        film_grain: visualStyleData.film_grain || "natural digital tone",
+        composition:
+          visualStyleData.composition || cameraData.shot_style || 'medium shot',
+        camera_motion: cameraData.camera_motion || 'steady movement',
+        frame_rate: cameraData.frame_rate || '30fps',
+        film_grain: visualStyleData.film_grain || 'natural digital tone',
       },
       subject: {
         description: `${subjectData.subject_description} for ${selections.userPrompt}`,
-        wardrobe: subjectData.wardrobe || "contextual styling",
-        action: subjectData.action || "appropriate expressive action",
+        wardrobe: subjectData.wardrobe || 'contextual styling',
+        action: subjectData.action || 'appropriate expressive action',
       },
       scene: {
-        location: locationData.location || "contextual location",
-        time_of_day: lightingData.time_of_day || "appropriate lighting",
-        environment: locationData.environment || lightingData.environment || "visually aligned environment",
+        location: locationData.location || 'contextual location',
+        time_of_day: lightingData.time_of_day || 'appropriate lighting',
+        environment:
+          locationData.environment ||
+          lightingData.environment ||
+          'visually aligned environment',
       },
       audio: {
-        ambient: locationData.ambient || "fitting ambient sounds",
+        ambient: locationData.ambient || 'fitting ambient sounds',
         voice: {
-          tone: lightingData.tone || "brand-appropriate",
-          style: cameraData.voice_style || "clear delivery",
+          tone: lightingData.tone || 'brand-appropriate',
+          style: cameraData.voice_style || 'clear delivery',
         },
       },
       visual_rules: {
-        prohibited_elements: ["off-brand visuals", "clutter"],
+        prohibited_elements: ['off-brand visuals', 'clutter'],
       },
       brand_integration: {
-        platform_name: "User Brand",
-        visual_theme: visualStyleData.visual_theme || "creative branded",
-        color_palette: visualStyleData.color_palette || ["primary brand color", "secondary color", "accent"],
-        logo_appearance: "subtle integration",
+        platform_name: 'User Brand',
+        visual_theme: visualStyleData.visual_theme || 'creative branded',
+        color_palette: visualStyleData.color_palette || [
+          'primary brand color',
+          'secondary color',
+          'accent',
+        ],
+        logo_appearance: 'subtle integration',
       },
     };
   }
 
-
-  async generateConceptWithPreferences(projectId: string, userId: string, authToken: string) {
-    // Get video preferences
-    const preferences = await this.prisma.userVideoPreferences.findFirst({
-      where: { projectId }
-    });
-
-    if (!preferences) {
-      throw new NotFoundException('Video preferences not found');
-    }
+  // First function: Generate basic concept from user prompt
+  async generateBasicConcept(
+    projectId: string,
+    userPrompt: string,
+    userId: string,
+    authToken: string,
+    videoType: string,
+  ) {
+    this.logger.log(`Step 1/2: Getting web info for project ${projectId}`);
 
     try {
-      // 1. Get web info using your existing service
-      this.logger.log(`Step 1/3: Getting web info for project ${projectId}`);
-      const webInfoResponse = await axios.post(`${this.baseUrl}/get-web-info`, {
-        prompt: preferences.userPrompt,
-        projectId,
-        userId
-      }, {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`,
-        },
-        timeout: 30000
+
+      const existingPreferences = await this.prisma.userVideoPreferences.findFirst({
+        where: { projectId },
       });
 
-      // 2. Generate concept using your existing service with custom system prompt
-      this.logger.log(`Step 2/3: Generating concept for project ${projectId}`);
-      const conceptResponse = await axios.post(`${this.baseUrl}/concept-writer`, {
-        prompt: this.buildVideoConceptPrompt(preferences, webInfoResponse.data),
-        web_info: JSON.stringify(webInfoResponse.data),
-        projectId,
-        userId,
-        model: 'gpt-5',
-        system_prompt: this.buildVideoSystemPrompt(preferences)
-      }, {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`,
-        },
-        timeout: 60000
-      });
+      if (existingPreferences) {
+        // Update existing with userPrompt and videoType
+        await this.prisma.userVideoPreferences.update({
+          where: { projectId },
+          data: {
+            userPrompt,
+            videoType // Save both fields
+          }
+        });
+      } else {
+        // Create new with userPrompt and videoType
+        await this.prisma.userVideoPreferences.create({
+          data: {
+            projectId,
+            userPrompt,
+            videoType, // Save both fields
+          }
+        });
+      }
 
-      // 3. Generate story segments using the concept
-      this.logger.log(`Step 3/3: Generating story segments for project ${projectId}`);
-      const segmentationResponse = await axios.post(`${this.baseUrl}/segmentation`, {
-        prompt: preferences.userPrompt,
-        concept: conceptResponse.data.concepts[0].concept, // Use the generated concept
-        projectId,
-        userId,
-        model: 'gpt-5',
-        mode: 'story'
-      }, {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`,
+      // 1. Get web info
+      const webInfoResponse = await axios.post(
+        `${this.baseUrl}/get-web-info`,
+        {
+          prompt: userPrompt,
+          projectId,
+          userId,
         },
-        timeout: 60000
-      });
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${authToken}`,
+          },
+          timeout: 60000,
+        },
+      );
 
-      this.logger.log(`Successfully completed all 3 steps for project ${projectId}`);
+      // 2. Generate basic concept (without user preferences)
+      this.logger.log(`Step 2/2: Generating basic concept for project ${projectId}`);
+      const conceptResponse = await axios.post(
+        `${this.baseUrl}/concept-writer`,
+        {
+          prompt: userPrompt,
+          web_info: JSON.stringify(webInfoResponse.data),
+          projectId,
+          userId,
+          model: 'gpt-5',
+          // Basic system prompt without preferences
+          system_prompt: `Create ONE video concept for: "${userPrompt}"
+        
+        Return JSON:
+        {
+          "concepts": [{
+            "title": "Video title",
+            "concept": "5-6 line concept description",
+            "tone": "Appropriate tone",
+            "goal": "Video objective"
+          }]
+        }`,
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${authToken}`,
+          },
+          timeout: 60000,
+        },
+      );
+
+      this.logger.log(`Successfully generated basic concept for project ${projectId}`);
+
+      // Move WORKFLOW_INITIAL_SETUP to top (most recent)
+      await this.updateWorkflowStep(projectId, 'WORKFLOW_INITIAL_SETUP');
 
       return {
         success: true,
         data: {
+          webInfo: webInfoResponse.data,
           concept: conceptResponse.data.concepts[0],
-          storySegments: segmentationResponse.data.segments,
-          credits: segmentationResponse.data.credits
-        }
+          credits: conceptResponse.data.credits,
+        },
       };
-
     } catch (error) {
-      // Determine which step failed based on error context
       let failedStep = 'unknown';
       if (error.config?.url?.includes('/get-web-info')) {
-        failedStep = 'Step 1/3: Web info generation';
+        failedStep = 'Step 1/2: Web info generation';
       } else if (error.config?.url?.includes('/concept-writer')) {
-        failedStep = 'Step 2/3: Concept generation';
-      } else if (error.config?.url?.includes('/segmentation')) {
-        failedStep = 'Step 3/3: Story segmentation';
+        failedStep = 'Step 2/2: Basic concept generation';
       }
 
-      this.logger.error(`Failed at ${failedStep} for project ${projectId}: ${error.message}`);
-      throw new Error(`Failed to generate concept with preferences at ${failedStep}: ${error.message}`);
+      this.logger.error(
+        `Failed at ${failedStep} for project ${projectId}: ${error.message}`,
+      );
+      throw new Error(
+        `Failed to generate basic concept at ${failedStep}: ${error.message}`,
+      );
     }
   }
+
+
+  // generateSegmentsWithPreferences function
+  async generateSegmentsWithPreferences(
+    projectId: string,
+    userId: string,
+    authToken: string,
+    preferencesDto: CreateVideoPreferencesDto, // ADD THIS
+  ) {
+    this.logger.log(`Generating segments with preferences for project ${projectId}`);
+
+    try {
+      const existingPreferences = await this.prisma.userVideoPreferences.findFirst({
+        where: { projectId },
+      });
+
+      if (!existingPreferences) {
+        throw new NotFoundException('No basic concept generated yet. Please generate basic concept first.');
+      }
+
+      // Build finalConfig
+      const finalConfig = this.buildFinalConfig({
+        userPrompt: existingPreferences.userPrompt,
+        videoType: existingPreferences.videoType,
+        visualStyle: preferencesDto.visual_style,
+        lightingMood: preferencesDto.lighting_mood,
+        cameraStyle: preferencesDto.camera_style,
+        subjectFocus: preferencesDto.subject_focus,
+        locationEnvironment: preferencesDto.location_environment,
+      });
+
+      // Save or update preferences
+      const preferences = await this.prisma.userVideoPreferences.update({
+        where: { projectId },
+        data: {
+          visualStyle: preferencesDto.visual_style,
+          lightingMood: preferencesDto.lighting_mood,
+          cameraStyle: preferencesDto.camera_style,
+          subjectFocus: preferencesDto.subject_focus,
+          locationEnvironment: preferencesDto.location_environment,
+          finalConfig,
+        }
+      })
+
+
+      if (!preferences) {
+        throw new NotFoundException('Video preferences not found for this project');
+      }
+
+      // Get the latest concept for this project
+      const latestConcept = await this.prisma.videoConcept.findFirst({
+        where: { projectId, userId },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (!latestConcept) {
+        throw new NotFoundException('No concept found for this project. Please generate a basic concept first.');
+      }
+
+      // Generate story segments using concept + preferences WITH finalConfig
+      this.logger.log(`Generating story segments with visual preferences for project ${projectId}`);
+      const segmentationResponse = await axios.post(
+        `${this.baseUrl}/segmentation`,
+        {
+          prompt: preferences.userPrompt,
+          concept: latestConcept.concept,
+          projectId,
+          userId,
+          model: 'gpt-5',
+          mode: 'story',
+          // Pass the full finalConfig JSON and word count
+          preferences: {
+            visualStyle: preferences.visualStyle,
+            lightingMood: preferences.lightingMood,
+            cameraStyle: preferences.cameraStyle,
+            subjectFocus: preferences.subjectFocus,
+            locationEnvironment: preferences.locationEnvironment,
+            finalConfig: preferences.finalConfig, // Pass the rich JSON
+            wordCount: preferences.wordCount || 150, // Pass word count
+          },
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${authToken}`,
+          },
+          timeout: 60000,
+        },
+      );
+
+      this.logger.log(`Successfully generated segments with visual preferences for project ${projectId}`);
+
+      // Move WORKFLOW_SEGMENTS_GENERATED to top after successful segmentation
+      await this.updateWorkflowStep(projectId, 'WORKFLOW_SEGMENTS_GENERATED');
+
+
+      return {
+        success: true,
+        data: {
+          // concept: latestConcept,
+          // preferences,
+          storySegments: segmentationResponse.data.segments,
+          credits: segmentationResponse.data.credits,
+        },
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to generate segments with preferences for project ${projectId}: ${error.message}`,
+      );
+      throw new Error(
+        `Failed to generate segments with preferences: ${error.message}`,
+      );
+    }
+  }
+
 
   private buildVideoSystemPrompt(preferences: any): string {
     return `Create ONE video concept for: "${preferences.userPrompt}"
@@ -854,82 +1066,368 @@ Visual Requirements:
 Research Context: ${JSON.stringify(webInfo)}`;
   }
 
-  async generateStorylineSegments() {
-
-  }
-
-  async updateStorylineSegment(
-    projectId: string,
-    segmentName: 'setTheScene' | 'ruinThings' | 'theBreakingPoint' | 'cleanUpTheMess' | 'wrapItUp',
+  async updateStorylineSegmentById(
+    userVideoSegmentId: string,
     newContent: string,
     userId: string,
   ) {
-    this.logger.log(`Updating ${segmentName} for project: ${projectId}`);
+    this.logger.log(`Updating segment with ID: ${userVideoSegmentId}`);
 
     try {
-      // Check if project exists and belongs to user
-      const project = await this.prisma.project.findFirst({
-        where: { id: projectId, userId },
+      // Find the segment by ID
+      const existingSegment = await this.prisma.userVideoSegment.findUnique({
+        where: { id: userVideoSegmentId },
+        include: { project: true }, // To verify ownership
       });
 
-      if (!project) {
-        throw new NotFoundException('Project not found');
+      if (!existingSegment) {
+        throw new NotFoundException(
+          `Segment with ID ${userVideoSegmentId} not found`,
+        );
       }
 
-      // Check if preferences exist
-      const existingPreferences = await this.prisma.userVideoPreferences.findFirst({
-        where: { projectId },
-      });
-
-      if (!existingPreferences) {
-        throw new NotFoundException('Video preferences not found for this project');
+      // Ensure the user owns this segment
+      if (existingSegment.project.userId !== userId) {
+        throw new ForbiddenException(
+          `You don't have access to update this segment`,
+        );
       }
 
-      // Update the specific segment
-      const updateData = { [segmentName]: newContent };
+      const segmentType = existingSegment.type;
+      const projectId = existingSegment.projectId;
 
-      const updatedPreferences = await this.prisma.userVideoPreferences.update({
-        where: { projectId },
-        data: updateData,
+      // Update the segment description
+      const updatedSegment = await this.prisma.userVideoSegment.update({
+        where: { id: userVideoSegmentId },
+        data: { description: newContent },
       });
 
       // Log the update in conversation history
       await this.prisma.conversationHistory.create({
         data: {
           type: 'PROJECT_CONTEXT_UPDATE',
-          userInput: `Updated ${segmentName} segment`,
+          userInput: `Updated ${segmentType} segment`,
           response: JSON.stringify({
             action: 'update_story_segment',
-            segmentName,
-            oldContent: existingPreferences[segmentName],
+            userVideoSegmentId,
+            segmentType,
+            oldContent: existingSegment.description,
             newContent,
           }),
-          metadata: {
-            segmentUpdated: segmentName,
-          },
+          metadata: { segmentUpdated: segmentType },
           projectId,
           userId,
         },
       });
 
-      this.logger.log(`Successfully updated ${segmentName} for project: ${projectId}`);
-
       return {
         success: true,
-        data: {
-          segmentName,
-          newContent,
-          updatedPreferences,
-        },
-        message: `${segmentName} segment updated successfully`,
+        data: { userVideoSegmentId, segmentType, newContent, updatedSegment },
+        message: `${segmentType} segment updated successfully`,
       };
-
     } catch (error) {
-      this.logger.error(`Failed to update ${segmentName} segment: ${error.message}`);
+      this.logger.error(
+        `Failed to update segment ${userVideoSegmentId}: ${error.message}`,
+      );
       throw error;
     }
   }
 
+
+  async regenerateSegmentsWithWordLimit(
+    segmentIds: string[],
+    maxWords: number,
+    userId: string,
+  ) {
+    this.logger.log(
+      `Starting regeneration of ${segmentIds.length} segments with ${maxWords} word limit for user: ${userId}`,
+    );
+
+    const startTime = Date.now();
+
+    // ===== CREDIT DEDUCTION =====
+    this.logger.log(`Deducting credits for segment regeneration`);
+
+    // Deduct credits first - 10 credits per regeneration operation
+    const creditTransactionId = await this.creditService.deductCredits(
+      userId,
+      'TEXT_OPERATIONS',
+      'segmentation',
+      `regeneration-${Date.now()}`,
+      false,
+      `Segment regeneration for ${segmentIds.length} segments`,
+    );
+
+    this.logger.log(
+      `Successfully deducted 10 credits for regeneration. Transaction ID: ${creditTransactionId}`,
+    );
+    // ===== END CREDIT DEDUCTION =====
+
+    try {
+      // 🔥 Single DB call to get all segments at once
+      this.logger.log(`Fetching all ${segmentIds.length} segments for user ${userId}`);
+
+      const segments = await this.prisma.userVideoSegment.findMany({
+        where: {
+          id: { in: segmentIds },
+          project: {
+            userId: userId, // Security check - only user's segments through project
+          },
+        },
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      this.logger.log(`Found ${segments.length} valid segments out of ${segmentIds.length} requested`);
+
+      if (segments.length === 0) {
+        this.logger.warn(`No valid segments found for user ${userId}`);
+
+        // Refund credits if no valid segments found
+        await this.creditService.refundCredits(
+          userId,
+          'TEXT_OPERATIONS',
+          'segmentation',
+          `regeneration-${Date.now()}`,
+          creditTransactionId,
+          false,
+          'Refund for regeneration - no valid segments found',
+        );
+
+        return [];
+      }
+
+      // Log any missing segments
+      const foundSegmentIds = new Set(segments.map(s => s.id));
+      const missingSegments = segmentIds.filter(id => !foundSegmentIds.has(id));
+      if (missingSegments.length > 0) {
+        this.logger.warn(`Missing/unauthorized segments: ${missingSegments.join(', ')}`);
+      }
+
+      // Get the project ID for conversation history (use the first segment's project)
+      const projectId = segments[0]?.projectId;
+
+      // Process all GPT calls concurrently (no DB updates yet)
+      const gptPromises = segments.map(async (segment, index) => {
+        this.logger.log(`Processing GPT call ${index + 1}/${segments.length}: ${segment.id}`);
+
+        try {
+          this.logger.log(`Calling GPT-latest for segment ${segment.id} regeneration`);
+
+          // 🔥 Direct GPT-5 call
+          const completion = await this.openai.chat.completions.create({
+            model: 'gpt-5-chat-latest',
+            messages: [
+              {
+                role: 'system',
+                content: `You are a helpful assistant. Regenerate the given video segment in exactly ${maxWords} words. Return ONLY plain text (no JSON, no markdown).`,
+              },
+              {
+                role: 'user',
+                content: segment.description,
+              },
+            ],
+          });
+
+          const newContent = completion.choices[0]?.message?.content?.trim() || null;
+
+          if (!newContent) {
+            throw new Error('No content returned from GPT-5');
+          }
+
+          this.logger.log(`GPT-5 successfully regenerated content for segment ${segment.id}`);
+
+          return {
+            segmentId: segment.id,
+            segmentType: segment.type,
+            originalContent: segment.description,
+            newContent,
+            success: true,
+          };
+
+        } catch (err) {
+          this.logger.error(
+            `Failed GPT call for segment ${segment.id}: ${(err as Error).message}`,
+          );
+          return {
+            segmentId: segment.id,
+            segmentType: segment.type,
+            originalContent: segment.description,
+            newContent: null,
+            success: false,
+            error: (err as Error).message,
+          };
+        }
+      });
+
+      this.logger.log(`Waiting for all ${segments.length} GPT calls to complete`);
+
+      // Wait for all GPT calls to complete
+      const gptResults = await Promise.allSettled(gptPromises);
+      const successfulResults = gptResults
+        .filter(result => result.status === 'fulfilled' && result.value.success)
+        .map(result => (result as PromiseFulfilledResult<any>).value);
+
+      this.logger.log(`${successfulResults.length} GPT calls succeeded, preparing bulk database update`);
+
+      if (successfulResults.length === 0) {
+        this.logger.warn('No successful GPT regenerations, refunding credits and skipping database updates');
+
+        // Refund credits if no successful regenerations
+        await this.creditService.refundCredits(
+          userId,
+          'TEXT_OPERATIONS',
+          'segmentation',
+          `regeneration-${Date.now()}`,
+          creditTransactionId,
+          false,
+          'Refund for regeneration - all GPT calls failed',
+        );
+
+        return [];
+      }
+
+      // 🔥 Bulk update all segments in a single transaction
+      this.logger.log(`Performing bulk update for ${successfulResults.length} segments`);
+
+      const updatePromises = successfulResults.map(result =>
+        this.prisma.userVideoSegment.update({
+          where: { id: result.segmentId },
+          data: {
+            description: result.newContent,
+            updatedAt: new Date(), // Explicitly update timestamp
+          },
+        })
+      );
+
+      // Execute all updates concurrently
+      const updateResults = await Promise.allSettled(updatePromises);
+      const successfulUpdates = updateResults
+        .filter(result => result.status === 'fulfilled')
+        .map(result => (result as PromiseFulfilledResult<any>).value);
+
+      const processingTime = Date.now() - startTime;
+      const gptSuccessCount = successfulResults.length;
+      const gptFailureCount = segments.length - gptSuccessCount;
+      const dbSuccessCount = successfulUpdates.length;
+      const dbFailureCount = successfulResults.length - dbSuccessCount;
+      const totalRequestedCount = segmentIds.length;
+
+      // Get user's new balance after credit deduction
+      const newBalance = await this.creditService.getUserBalance(userId);
+
+      this.logger.log(
+        `Regeneration completed in ${processingTime}ms. GPT Success: ${gptSuccessCount}, GPT Failed: ${gptFailureCount}, DB Success: ${dbSuccessCount}, DB Failed: ${dbFailureCount}, Found: ${segments.length}, Requested: ${totalRequestedCount}. Credits used: 10, New balance: ${newBalance.toNumber()}`,
+      );
+
+      if (gptFailureCount > 0) {
+        this.logger.warn(`${gptFailureCount} segments failed GPT regeneration`);
+      }
+
+      if (dbFailureCount > 0) {
+        this.logger.warn(`${dbFailureCount} segments failed database update`);
+      }
+
+      if (missingSegments.length > 0) {
+        this.logger.warn(`${missingSegments.length} segments were not found or unauthorized`);
+      }
+
+      // Add credits info to response
+      const response = successfulUpdates.map(segment => ({
+        ...segment,
+        credits: {
+          used: 10,
+          balance: newBalance.toNumber(),
+        },
+      }));
+
+      // Move WORKFLOW_SEGMENTS_GENERATED to top after successful segmentation
+      await this.updateWorkflowStep(projectId, 'WORKFLOW_SEGMENTS_GENERATED');
+
+
+      return response;
+
+    } catch (error) {
+      const processingTime = Date.now() - startTime;
+      this.logger.error(
+        `Failed to regenerate segments after ${processingTime}ms: ${(error as Error).message}`,
+      );
+
+      // Refund credits on failure
+      try {
+        await this.creditService.refundCredits(
+          userId,
+          'TEXT_OPERATIONS',
+          'segmentation',
+          `regeneration-${Date.now()}`,
+          creditTransactionId,
+          false,
+          `Refund for failed regeneration: ${error.message}`,
+        );
+        this.logger.log(`Successfully refunded 10 credits for failed regeneration. User: ${userId}`);
+      } catch (refundError) {
+        this.logger.error(`Failed to refund credits for regeneration: ${refundError.message}`);
+      }
+
+      throw error;
+    }
+  }
+
+
+  // Helper function to move workflow state to top (most recent first)
+  private async updateWorkflowStep(projectId: string, step: string): Promise<void> {
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+      select: { completedSteps: true }
+    });
+
+    const currentSteps = project?.completedSteps || [];
+
+    // Remove the step if it already exists (to avoid duplicates)
+    const filteredSteps = currentSteps.filter(s => s !== step);
+
+    // Add the step to the beginning (most recent first)
+    const updatedSteps = [step, ...filteredSteps];
+
+    await this.prisma.project.update({
+      where: { id: projectId },
+      data: {
+        completedSteps: updatedSteps
+      }
+    });
+  }
+
+  private getWorkflowStepsOnly(completedSteps: string[]): string[] {
+    const workflowSteps = [
+      WORKFLOW_STEPS.INITIAL_SETUP,
+      WORKFLOW_STEPS.SEGMENTS_GENERATED,
+      WORKFLOW_STEPS.VIDEOS_GENERATED,
+    ];
+
+    return completedSteps.filter(step => workflowSteps.includes(step as any));
+  }
+
+  private getHighestWorkflowStep(completedSteps: string[]): string | null {
+    const workflowSteps = [
+      'WORKFLOW_INITIAL_SETUP',
+      'WORKFLOW_SEGMENTS_GENERATED',
+      'WORKFLOW_VIDEOS_GENERATED'
+    ];
+
+    // Find the highest step that exists in completedSteps
+    for (const step of completedSteps) {
+      if (workflowSteps.includes(step)) {
+        return step; // Return the first (most recent) workflow step found
+      }
+    }
+    return null;
+  }
 
   async findProjectSegmentations(
     id: string,

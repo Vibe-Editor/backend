@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import { Public } from '../../common/decorators/public.decorator';
 import { CreditService } from './credit.service';
-import { CreditTransactionType } from '../../../generated/prisma';
+import { CreditTransactionType } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import Stripe from 'stripe';
 
@@ -37,25 +37,25 @@ export class CreditController {
 
   constructor(private readonly creditService: CreditService) {
     // Use environment variable or fallback dummy key to prevent crashes
-    const stripeKey =
-      process.env.STRIPE_SECRET_KEY || 'sk_test_dummy_key_for_initialization';
+    // const stripeKey =
+    //   process.env.STRIPE_SECRET_KEY || 'sk_test_dummy_key_for_initialization';
 
-    console.log(
-      '🔧 Initializing Stripe with key:',
-      stripeKey.substring(0, 20) + '...',
-    );
+    // console.log(
+    //   '🔧 Initializing Stripe with key:',
+    //   stripeKey.substring(0, 20) + '...',
+    // );
 
-    if (!process.env.STRIPE_SECRET_KEY) {
-      console.log(
-        '⚠️ STRIPE_SECRET_KEY environment variable is not set, using dummy key',
-      );
-    } else {
-      console.log('✅ Using STRIPE_SECRET_KEY from environment');
-    }
+    // if (!process.env.STRIPE_SECRET_KEY) {
+    //   console.log(
+    //     '⚠️ STRIPE_SECRET_KEY environment variable is not set, using dummy key',
+    //   );
+    // } else {
+    //   console.log('✅ Using STRIPE_SECRET_KEY from environment');
+    // }
 
-    this.stripe = new Stripe(stripeKey, {
-      apiVersion: '2025-07-30.basil',
-    });
+    // this.stripe = new Stripe(stripeKey, {
+    //   apiVersion: '2025-08-27.basil',
+    // });
 
     console.log('✅ Stripe initialized successfully');
   }

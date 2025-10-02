@@ -1,6 +1,6 @@
 generator client {
   provider = "prisma-client-js"
-  output   = "../generated/prisma"
+  // output   = "../generated/prisma"
 }
 
 datasource db {
@@ -17,7 +17,7 @@ model User {
   createdAt DateTime @default(now())
 
   // Credit system fields
-  credits            Decimal  @default(0) @db.Decimal(10, 2) // Current credit balance
+  credits            Decimal  @default(500) @db.Decimal(10, 2) // Current credit balance
   creditVersion      Int      @default(0) // Optimistic concurrency control version
   totalCreditsEarned Decimal  @default(0) @db.Decimal(12, 2) // Lifetime credits earned
   totalCreditsSpent  Decimal  @default(0) @db.Decimal(12, 2) // Lifetime credits spent
@@ -62,11 +62,14 @@ model Project {
   generatedVoiceovers  GeneratedVoiceover[]
   characterGenerations CharacterGeneration[]
 
-  completedSteps    String[] @default([]) // Replaces the projectStates map
-  userPrompts       String[] @default([]) // Stores all user prompts for this project
+  completedSteps    String[] @default([]) // this is to track if the user steps in agentv2 routes && and the new user preferences and story arc thingy
+  userPrompts       String[] @default([]) // Stores all user prompts for this project in the agentv2 route
+
+
 
   // Add this new relation
   videoPreferences     UserVideoPreferences?
+  userSegments        UserVideoSegment[]
 
 }
 
@@ -88,21 +91,45 @@ model UserVideoPreferences {
   locationEnvironment  String? // 'studio_minimal', 'office_professional', 'lifestyle_natural', 'luxury_premium'
   
   // Final computed config (stores all merged JSON values)
-  finalConfig Json?
+  finalConfig Json? // this is the updated json files of all the preferences
 
-  //store the string data for the individual segments
-
-  setTheScene         String?
-  ruinThings          String?
-  theBreakingPoint    String?
-  cleanUpTheMess      String?
-  wrapItUp            String?
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  //store the string data for the individual segments
+  wordCount   Int @default(150)
+
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
+
+model UserVideoSegment {
+  id            String   @id @default(cuid())
+
+  type          String   // "setTheScene" | "ruinThings" | "theBreakingPoint" | ...
+  description   String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId     String   // new direct link
+  resources     SegmentResource[] @relation("SegmentResources")
+}
+
+
+model SegmentResource {
+  id            String   @id @default(cuid())
+  content       Json?    // for full prompt JSON
+  s3Key         String?  // for asset storage
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+
+  // M2M with UserVideoSegment
+  segments      UserVideoSegment[] @relation("SegmentResources")
+}
+
 
 // Credit system models
 model CreditTransaction {
@@ -354,3 +381,14 @@ model CharacterGeneration {
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+
+model VideoTemplate {
+  id          String   @id @default(cuid())
+  description String
+  jsonPrompt  String   @db.Text
+  s3Key       String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([description])
+}
